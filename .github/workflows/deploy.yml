@@ -1,0 +1,46 @@
+# 사이트 배포 — 저장소 파일 + 릴리스 'tiles-latest' 의 지도 타일을 합쳐 GitHub Pages 에 올려요.
+# 설정 → Pages → Build and deployment → Source 를 "GitHub Actions" 로 바꿔야 동작해요.
+name: 사이트 배포
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["지도 타일 만들기"]
+    types: [completed]
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: false
+jobs:
+  deploy:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: 사이트 파일 모으기
+        run: |
+          mkdir -p _site
+          rsync -a --exclude '.git' --exclude '.github' --exclude '_site' --exclude 'tools' --exclude 'apps-script' --exclude 'backup_*' --exclude 'tiles' ./ _site/
+          touch _site/.nojekyll
+      - name: 지도 타일 붙이기 (있으면)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release download tiles-latest -p tiles.tar -D /tmp --clobber; then
+            tar -xf /tmp/tiles.tar -C _site && du -sh _site/tiles && cat _site/tiles/meta.json
+          else
+            echo "지도 타일이 아직 없어요 — 공개 지도 서버만 써요 ('지도 타일 만들기'를 먼저 실행하세요)"
+          fi
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
