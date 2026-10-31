@@ -525,7 +525,7 @@ function updateDebris(dt){
   }
   if(beam){const g=beam.y;pushShape(mg,CUBE,beam.x,g+200,beam.z,1.6,400,1.6,0,[1,0.1,0.08],1);pushShape(mg,CUBE,beam.x,g+200,beam.z,4,400,4,0,[1,0.45,0.4],1);pushShape(mg,SPHERE,beam.x,g,beam.z,5,5,5,0,[1,0.55,0.15],1)}
   if(shock){const n=110;const t=1-shock.r/shock.max;for(let k=0;k<n;k++){const a=k/n*Math.PI*2;const x=shock.x+Math.cos(a)*shock.r,z=shock.z+Math.sin(a)*shock.r;const g=groundAt(x,z);if(g<-300)continue;pushShape(mg,CUBE,x,g+2,z,4*t+1,3*t+0.5,4*t+1,a,[1,0.93,0.8],1)}}
-  if(MODE==='section')drawSecDyn(m,mg);else if(MODE==='fps')drawFpsHand(m,mg);else drawTools(m,mg);
+  drawFxCommon(m,mg);if(MODE==='section')drawSecDyn(m,mg);else drawTools(m,mg);
   m.upload();mg.upload();
   if(rubDirty){rubDirty=false;const r=mRub;r.reset();for(let i=0;i<MAXD;i++){if(!D.used[i]||!D.rest[i])continue;
       const g=surfaceAt(D.x[i],D.y[i],D.z[i]);if(D.y[i]-D.s[i]*0.5>g+1.5||D.y[i]<g-2){D.rest[i]=0;continue}
@@ -770,85 +770,126 @@ function facadePoint(b,x,z){let best=null,bd=1e9;const p=b.pts;
     const px=a[0]+dx*t,pz=a[1]+dz*t,d=Math.hypot(px-x,pz-z);if(d<bd){bd=d;const l=Math.sqrt(l2);best={x:px,z:pz,nx:dz/l,nz:-dx/l}}}
   return best}
 
-// ---------- 1. 타워크레인 + 철거 쇠공 ----------
-function spawnCrane(h){
-  const b=h.b||nearestBuilding(h.x,h.z,40);if(!b){toast('크레인을 세울 건물이 없어요. 건물을 눌러주세요');return}
-  const fp=facadePoint(b,h.x,h.z);const hy=h.b?clamp(h.y,b.base+3,b.base+b.h-1):b.base+b.h*0.6;
-  const cx=fp.x+fp.nx*20,cz=fp.z+fp.nz*20,H=Math.max(b.h+16,hy+22);
-  CRANES.push({b,cx,cz,H,hx:fp.x,hz:fp.z,hy,nx:fp.nx,nz:fp.nz,t:0,swing:0,pen:0,phase:Math.PI,grow:0,done:false,last:1});
-  sfx(8);toast('타워크레인 설치 중…',1500);
+// ---------- 1. 타워크레인 쇠공 — 선을 그으면 그 선을 따라 휘두름 ----------
+// A→B 방향으로 한 번 크게 휘두르고(100%), 되돌아오며 한 번 더(60%) 쓸어버림
+function spawnCraneLine(A,B){
+  let dx=B.x-A.x,dy=B.y-A.y,dz=B.z-A.z,L=Math.hypot(dx,dy,dz);
+  if(L<6){toast('쇠공: 휘두를 방향으로 길게 선을 그어주세요');return false}
+  if(L>150){const k=150/L;B={x:A.x+dx*k,y:A.y+dy*k,z:A.z+dz*k};dx*=k;dy*=k;dz*=k;L=150}
+  const mx=(A.x+B.x)/2,mz=(A.z+B.z)/2;
+  let top=Math.max(A.y,B.y);forBuildingsNear(mx,mz,L/2+10,b=>{if(b.alive)top=Math.max(top,b.base+b.h)});
+  const hl=Math.hypot(dx,dz)||1;let nx=-dz/hl,nz=dx/hl;
+  if((eye[0]-mx)*nx+(eye[2]-mz)*nz>0){nx=-nx;nz=-nz}   // 크레인은 카메라 반대편에 세워 휘두르는 모습이 가리지 않게
+  const piv={x:mx,y:top+16+L*0.08,z:mz},mast={x:mx+nx*(18+L*0.12),z:mz+nz*(18+L*0.12)};
+  CRANES.push({A,B,L,piv,mast,t:0,grow:0,phase:'rise',pass:0,s:0,lastS:0,hit:new Set(),trail:[]});
+  sfx(8);toast('타워크레인 쇠공 — 그은 선을 따라 휘둘러요!',1300);statTool('crane');return true;
 }
+const BALL_R=3.4;
+function craneBall(c,s){const A=c.A,B=c.B,sag=Math.sin(Math.PI*s)*Math.min(7,c.L*0.08);
+  return[A.x+(B.x-A.x)*s,A.y+(B.y-A.y)*s-sag,A.z+(B.z-A.z)*s]}
 function updateCranes(dt){
   for(let i=CRANES.length-1;i>=0;i--){const c=CRANES[i];c.t+=dt;
-    if(!c.done){c.grow=Math.min(1,c.grow+dt*1.6);
-      if(c.grow>=1){c.phase+=dt*4.2;const s=Math.cos(c.phase);   // s=-1 → 건물 쪽 끝
-        if(c.last>-0.97&&s<=-0.97){ // 충돌
-          const x=c.hx-c.nx*c.pen,z=c.hz-c.nz*c.pen;
-          if(c.b.alive){structDamage(c.b,x,c.hy,z,6.5,2.1);structDamage(c.b,x,c.hy-3.4,z,4.5,1.2);boom3(x,c.hy,z,9);cam.shake=Math.max(cam.shake,2.5)}
-          c.pen+=2.2;c.swing++;if(c.swing>=5||!c.b.alive)c.done=true}
-        c.last=s}}
-    else{c.grow-=dt*1.4;if(c.grow<=0)CRANES.splice(i,1)}}
+    if(c.phase==='rise'){c.grow=Math.min(1,c.grow+dt*2.4);if(c.grow>=1){c.phase='swing';c.t=0;c.s=0;c.lastS=0;sfx(12,0.8)}continue}
+    if(c.phase==='swing'){const T=0.55+c.L/130;const u=Math.min(1,c.t/T);const e=(1-Math.cos(Math.PI*u))/2;
+      const s=c.pass===0?e:1-e;const pw=c.pass===0?1:0.6;
+      // 지나간 구간을 1.5m 간격으로 훑으며 피해
+      const a=c.lastS,b=s,n=Math.max(1,Math.ceil(Math.abs(b-a)*c.L/1.5));
+      const spd=Math.abs(b-a)*c.L/Math.max(dt,1e-3);
+      for(let k=1;k<=n;k++){const p=craneBall(c,a+(b-a)*k/n);
+        forBuildingsNear(p[0],p[2],BALL_R+8,o=>{if(!o.alive||o.lifted)return;if(distToBuilding(o,p[0],p[2])>BALL_R+0.8)return;
+          if(p[1]<o.base-2||p[1]>o.base+o.h+BALL_R)return;
+          const y=clamp(p[1],o.base+1,o.base+Math.max(1.2,o.h-0.6));
+          structDamage(o,p[0],y,p[2],BALL_R*2.4,(1.3+Math.min(1.5,spd/50))*pw);
+          if(!c.hit.has(o)){c.hit.add(o);hitStop(0.06);cam.shake=Math.max(cam.shake,7*pw);boom3(p[0],y,p[2],14);sfxBoom(0.5*pw);
+            for(let q=0;q<10;q++)spawn(p[0],y,p[2],(Math.random()-.5)*20,4+Math.random()*10,(Math.random()-.5)*20,1+Math.random()*1.8,Math.random()<0.5?o.col:CONC)}});
+        forTreesNear(p[0],p[2],BALL_R+2,t=>{if(t.alive&&Math.hypot(t.x-p[0],t.z-p[2])<BALL_R+1.5&&p[1]<groundAt(t.x,t.z)+t.s*2)killTree(t)})}
+      c.lastS=s;const bp=craneBall(c,s);c.trail.push(bp);if(c.trail.length>7)c.trail.shift();
+      if(u>=1){if(c.pass===0){c.pass=1;c.t=0;c.hit=new Set();c.trail=[]}else{c.phase='retract';c.t=0}}
+      continue}
+    c.grow-=dt*1.6;if(c.grow<=0)CRANES.splice(i,1)}
 }
-function drawCrane(m,c){
-  const g=clamp(c.grow,0,1),H=c.H*g,x=c.cx,z=c.cz,gy=groundAt(x,z);
-  pushShape(m,CUBE,x,gy+0.6,z,7,1.2,7,0,[0.55,0.55,0.53],0);                       // 기초
-  pushShape(m,CUBE,x,gy+H/2,z,2.2,H,2.2,0,YEL,0);                                    // 마스트
-  for(let y=6;y<H-2;y+=6)pushShape(m,CUBE,x,gy+y,z,2.5,0.35,2.5,0,YEL_D,0);         // 격자 느낌 띠
-  if(g<0.6)return;
-  const ang=Math.atan2(-c.nz,-c.nx);   // 건물 쪽 방향
-  const L=20+c.pen+6,top=gy+H;
-  pushShape(m,CUBE,x+Math.cos(ang)*L/2,top,z+Math.sin(ang)*L/2,L,1.4,1.4,ang,YEL,0);   // 지브
-  pushShape(m,CUBE,x-Math.cos(ang)*5,top,z-Math.sin(ang)*5,10,1.2,1.2,ang,YEL_D,0);    // 카운터 지브
-  pushShape(m,CUBE,x-Math.cos(ang)*9,top-1.5,z-Math.sin(ang)*9,2.5,2.5,2.5,ang,[0.6,0.6,0.58],0); // 웨이트
-  pushShape(m,CUBE,x,top+1.6,z,2.6,1.8,2.6,ang,[0.95,0.95,0.93],0);                  // 조종실
-  // 쇠공: 지브 끝에 매달려 건물 쪽으로 진자 운동
-  const s=Math.cos(c.phase),reach=(1+s)/2*14+1.0;
-  const bx=c.hx+c.nx*reach-c.nx*c.pen,bz=c.hz+c.nz*reach-c.nz*c.pen,by=c.hy+((1+s)/2)*4;
-  const px=c.hx+c.nx*8-c.nx*c.pen,pz=c.hz+c.nz*8-c.nz*c.pen;   // 트롤리
-  const cl=top-by;pushShape(m,CUBE,(px+bx)/2,by+cl/2,(pz+bz)/2,0.25,cl,0.25,0,STEEL,0);
-  pushShape(m,SPHERE,bx,by,bz,2.2,2.2,2.2,0,[0.18,0.18,0.2],0);
+function drawCrane(m,mg,c){
+  const g=clamp(c.grow,0,1),gy=groundAt(c.mast.x,c.mast.z),H=(c.piv.y-gy+3)*g,x=c.mast.x,z=c.mast.z;
+  pushShape(m,CUBE,x,gy+0.6,z,8,1.2,8,0,[0.55,0.55,0.53],0);
+  pushShape(m,CUBE,x,gy+H/2,z,2.4,H,2.4,0,YEL,0);
+  for(let y=6;y<H-2;y+=6)pushShape(m,CUBE,x,gy+y,z,2.7,0.35,2.7,0,YEL_D,0);
+  if(g<0.5)return;
+  const top=gy+H,dx=c.piv.x-x,dz=c.piv.z-z,L=Math.hypot(dx,dz)||1,ang=Math.atan2(dz,dx);
+  pushShape(m,CUBE,x+dx/2,top,z+dz/2,L+4,1.5,1.5,-ang,YEL,0);
+  pushShape(m,CUBE,x-dx/L*6,top,z-dz/L*6,12,1.3,1.3,-ang,YEL_D,0);
+  pushShape(m,CUBE,x-dx/L*11,top-1.6,z-dz/L*11,3,3,3,-ang,[0.6,0.6,0.58],0);
+  pushShape(m,CUBE,x,top+1.7,z,2.8,1.9,2.8,-ang,[0.95,0.95,0.93],0);
+  const p=c.phase==='rise'?(()=>{const q=craneBall(c,0);return[q[0],q[1]+(1-g)*20,q[2]]})():c.phase==='retract'?craneBall(c,c.pass?0:1):craneBall(c,c.phase==='swing'?c.lastS:0);
+  const by=Math.min(p[1],top-2);
+  drawSeg(m,[c.piv.x,top,c.piv.z],[p[0],by+BALL_R,p[2]],0.3,STEEL);
+  pushShape(m,SPHERE,p[0],by,p[2],BALL_R,BALL_R,BALL_R,0,[0.16,0.16,0.18],0);
+  pushShape(m,CUBE,p[0],by+BALL_R+0.4,p[2],0.9,0.8,0.9,0,STEEL,0);
+  // 휘두르는 궤적(잔상)
+  if(c.phase==='swing')c.trail.forEach((q,k)=>{const s=BALL_R*(0.35+k/c.trail.length*0.5);pushShape(mg,CUBE,q[0],q[1],q[2],s,s,s,k,[0.95,0.9,0.75],1)});
 }
 
-// ---------- 2. 철거반 (오함마 든 인부들) ----------
+// ---------- 2. 철거반 인부떼 — 수십 명이 외벽을 타고 올라가 층마다 동시에 오함마질 ----------
+const CREW_MAX=160;
+function crewCount(){let n=0;for(const c of CREWS)n+=c.ws.length;return n}
 function spawnCrew(h){
   const b=h.b||nearestBuilding(h.x,h.z,40);if(!b){toast('철거할 건물을 눌러주세요');return}
-  const n=Math.min(14,6+Math.floor(Math.sqrt(b.area)/4));const ws=[];
-  for(let k=0;k<n;k++){const a=Math.random()*Math.PI*2,r=Math.sqrt(b.area)/2+35+Math.random()*15;
+  const room=CREW_MAX-crewCount();if(room<10){toast('현장에 인부가 꽉 찼어요 — 잠시 뒤 다시');return}
+  const d=ensureDet(b);const n=Math.min(room,clamp(Math.round(Math.sqrt(b.area)*2.4+d.F*2),30,90));
+  const ws=[],R=Math.sqrt(b.area)/2;
+  for(let k=0;k<n;k++){const a=Math.random()*Math.PI*2,r=R+28+Math.random()*30;
+    const j=Math.floor(Math.random()*d.M),A=d.nodes[j],C=d.nodes[(j+1)%d.M],tt=Math.random(),nn=d.edgeN[j];
+    const fx=A[0]+(C[0]-A[0])*tt,fz=A[1]+(C[1]-A[1])*tt;
+    const f=Math.random()<0.7?Math.min(d.F-1,Math.floor(Math.random()*3)):Math.min(d.F-1,Math.floor(Math.pow(Math.random(),1.3)*d.F));
     const sx=b.cx+Math.cos(a)*r,sz=b.cz+Math.sin(a)*r;
-    const tgt=b.pts[Math.floor(Math.random()*b.pts.length)],tn=b.pts[(b.pts.indexOf(tgt)+1)%b.pts.length],tt=Math.random();
-    const fx=tgt[0]+(tn[0]-tgt[0])*tt,fz=tgt[1]+(tn[1]-tgt[1])*tt;const dx=fx-b.cx,dz=fz-b.cz,l=Math.hypot(dx,dz)||1;
-    ws.push({x:sx,z:sz,tx:fx+dx/l*1.6,tz:fz+dz/l*1.6,ix:fx-dx/l*1.2,iz:fz-dz/l*1.2,state:'run',t:-Math.random()*0.6,hit:0,vest:Math.random()<0.5?[1,0.45,0.1]:[0.95,0.85,0.15],helm:Math.random()<0.3?[0.95,0.95,0.95]:[0.98,0.8,0.1]})}
-  CREWS.push({b,ws,t:0});toast(`철거반 ${n}명 투입!`,1500);sfx(6);
+    ws.push({x:sx,z:sz,y:groundAt(sx,sz),fx,fz,nx:nn[0],nz:nn[1],f,state:'run',t:-Math.random()*1.4,hit:0,vy:0,dir:0,
+      vest:Math.random()<0.5?[1,0.45,0.1]:[0.95,0.85,0.15],helm:Math.random()<0.3?[0.95,0.95,0.95]:[0.98,0.8,0.1]})}
+  CREWS.push({b,ws,t:0});
+  toast(`철거반 ${n}명 투입! 반장: "오늘 안에 다 끝낸다!"`,2000);sfx(10,1.2);
+  floatText(b.cx,b.base+b.h+8,b.cz,`인부 ${n}명 투입`,'cad',1.6);
 }
 function updateCrews(dt){
-  for(let i=CREWS.length-1;i>=0;i--){const c=CREWS[i];c.t+=dt;const live=c.b.alive;let any=false;
-    for(const w of c.ws){w.t+=dt;if(w.t<0){any=true;continue}
-      if(w.state==='run'){const dx=w.tx-w.x,dz=w.tz-w.z,l=Math.hypot(dx,dz);if(l<0.6||!live){w.state=live?'hit':'leave';w.t=0}else{const sp=Math.min(l,9*dt);w.x+=dx/l*sp;w.z+=dz/l*sp;w.dir=Math.atan2(dz,dx)}}
-      else if(w.state==='hit'){
-        // 1층(시간이 지나면 2층)에서 가장 가까운 살아있는 기둥을 찾아가 오함마질
-        const d=live?ensureDet(c.b):null;if(!d){w.state='leave';w.t=0}
-        else{let bj=-1,bf=0,bd=1e9;const fls=c.t>10&&d.F>1?[0,1]:[0];
-          for(const f of fls){if(!d.fl[f])continue;for(let j=0;j<d.C;j++){if(d.hp[f*d.C+j]<=0)continue;const [x,z]=colPos(d,j);const dd=Math.hypot(x-w.x,z-w.z)+f*6;if(dd<bd){bd=dd;bj=j;bf=f}}}
-          if(bj<0){w.state='leave';w.t=0}
-          else{const [x,z]=colPos(d,bj);const l=Math.hypot(x-w.x,z-w.z);w.dir=Math.atan2(z-w.z,x-w.x);
-            if(l>1.6){const sp=Math.min(l-1.2,6*dt);w.x+=(x-w.x)/l*sp;w.z+=(z-w.z)/l*sp;w.t=0}
-            else if(w.t>0.6){w.t=0;w.hit++;const i=bf*d.C+bj;d.hp[i]-=0.42;addScore(80);
-              if(bj<d.M){d.panel[bf*d.M+bj]=0;d.panel[bf*d.M+(bj+d.M-1)%d.M]=0}
-              spawn(x,c.b.base+d.fy[bf]+1.2,z,(Math.random()-.5)*4,3,(Math.random()-.5)*4,0.4,[0.7,0.7,0.68]);if(d.hp[i]<=0)addScore(320);
-              d.dirty=true;detCheck(c.b);if(!c.b.alive||w.hit>80){w.state='leave';w.t=0}}}}}
-      else if(w.state==='leave'){const dx=w.x-c.b.cx,dz=w.z-c.b.cz,l=Math.hypot(dx,dz)||1;w.x+=dx/l*10*dt;w.z+=dz/l*10*dt;w.dir=Math.atan2(dz,dx);if(w.t>3){w.gone=true}}
-      if(!w.gone)any=true}
+  for(let i=CREWS.length-1;i>=0;i--){const c=CREWS[i];c.t+=dt;const b=c.b,live=b.alive;const d=live?b.det:null;let any=false;
+    for(const w of c.ws){if(w.gone)continue;any=true;w.t+=dt;if(w.t<0)continue;
+      if((w.state==='climb'||w.state==='hit')&&(!live||!d||!d.fl[w.f])){w.state='fall';w.vy=2;w.t=0}
+      if(w.state==='run'){const tx=w.fx+w.nx*0.7,tz=w.fz+w.nz*0.7,dx=tx-w.x,dz=tz-w.z,l=Math.hypot(dx,dz);
+        if(!live){w.state='leave';w.t=0}else if(l<0.6){w.state='climb';w.t=0;w.x=tx;w.z=tz}
+        else{const sp=Math.min(l,12*dt);w.x+=dx/l*sp;w.z+=dz/l*sp;w.dir=Math.atan2(dz,dx)}w.y=groundAt(w.x,w.z)}
+      else if(w.state==='climb'){const ty=b.base+d.fy[w.f]+0.1;w.dir=Math.atan2(-w.nz,-w.nx);
+        if(w.y<ty){w.y=Math.min(ty,w.y+7.5*dt)}else{w.y=ty;w.state='hit';w.t=Math.random()*0.4}}
+      else if(w.state==='hit'){w.y=b.base+d.fy[w.f]+0.1;w.dir=Math.atan2(-w.nz,-w.nx);
+        if(w.t>0.5){w.t=0;w.hit++;
+          let bj=-1,bd=1e9;for(let j=0;j<d.C;j++){if(d.hp[w.f*d.C+j]<=0)continue;const [x,z]=colPos(d,j);const dd=Math.hypot(x-w.x,z-w.z);if(dd<bd){bd=dd;bj=j}}
+          if(bj<0){// 이 층 기둥이 다 부러짐 → 한 층 위로
+            if(w.f+1<d.F&&d.fl[w.f+1]){w.f++;w.state='climb'}else{w.state='fall';w.vy=3}}
+          else{const ii=w.f*d.C+bj;d.hp[ii]-=0.38;addScore(90);
+            for(let q=-1;q<=1;q++){const pj=(Math.floor(Math.random()*d.M));if(Math.hypot(d.nodes[pj][0]-w.x,d.nodes[pj][1]-w.z)<5)d.panel[w.f*d.M+pj]=0}
+            spawn(w.x,w.y+1.6,w.z,w.nx*4+(Math.random()-.5)*3,3,w.nz*4+(Math.random()-.5)*3,0.5,[0.72,0.71,0.68]);
+            if(Math.random()<0.25)spawn(w.x,w.y+1.8,w.z,(Math.random()-.5)*3,2,(Math.random()-.5)*3,0.25,[1,0.85,0.4],0.25,1);
+            if(d.hp[ii]<=0)addScore(320);d.dirty=true;detCheck(b)}}}
+      else if(w.state==='fall'){w.vy-=30*dt;w.y+=w.vy*dt;w.x+=w.nx*4*dt;w.z+=w.nz*4*dt;w.dir+=dt*8;
+        const g=groundAt(w.x,w.z);if(w.y<=g){w.y=g;w.t=-0.4;
+          // 살아남은 인부는 남은 가장 낮은 층으로 다시 달려듦
+          const dd=b.alive?b.det:null;let lf=-1;if(dd&&c.t<40)for(let k=0;k<dd.F;k++)if(dd.fl[k]){lf=k;break}
+          if(lf>=0){w.f=lf;w.state='run'}else w.state='leave'}}
+      else if(w.state==='leave'){const dx=w.x-b.cx,dz=w.z-b.cz,l=Math.hypot(dx,dz)||1;w.x+=dx/l*11*dt;w.z+=dz/l*11*dt;w.dir=Math.atan2(dz,dx);w.y=groundAt(w.x,w.z);if(w.t>3.5)w.gone=true}}
+    if(live&&d&&c.t>40)for(const w of c.ws)if(w.state==='hit'||w.state==='climb'){w.state='fall';w.vy=2}
     if(!any)CREWS.splice(i,1)}
 }
-function drawWorker(m,w){
+function drawWorker(m,w,S){
   if(w.gone||w.t<0&&w.state==='run')return;
-  const s=TOY,gy=groundAt(w.x,w.z),run=w.state!=='hit',ph=run?Math.sin(performance.now()/90+w.x)*0.25:0,rot=w.dir||0;
-  const fx=Math.cos(rot),fz=Math.sin(rot);
-  pushShape(m,CUBE,w.x,gy+0.45*s,w.z,0.28*s,0.9*s,0.32*s,rot,[0.2,0.22,0.3],0);           // 다리
-  pushShape(m,CUBE,w.x,gy+1.15*s+ph*0.1,w.z,0.32*s,0.6*s,0.46*s,rot,w.vest,0);             // 몸(조끼)
-  pushShape(m,CUBE,w.x,gy+1.6*s,w.z,0.24*s,0.26*s,0.24*s,rot,[0.95,0.78,0.62],0);           // 머리
-  pushShape(m,CUBE,w.x,gy+1.78*s,w.z,0.3*s,0.12*s,0.3*s,rot,w.helm,0);                     // 안전모
-  if(w.state==='hit'){const sw=Math.sin(w.t/0.45*Math.PI);const hy=gy+(1.9-sw*1.2)*s;      // 오함마
+  const s=S||TOY,gy=w.y!=null?w.y:groundAt(w.x,w.z),rot=w.dir||0,st=w.state;
+  const fx=Math.cos(rot),fz=Math.sin(rot),now=performance.now();
+  const ph=st==='run'||st==='leave'||st==='walk'?Math.sin(now/80+w.x*3)*0.25:0;
+  pushShape(m,CUBE,w.x,gy+0.45*s,w.z,0.28*s,0.9*s,0.32*s,rot,[0.2,0.22,0.3],0);
+  pushShape(m,CUBE,w.x,gy+1.15*s+ph*0.1*s,w.z,0.32*s,0.6*s,0.46*s,rot,w.vest,0);
+  pushShape(m,CUBE,w.x,gy+1.6*s,w.z,0.24*s,0.26*s,0.24*s,rot,[0.95,0.78,0.62],0);
+  pushShape(m,CUBE,w.x,gy+1.78*s,w.z,0.3*s,0.12*s,0.3*s,rot,w.helm,0);
+  const rx=-fz,rz=fx;
+  if(st==='climb'){const a=Math.sin(now/90+w.x*5)*0.25*s;   // 팔 번갈아 뻗으며 기어오름
+    pushShape(m,CUBE,w.x+rx*0.28*s+fx*0.15*s,gy+(1.75)*s+a,w.z+rz*0.28*s+fz*0.15*s,0.1*s,0.6*s,0.1*s,rot,w.vest,0);
+    pushShape(m,CUBE,w.x-rx*0.28*s+fx*0.15*s,gy+(1.75)*s-a,w.z-rz*0.28*s+fz*0.15*s,0.1*s,0.6*s,0.1*s,rot,w.vest,0)}
+  else if(st==='fall'){pushShape(m,CUBE,w.x,gy+1.4*s,w.z,0.9*s,0.1*s,0.1*s,rot,w.vest,0)}
+  if(st==='hit'){const sw=Math.sin(w.t/0.5*Math.PI);const hy=gy+(1.9-sw*1.2)*s;
     pushShape(m,CUBE,w.x+fx*0.35*s,hy-0.3*s,w.z+fz*0.35*s,0.06*s,0.75*s,0.06*s,rot,[0.55,0.38,0.2],0);
     pushShape(m,CUBE,w.x+fx*0.35*s,hy+0.08*s,w.z+fz*0.35*s,0.34*s,0.16*s,0.16*s,rot,STEEL,0)}
 }
@@ -935,8 +976,8 @@ function boom3(x,y,z,size){const n=Math.min(40,Math.floor(size*2.5));
   sfx(size)}
 function updateTools(dt){updateCranes(dt);updateCrews(dt);updateDozers(dt);updateRebar(dt);updateStamps(dt);updateTools2(dt)}
 function drawTools(m,mg){
-  for(const c of CRANES)drawCrane(m,c);
-  for(const c of CREWS)for(const w of c.ws)drawWorker(m,w);
+  for(const c of CRANES)drawCrane(m,mg,c);
+  for(const c of CREWS)for(const w of c.ws)drawWorker(m,w,TOY);
   for(const d of DOZERS)drawDozer(m,d);
   for(const r of REBARFX)drawRebarFx(m,r);
   for(const s of STAMPS)drawStamp(m,s);
@@ -948,12 +989,12 @@ function clearTools(){CRANES=[];CREWS=[];DOZERS=[];REBARFX=[];STAMPS=[];dozerPat
 
 // =====================================================================
 //  설계팀 · 시공팀 신규 도구
-//  시공: 굴착기 브레이커 · 레미콘 과타설 · 발파 해체   설계: ERASE · EXPLODE
+//  시공: 굴착기(직접 조종) · 레미콘 과타설 · 다이너마이트   설계: TRIM
 //  + 떠다니는 글씨(FLOATS) · CAD 명령줄 · 필살기 게이지 · 철거 일보 통계
 // =====================================================================
-let EXCAVS=[], POURS=[], BLASTS=[], FLOATS=[], selRect=null;
+let EXCAVS=[], POURS=[], FLOATS=[];
 let ULT=0, ultArmed=false;
-let STATS={t0:0,kills:0,erased:0,tools:{}};
+let STATS={t0:0,kills:0,tools:{}};
 function statTool(id){STATS.tools[id]=(STATS.tools[id]||0)+1;if(!STATS.t0)STATS.t0=performance.now()}
 
 // ---------- 떠다니는 글씨 (보류 도장 · 카운트다운 · CAD 명령) ----------
@@ -973,40 +1014,57 @@ function cmdLine(lines){const el=$('#cmdbar');el.innerHTML=lines.map(l=>`<div>${
 function drawSeg(m,a,b,w,c){const dx=b[0]-a[0],dy=b[1]-a[1],dz=b[2]-a[2],l=Math.hypot(dx,dy,dz);const n=Math.max(1,Math.ceil(l/(w*0.9)));
   for(let k=0;k<=n;k++){const t=k/n;pushShape(m,CUBE,a[0]+dx*t,a[1]+dy*t,a[2]+dz*t,w,w,w,Math.atan2(dz,dx),c,0)}}
 
-// ---------- 시공 1. 굴착기 브레이커 ----------
-function spawnExcavator(h){
-  const b=h.b||nearestBuilding(h.x,h.z,40);if(!b){toast('굴착기로 쪼갤 건물을 눌러주세요');return}
-  const fp=facadePoint(b,h.x,h.z);const s=TOY*0.75;
-  EXCAVS.push({b,x:fp.x+fp.nx*45,z:fp.z+fp.nz*45,tx:fp.x+fp.nx*6.5*s/1.65,tz:fp.z+fp.nz*6.5*s/1.65,fx:fp.x,fz:fp.z,nx:fp.nx,nz:fp.nz,state:'drive',t:0,peck:0,lvl:0,ext:0});
-  toast('굴착기 브레이커 투입!',1300);sfx(10,1.2);
-}
+// ---------- 시공 1. 굴착기 (직접 조종) — 누른 채로 끌면 브레이커 끝이 마우스를 따라감 ----------
+const EX_S=TOY*0.95, EX_REACH=34;
+function startExcav(h){
+  const b=h.b;if(!b)return null;
+  let e=EXCAVS.find(x=>x.b===b&&x.state!=='leave');
+  if(!e){const fp=facadePoint(b,h.x,h.z);if(!fp)return null;
+    e={b,x:fp.x+fp.nx*42,z:fp.z+fp.nz*42,tx:fp.x+fp.nx*12,tz:fp.z+fp.nz*12,nx:fp.nx,nz:fp.nz,yaw:Math.atan2(-fp.nz,-fp.nx),state:'drive',t:0,idle:0,acc:0,ctl:true,aim:[h.x,h.y,h.z],tip:null,hits:0};
+    EXCAVS.push(e);toast('굴착기 투입 — 누른 채로 끌면 브레이커가 따라가요',1800);sfx(12,1.2);statTool('excav')}
+  e.ctl=true;e.idle=0;e.aim=[h.x,h.y,h.z];return e}
+function excavRoot(e){const f=[Math.cos(e.yaw),Math.sin(e.yaw)];return[e.x+f[0]*1.0*EX_S,groundAt(e.x,e.z)+2.6*EX_S,e.z+f[1]*1.0*EX_S]}
+function excavAimAt(e,mx,my){const h=pick(mx,my);if(h)e.aim=[h.x,h.y,h.z]}
 function updateExcavs(dt){
   for(let i=EXCAVS.length-1;i>=0;i--){const e=EXCAVS[i];e.t+=dt;
-    if(e.state==='drive'){const dx=e.tx-e.x,dz=e.tz-e.z,l=Math.hypot(dx,dz);if(l<0.5){e.state='work';e.t=0}else{const sp=Math.min(l,11*dt);e.x+=dx/l*sp;e.z+=dz/l*sp}}
-    else if(e.state==='work'){
-      if(!e.b.alive){e.state='leave';e.t=0;continue}
-      const d=ensureDet(e.b);const maxLvl=Math.min(3,d.F-1);
-      e.ext=0.5+0.5*Math.sin(e.t*9);   // 브레이커 쪼는 동작
-      if(e.t>0.42){e.t=0;e.peck++;
-        const y=e.b.base+1.7+e.lvl*d.fh,ix=e.fx-e.nx*(0.6+e.peck*0.12),iz=e.fz-e.nz*(0.6+e.peck*0.12);
-        structDamage(e.b,ix,y,iz,3.4,1.05);boom3(e.fx,y,e.fz,4);cam.shake=Math.max(cam.shake,1.2);
-        if(e.peck%7===0)e.lvl=e.lvl>=maxLvl?0:e.lvl+1;
-        if(e.peck>60){e.state='leave';e.t=0}}}
-    else{e.x+=e.nx*10*dt;e.z+=e.nz*10*dt;if(e.t>3)EXCAVS.splice(i,1)}}
+    if(e.state==='drive'){const dx=e.tx-e.x,dz=e.tz-e.z,l=Math.hypot(dx,dz);if(l<0.5){e.state='work';e.t=0}else{const sp=Math.min(l,28*dt);e.x+=dx/l*sp;e.z+=dz/l*sp}}
+    if(e.state==='leave'){e.x+=e.nx*12*dt;e.z+=e.nz*12*dt;if(e.t>3)EXCAVS.splice(i,1);continue}
+    // 상부 선회: 조준 방향으로 회전
+    const ta=Math.atan2(e.aim[2]-e.z,e.aim[0]-e.x);let da=ta-e.yaw;while(da>Math.PI)da-=Math.PI*2;while(da<-Math.PI)da+=Math.PI*2;e.yaw+=da*Math.min(1,dt*6);
+    const r=excavRoot(e);let t=[e.aim[0],Math.max(e.aim[1],groundAt(e.aim[0],e.aim[2])+0.5),e.aim[2]];
+    let vx=t[0]-r[0],vy=t[1]-r[1],vz=t[2]-r[2],l=Math.hypot(vx,vy,vz);if(l>EX_REACH){const k=EX_REACH/l;t=[r[0]+vx*k,r[1]+vy*k,r[2]+vz*k]}
+    if(!e.tip)e.tip=t.slice();const k=Math.min(1,dt*9);for(let a=0;a<3;a++)e.tip[a]+=(t[a]-e.tip[a])*k;
+    if(e.state!=='work')continue;
+    if(!e.ctl){e.idle+=dt;if(e.idle>6){e.state='leave';e.t=0}continue}
+    e.acc+=dt;
+    if(e.acc>0.1){e.acc=0;const p=e.tip;let tgt=null,bd=3.5;
+      forBuildingsNear(p[0],p[2],6,o=>{if(!o.alive||o.lifted)return;if(p[1]>o.base+o.h+1.5||p[1]<o.base-1)return;const dd=distToBuilding(o,p[0],p[2]);if(dd<bd){bd=dd;tgt=o}});
+      if(tgt){structDamage(tgt,p[0],clamp(p[1],tgt.base+0.8,tgt.base+Math.max(1,tgt.h-0.5)),p[2],3.8,0.9);e.hits++;
+        cam.shake=Math.max(cam.shake,2.2);if(e.hits%2)sfx(9,0.18);
+        for(let q=0;q<4;q++)spawn(p[0],p[1],p[2],(Math.random()-.5)*12,3+Math.random()*7,(Math.random()-.5)*12,0.6+Math.random()*1.2,Math.random()<0.5?tgt.col:CONC);
+        spawn(p[0],p[1],p[2],(Math.random()-.5)*6,4,(Math.random()-.5)*6,0.5,[1,0.85,0.45],0.2,1)}
+      forTreesNear(p[0],p[2],3,tr=>{if(tr.alive&&Math.hypot(tr.x-p[0],tr.z-p[2])<3)killTree(tr)})}}
+}
+// 두 마디 팔: 뿌리 → 팔꿈치 → 끝
+function armElbow(r,t,L1){const v=[t[0]-r[0],t[1]-r[1],t[2]-r[2]],d=Math.hypot(...v)||1;const u=v.map(x=>x/d);
+  let p=[-u[0]*u[1],1-u[1]*u[1],-u[2]*u[1]];const pl=Math.hypot(...p);p=pl<1e-3?[0,1,0]:p.map(x=>x/pl);
+  const hgt=Math.sqrt(Math.max(0,L1*L1-(d/2)*(d/2)));return[(r[0]+t[0])/2+p[0]*hgt,(r[1]+t[1])/2+p[1]*hgt,(r[2]+t[2])/2+p[2]*hgt]}
+function drawExcavBody(m,x,gy,z,yaw,trackYaw,s,tip,root,work,L1){
+  const f=[Math.cos(trackYaw),Math.sin(trackYaw)],r=[-f[1],f[0]];const tr=-trackYaw;
+  const P=(a,b,y)=>[x+f[0]*a+r[0]*b,gy+y,z+f[1]*a+r[1]*b];
+  let p=P(0,1.3*s,0.5*s);pushShape(m,CUBE,p[0],p[1],p[2],3.8*s,1*s,0.85*s,tr,TRACK,0);
+  p=P(0,-1.3*s,0.5*s);pushShape(m,CUBE,p[0],p[1],p[2],3.8*s,1*s,0.85*s,tr,TRACK,0);
+  const g=[Math.cos(yaw),Math.sin(yaw)],gr=[-g[1],g[0]],ry=-yaw;const Q=(a,b,y)=>[x+g[0]*a+gr[0]*b,gy+y,z+g[1]*a+gr[1]*b];
+  p=Q(-0.4*s,0,1.6*s);pushShape(m,CUBE,p[0],p[1],p[2],3.2*s,1.3*s,2.5*s,ry,YEL,0);
+  p=Q(-1.7*s,0,1.9*s);pushShape(m,CUBE,p[0],p[1],p[2],0.8*s,1.1*s,2.4*s,ry,YEL_D,0);
+  p=Q(0.5*s,0.75*s,2.8*s);pushShape(m,CUBE,p[0],p[1],p[2],1.3*s,1.3*s,1*s,ry,[0.2,0.24,0.28],0);
+  const el=armElbow(root,tip,L1);const j=work?(Math.random()-.5)*0.25:0;
+  drawSeg(m,root,el,0.6*s,YEL);drawSeg(m,el,[tip[0]+j,tip[1]+1.6+j,tip[2]],0.48*s,YEL_D);
+  drawSeg(m,[tip[0]+j,tip[1]+1.6+j,tip[2]],[tip[0]+j,tip[1]+j,tip[2]],0.34*s,STEEL);
 }
 function drawExcav(m,e){
-  const s=TOY*0.75,gy=groundAt(e.x,e.z),rot=Math.atan2(-e.nz,-e.nx),f=[-e.nx,-e.nz],r=[e.nz,-e.nx];
-  const P=(a,b,y)=>[e.x+f[0]*a+r[0]*b,gy+y,e.z+f[1]*a+r[1]*b];
-  let p=P(0,1.3*s,0.5*s);pushShape(m,CUBE,p[0],p[1],p[2],3.6*s,1*s,0.8*s,rot,TRACK,0);
-  p=P(0,-1.3*s,0.5*s);pushShape(m,CUBE,p[0],p[1],p[2],3.6*s,1*s,0.8*s,rot,TRACK,0);
-  p=P(-0.3*s,0,1.6*s);pushShape(m,CUBE,p[0],p[1],p[2],3*s,1.3*s,2.4*s,rot,YEL,0);
-  p=P(0.4*s,0.7*s,2.8*s);pushShape(m,CUBE,p[0],p[1],p[2],1.3*s,1.3*s,1*s,rot,[0.2,0.24,0.28],0);
-  // 붐 → 암 → 브레이커
-  const lvlY=(e.state==='work'&&e.b.det?e.lvl*e.b.det.fh:0);
-  const root=P(0.9*s,-0.4*s,2.4*s),tip=[e.fx+e.nx*(1.2-e.ext*0.9),e.b.base+1.7+lvlY,e.fz+e.nz*(1.2-e.ext*0.9)];
-  const elbow=[(root[0]+tip[0])/2+e.nx*1.2*s,Math.max(root[1],tip[1])+2.6*s,(root[2]+tip[2])/2+e.nz*1.2*s];
-  drawSeg(m,root,elbow,0.55*s,YEL);drawSeg(m,elbow,[tip[0]+e.nx*1.4,tip[1]+1.3,tip[2]+e.nz*1.4],0.45*s,YEL_D);
-  drawSeg(m,[tip[0]+e.nx*1.4,tip[1]+1.3,tip[2]+e.nz*1.4],tip,0.35*s,STEEL);
+  const gy=groundAt(e.x,e.z),root=excavRoot(e),tip=e.tip||[root[0]+Math.cos(e.yaw)*8,root[1],root[2]+Math.sin(e.yaw)*8];
+  drawExcavBody(m,e.x,gy,e.z,e.yaw,Math.atan2(-e.nz,-e.nx),EX_S,tip,root,e.ctl&&e.state==='work',EX_REACH/2+1);
 }
 
 // ---------- 시공 2. 레미콘 과타설 ----------
@@ -1043,69 +1101,116 @@ function drawPour(m,p){
       const r=clamp(Math.sqrt(p.b.area)*0.25*Math.min(1,p.load),1,Math.sqrt(p.b.area)*0.45);pushShape(m,SPHERE,p.b.cx,top+0.3,p.b.cz,r,Math.min(3,p.load*1.5)+0.3,r,0,[0.6,0.6,0.58],0)}}
 }
 
-// ---------- 시공 3. 발파 해체 ----------
-function spawnBlast(h){
-  const b=h.b||nearestBuilding(h.x,h.z,25);if(!b){toast('발파할 건물을 눌러주세요');return}
-  const d=ensureDet(b);const fl=d.F<=3?[...Array(d.F).keys()]:[0,1];const ch=[];
-  for(const f of fl)for(let j=0;j<d.C;j++)if(d.hp[f*d.C+j]>0)ch.push({f,j});
-  BLASTS.push({b,ch,t:0,placed:0,state:'arm',count:3});
-  toast(`발파 해체 — 기둥 ${ch.length}개에 장약 설치 중`,1800);
+// ---------- 시공 3. 다이너마이트 — 클릭해서 여러 곳에 붙이고, Space(기폭)로 한꺼번에 ----------
+let CHARGES=[];
+const MAX_CHARGES=12;
+function floorAtY(b,y){const d=b.det;let f=0;for(let k=0;k<d.F;k++){if(!d.fl[k])continue;if(b.base+d.fy[k]<=y+0.3)f=k}return f}
+function placeDynCity(h){
+  const b=h.b||nearestBuilding(h.x,h.z,25);if(!b){toast('다이너마이트를 붙일 건물을 눌러주세요');return}
+  if(CHARGES.length>=MAX_CHARGES){toast(`장약은 ${MAX_CHARGES}개까지 — Space 로 기폭!`);return}
+  const d=ensureDet(b);const f=h.b?floorAtY(b,h.y):0;const fl=[f];if(f>0)fl.push(f-1);else if(d.F>1)fl.push(1);
+  const cols=[];for(const ff of fl)for(let j=0;j<d.C;j++)if(d.hp[ff*d.C+j]>0)cols.push({f:ff,j});
+  const p=h.b?[h.x,h.y,h.z]:(()=>{const q=facadePoint(b,h.x,h.z);return[q.x,b.base+1.5,q.z]})();
+  CHARGES.push({kind:'city',b,f,fl,cols,x:p[0],y:p[1],z:p[2],t:0});
+  sfx(3,0.15);updateDetBtn();
+  toast(`다이너마이트 ${CHARGES.length}개 설치 (${floorName(f)}) — Space 또는 [기폭] 버튼`,1800);
 }
-function updateBlasts(dt){
-  for(let i=BLASTS.length-1;i>=0;i--){const x=BLASTS[i];x.t+=dt;const b=x.b;
-    if(!b.alive){BLASTS.splice(i,1);continue}
-    if(x.state==='arm'){x.placed=Math.min(x.ch.length,Math.floor(x.t*30));if(x.placed>=x.ch.length){x.state='count';x.t=0;floatText(b.cx,b.base+b.h+6,b.cz,'3','count',1)}}
-    else if(x.state==='count'){const c=3-Math.floor(x.t);if(c!==x.count&&c>0){x.count=c;floatText(b.cx,b.base+b.h+6,b.cz,String(c),'count',1);sfx(3)}
-      if(x.t>=3){const d=b.det;if(d){for(const {f,j} of x.ch)d.hp[f*d.C+j]=0;d.dirty=true;
-          x.ch.slice(0,24).forEach(({f,j})=>{const [cx,cz]=colPos(d,j);for(let k=0;k<3;k++)spawn(cx,b.base+d.fy[f]+1.5,cz,(Math.random()-.5)*14,4+Math.random()*6,(Math.random()-.5)*14,0.8+Math.random(),[1,0.7,0.25],0.5,1)});
-          for(let k=0;k<40;k++){const a=Math.random()*Math.PI*2,r=Math.sqrt(b.area)/2+2;spawn(b.cx+Math.cos(a)*r,b.base+1,b.cz+Math.sin(a)*r,Math.cos(a)*12,1+Math.random()*3,Math.sin(a)*12,2+Math.random()*2,[0.82,0.8,0.76],1.4+Math.random(),1)}
-          cam.shake=9;sfx(40,2);toast('발파! 제자리에 주저앉아요 (정밀 해체)',2200);detCheck(b)}
-        BLASTS.splice(i,1)}}}
+function detonate(){
+  if(!CHARGES.length){toast('먼저 다이너마이트를 붙여주세요');return}
+  if(MODE==='section')secPushUndo();else snapshot();
+  const list=CHARGES;CHARGES=[];updateDetBtn();statTool('blast');
+  floatText(list[0].x,list[0].y+8,list[0].z,'기폭!','count',0.8);sfx(4,0.3);
+  list.forEach((c,i)=>later(0.25+i*0.16,()=>explodeCharge(c)));
 }
-function drawBlasts(m,mg){for(const x of BLASTS){const d=x.b.det;if(!d)continue;const on=Math.floor(performance.now()/180)%2;
-  for(let k=0;k<x.placed;k++){const {f,j}=x.ch[k];const [cx,cz]=colPos(d,j);pushShape(on?mg:m,CUBE,cx,x.b.base+d.fy[f]+1.4,cz,0.9,0.5,0.9,0,on?[1,0.15,0.1]:[0.6,0.1,0.08],on)}}}
+function explodeCharge(c){
+  if(c.kind==='sec'){secExplodeCharge(c);return}
+  const b=c.b,x=c.x,y=c.y,z=c.z;
+  if(b.alive&&b.det){const d=b.det;for(const {f,j} of c.cols)d.hp[f*d.C+j]=0;
+    for(const f of c.fl)for(let j=0;j<d.M;j++)if(Math.random()<0.8)d.panel[f*d.M+j]=0;d.dirty=true;
+    structDamage(b,x,y,z,16,4);if(b.det)detCheck(b)}
+  forBuildingsNear(x,z,55,o=>{if(!o.alive||o===b||o.lifted)return;const dd=distToBuilding(o,x,z);if(dd>55)return;
+    facadeStrip(o,x,z,0.7*(1-dd/55));if(dd<18){const P=facadePoint(o,x,z);if(P)structDamage(o,P.x,clamp(y,o.base+1,o.base+o.h-1),P.z,7,1.6*(1-dd/18))}});
+  forTreesNear(x,z,28,t=>{if(t.alive&&Math.hypot(t.x-x,t.z-z)<28)killTree(t)});
+  if(y<groundAt(x,z)+5){const v=carve(x,z,7,2.5);addScore(v*0.5)}
+  addScore(3000);impact(x,y,z,1.4);floatText(x,y+6,z,'쾅!','boom',1.1);
+}
+function drawCharges(m,mg){const on=Math.floor(performance.now()/160)%2;
+  for(const c of CHARGES){
+    if(c.kind==='city'){const d=c.b.det;if(!d||!c.b.alive)continue;
+      c.cols.slice(0,30).forEach(({f,j},k)=>{const [cx,cz]=colPos(d,j);const y=c.b.base+d.fy[f]+1.3;
+        pushShape(m,CUBE,cx,y,cz,0.95,1.5,0.95,k,[0.75,0.08,0.06],0);pushShape(m,CUBE,cx,y,cz,1.0,0.25,1.0,k,[0.15,0.15,0.15],0)})}
+    else{const s=c.s||0.9;pushShape(m,CUBE,c.x,c.y,c.z,0.5*s,1.4*s,0.5*s,0,[0.8,0.08,0.06],0);pushShape(m,CUBE,c.x+0.35*s,c.y,c.z,0.5*s,1.4*s,0.5*s,0,[0.75,0.06,0.05],0);
+      pushShape(m,CUBE,c.x+0.17*s,c.y,c.z,1.0*s,0.22*s,0.6*s,0,[0.12,0.12,0.12],0)}
+    // 도화선 불꽃
+    const fy=c.kind==='city'?c.y+2:c.y+0.9*(c.s||0.9);pushShape(mg,CUBE,c.x,fy,c.z,on?0.7:0.45,on?0.7:0.45,on?0.7:0.45,performance.now()/100,on?[1,0.9,0.3]:[1,0.4,0.1],1);
+    if(Math.random()<0.3)spawn(c.x,fy,c.z,(Math.random()-.5)*2,2+Math.random()*2,(Math.random()-.5)*2,0.15,[1,0.75,0.2],0.3,1)}}
+function updateDetBtn(){const el=$('#btnDet');if(!el)return;el.style.display=CHARGES.length?'':'none';el.querySelector('b').textContent=CHARGES.length}
 
-// ---------- 설계 1. ERASE (윈도우·크로싱 선택) ----------
-function eraseBuilding(b){if(!b.alive)return;GHOSTS.push({b,h:b.h,t:0.6});freeDet(b);addScore(b.area*b.h0*0.25+b.area);
-  b.alive=false;b.h=0;markB(b);STATS.kills++;STATS.erased++;firmsKilled(b);
-  for(let k=0;k<6;k++)spawn(b.cx+(Math.random()-.5)*Math.sqrt(b.area),b.base+Math.random()*b.h0,b.cz+(Math.random()-.5)*Math.sqrt(b.area),0,2,0,1.5,[0.35,0.6,1],0.6,1)}
-function runErase(r){
-  const x0=Math.min(r.x0,r.x1),x1=Math.max(r.x0,r.x1),y0=Math.min(r.y0,r.y1),y1=Math.max(r.y0,r.y1);
-  if(x1-x0<6||y1-y0<6){cmdLine(['명령: ERASE','객체 선택: 0개 찾음 — 드래그해서 범위를 지정하세요']);return}
-  const crossing=r.x1<r.x0;   // 오른쪽→왼쪽 = 크로싱(걸치기만 해도), 왼쪽→오른쪽 = 윈도우(완전히 포함)
-  const hits=[];
-  for(const b of B){if(!b.alive)continue;let inAll=true,inAny=false,vis=false;
-    for(const p of b.pts)for(const y of [b.base,b.base+b.h]){const q=project(p[0],y,p[1]);if(!q){inAll=false;continue}vis=true;
-      const inside=q[0]>=x0&&q[0]<=x1&&q[1]>=y0&&q[1]<=y1;if(inside)inAny=true;else inAll=false}
-    if(vis&&(crossing?inAny:inAll))hits.push(b)}
-  const MAXSEL=60;const sel=hits.slice(0,MAXSEL);sel.forEach(eraseBuilding);
-  if(sel.length){statTool('erase');sfx(6);const c=sel[0];floatText(c.cx,c.base+c.h0+5,c.cz,'ERASE','cad',1.6)}
-  cmdLine(['명령: ERASE',`객체 선택: ${crossing?'걸침':'윈도우'} — ${hits.length}개 찾음`+(hits.length>MAXSEL?` (한 번에 ${MAXSEL}개까지)`:''),`${sel.length}개 삭제됨 · Ctrl+Z 로 되돌리기`]);
+// ---------- 설계 3. TRIM — 선을 그어 건물을 자르면 윗부분이 미끄러져 떨어짐 ----------
+let SLICES=[], CUTFX=[];
+function runTrimCity(sa,sb){
+  const len=Math.hypot(sb.x-sa.x,sb.y-sa.y);if(len<30){cmdLine(['명령: TRIM','절단선을 건물을 가로질러 길게 그어주세요']);return false}
+  const cross=(p,q,r,s)=>{const d=(q[0]-p[0])*(s[1]-r[1])-(q[1]-p[1])*(s[0]-r[0]);if(Math.abs(d)<1e-6)return null;
+    const t=((r[0]-p[0])*(s[1]-r[1])-(r[1]-p[1])*(s[0]-r[0]))/d,u=((r[0]-p[0])*(q[1]-p[1])-(r[1]-p[1])*(q[0]-p[0]))/d;return t>=0&&t<=1&&u>=0&&u<=1?t:null};
+  const A=[sa.x,sa.y],Bp=[sb.x,sb.y],hits=[];
+  for(const b of B){if(!b.alive||b.lifted||b.h<4)continue;if(Math.hypot(b.cx-cam.tx,b.cz-cam.tz)>cam.dist*1.4)continue;
+    const N=10;let prev=project(b.cx,b.base,b.cz);if(!prev)continue;
+    for(let k=1;k<=N;k++){const y=b.base+b.h*k/N,q=project(b.cx,y,b.cz);if(!q)break;const t=cross(prev,q,A,Bp);
+      if(t!=null){hits.push({b,y:b.base+b.h*(k-1+t)/N,dist:Math.hypot(b.cx-eye[0],b.cz-eye[2])});break}prev=q}}
+  hits.sort((a,b)=>a.dist-b.dist);const sel=hits.slice(0,10);
+  if(!sel.length){cmdLine(['명령: TRIM','자를 객체 선택: 0개 — 건물 가운데를 가로질러 그어주세요']);return false}
+  // 미끄러지는 방향: 화면에서 선이 내려가는 쪽
+  let sx=sb.x-sa.x,sy=sb.y-sa.y;if(sy<0){sx=-sx;sy=-sy}const slope=sy/(Math.abs(sx)+1e-6);
+  const f=[cam.tx-eye[0],cam.tz-eye[2]],fl=Math.hypot(...f)||1;const right=[-f[1]/fl,f[0]/fl];
+  const sg=slope<0.12?(Math.random()<0.5?1:-1):Math.sign(sx);
+  for(const {b,y} of sel){let cut=y-b.base;if(b.h-cut<2.5)continue;if(cut<3)cut=0;
+    const ob=obbOf(b),Hup=b.h-cut;
+    SLICES.push({col:b.col,style:b.style,roof:b.roof,ob,H:Hup,x:b.cx+ob.ox,y:b.base+cut,z:b.cz+ob.oz,dir:[right[0]*sg,right[1]*sg],v:0,vy:0,tum:0,w:0,t:0,phase:'slide',src:b,mass:Math.sqrt(b.area*Hup)/20});
+    CUTFX.push({b,y:b.base+cut,t:0.7});
+    freeDet(b);addScore(b.area*Hup*0.3+1500);
+    if(cut<3){b.alive=false;b.h=0;markB(b);STATS.kills++;firmsKilled(b)}else{b.h0=cut;b.h=cut;markB(b)}}
+  for(let k=0;k<20;k++){const c=sel[Math.floor(Math.random()*sel.length)];spawn(c.b.cx+(Math.random()-.5)*Math.sqrt(c.b.area),c.y,c.b.cz+(Math.random()-.5)*Math.sqrt(c.b.area),(Math.random()-.5)*6,3,(Math.random()-.5)*6,0.35,[0.5,0.85,1],0.5,1)}
+  sfx(14,0.5);hitStop(0.08);flashScreen(0.25,'#9fd8ff');statTool('trim');
+  floatText(sel[0].b.cx,sel[0].y+6,sel[0].b.cz,'TRIM','cad',1.4);
+  cmdLine(['명령: TRIM','절단 경계 선택: 선 1개',`자를 객체 선택: ${sel.length}개 — 윗부분이 미끄러져 떨어져요 · Ctrl+Z 되돌리기`]);
+  return true;
 }
-function drawSelRect(){const el=$('#selrect');if(!selRect){el.style.display='none';return}
-  const r=selRect,x0=Math.min(r.x0,r.x1),y0=Math.min(r.y0,r.y1);el.style.display='';el.style.left=x0+'px';el.style.top=y0+'px';
-  el.style.width=Math.abs(r.x1-r.x0)+'px';el.style.height=Math.abs(r.y1-r.y0)+'px';el.className=r.x1<r.x0?'cross':'win'}
-
-// ---------- 설계 2. EXPLODE ----------
-function explodeBuilding(h){
-  const b=h.b||nearestBuilding(h.x,h.z,20);if(!b){toast('분해할 건물(블록)을 눌러주세요');return}
-  const d=ensureDet(b);let n=0;const S=Math.sqrt(b.area);
-  for(let f=0;f<d.F&&n<130;f++){if(!d.fl[f])continue;const y=b.base+d.fy[f]+d.fh*0.5;
-    for(let j=0;j<d.M&&n<130;j+=2){const a=d.nodes[j],e=d.nodes[(j+1)%d.M],nn=d.edgeN[j];const px=(a[0]+e[0])/2,pz=(a[1]+e[1])/2;
-      const g=Math.random()<0.5;spawn(px,y,pz,nn[0]*(8+Math.random()*14),6+Math.random()*12,nn[1]*(8+Math.random()*14),Math.min(3.2,1.6+Math.random()*1.6),g?[0.5,0.64,0.76]:b.col);n++}
-    if(n<130){spawn(b.cx+(Math.random()-.5)*S*0.5,y,b.cz+(Math.random()-.5)*S*0.5,(Math.random()-.5)*10,8+Math.random()*8,(Math.random()-.5)*10,2.4,CONC);n++}}
-  const nh=clamp(Math.round(Math.sqrt(b.area*b.h0)/14),6,22);for(let k=0;k<nh;k++){const a=k/nh*Math.PI*2+Math.random()*0.4,sp=14+Math.random()*16;spawnHeavy(b.cx,b.base+Math.random()*b.h0,b.cz,Math.cos(a)*sp,10+Math.random()*14,Math.sin(a)*sp,2.6+Math.random()*2.6,Math.random()<0.5?b.col:CONC)}
-  floatText(b.cx,b.base+b.h0+6,b.cz,'EXPLODE','cad',1.8);cmdLine(['명령: EXPLODE','객체 선택: 1개 찾음','블록 1개가 분해되었습니다']);
-  addScore(b.area*b.h0*0.3);freeDet(b);b.alive=false;b.h=0;markB(b);STATS.kills++;firmsKilled(b);
-  cam.shake=Math.max(cam.shake,5);sfx(28);
+function updateSlices(dt){
+  for(let i=CUTFX.length-1;i>=0;i--){CUTFX[i].t-=dt;if(CUTFX[i].t<=0)CUTFX.splice(i,1)}
+  for(let i=SLICES.length-1;i>=0;i--){const s=SLICES[i];s.t+=dt;
+    if(s.phase==='slide'){s.v+=11*dt;s.vy=-2;s.w+=1.4*dt;if(s.t>0.45){s.phase='fall';s.vy=0}}
+    else{s.vy-=32*dt;s.w=Math.max(s.w,0.9)}
+    s.x+=s.dir[0]*s.v*dt;s.z+=s.dir[1]*s.v*dt;s.y+=s.vy*dt;s.tum+=s.w*dt;
+    if(s.phase!=='fall')continue;
+    let hit=s.y<=groundAt(s.x,s.z);
+    if(!hit)forBuildingsNear(s.x,s.z,4,o=>{if(hit||!o.alive||o.lifted)return;if(o===s.src&&s.t<0.9)return;if(s.y<o.base+o.h&&pip(s.x,s.z,o.pts))hit=true});
+    if(hit){SLICES.splice(i,1);impactSlice(s)}}
+}
+function impactSlice(s){
+  const R=Math.max(s.ob.W,s.ob.D)/2+5,sp=Math.hypot(s.v,s.vy),pw=clamp(0.7+s.mass*sp/55,0.9,3.5);let n=0;
+  forBuildingsNear(s.x,s.z,R+10,o=>{if(!o.alive||o.lifted)return;const d=distToBuilding(o,s.x,s.z);if(d>R)return;n++;
+    structDamage(o,s.x,clamp(s.y,o.base+1,o.base+o.h-1),s.z,R*0.8,pw*(1-d/R*0.5))});
+  const v=carve(s.x,s.z,R*0.5,1.5+s.mass*0.4);addScore(v*0.5+s.mass*800);
+  chunkRain(s.x,Math.max(groundAt(s.x,s.z),s.y),s.z,Math.min(50,16+s.mass*3),Math.max(s.ob.W,s.ob.D)*0.6,s.col,10);
+  boom3(s.x,Math.max(0,s.y),s.z,10+s.mass*2);impact(s.x,Math.max(groundAt(s.x,s.z),s.y)+1,s.z,Math.min(1.2,0.4+s.mass*0.15));
+  if(n)toast(`잘린 윗부분이 ${n}채를 덮쳤어요!`,1500);
+}
+function drawSlices(m,mg){
+  for(const s of SLICES){const ca=Math.cos(s.ob.ang),sa=Math.sin(s.ob.ang);let A=[ca,0,sa],N=[-sa,0,ca],U=[0,1,0];
+    const ax=[s.dir[1],0,-s.dir[0]],c=Math.cos(s.tum),sn=Math.sin(s.tum);
+    const rot=v=>{const d=v[0]*ax[0]+v[2]*ax[2];const cr=[ax[1]*v[2]-ax[2]*v[1],ax[2]*v[0]-ax[0]*v[2],ax[0]*v[1]-ax[1]*v[0]];return[v[0]*c+cr[0]*sn+ax[0]*d*(1-c),v[1]*c+cr[1]*sn,v[2]*c+cr[2]*sn+ax[2]*d*(1-c)]};
+    A=rot(A);N=rot(N);U=rot(U);
+    drawOBB(m,[s.x+U[0]*s.H/2,s.y+U[1]*s.H/2,s.z+U[2]*s.H/2],A,U,N,s.ob.W/2,s.H/2,s.ob.D/2,s.col,s.style,s.roof)}
+  for(const f of CUTFX){const p=f.b.pts,y=f.y+0.2,a=f.t/0.7;for(let i=0;i<p.length;i++){const q=p[(i+1)%p.length],l=Math.hypot(q[0]-p[i][0],q[1]-p[i][1]),ang=Math.atan2(q[1]-p[i][1],q[0]-p[i][0]);
+    pushShape(mg,CUBE,(p[i][0]+q[0])/2,y,(p[i][1]+q[1])/2,l+0.6,0.5*a+0.1,0.5*a+0.1,-ang,[0.55,0.85,1],1)}}
 }
 
 
 // =====================================================================
 //  설계팀 도구 강화 — MOVE(잡아서 던지기) · EXTRUDE(무한 증축 → 쓰러짐)
-//  EXPLODE(무거운 블록이 주변을 때림) · ERASE(선택 미리보기 · 사라짐 효과)
+//  TRIM(잘라서 윗부분 떨어뜨리기)
 // =====================================================================
-let HELD=null, THROWN=[], EXTR=[], HEAVY=[], GHOSTS=[], SELPREV=[], selPrevT=0;
+let HELD=null, THROWN=[], EXTR=[];
 
 // ---------- 회전 상자 그리기 ----------
 function obbOf(b){let best=0,ang=0;for(let i=0;i<b.pts.length;i++){const a=b.pts[i],c=b.pts[(i+1)%b.pts.length];const l=Math.hypot(c[0]-a[0],c[1]-a[1]);if(l>best){best=l;ang=Math.atan2(c[1]-a[1],c[0]-a[0])}}
@@ -1192,29 +1297,7 @@ function impactExtrude(e){
   finishBuilding(b,e.h*b.area*0.3+5000);toast(`EXTRUDE 자중 붕괴! ${n}채를 덮쳤어요`,2200);
 }
 
-// ---------- EXPLODE: 무거운 블록 조각이 날아가 주변을 때림 ----------
-function spawnHeavy(x,y,z,vx,vy,vz,s,col){HEAVY.push({x,y,z,vx,vy,vz,s,col,rot:Math.random()*6,sp:(Math.random()-.5)*6})}
-function updateHeavy(dt){for(let i=HEAVY.length-1;i>=0;i--){const h=HEAVY[i];h.vy-=32*dt;h.x+=h.vx*dt;h.y+=h.vy*dt;h.z+=h.vz*dt;h.rot+=h.sp*dt;
-  let hit=h.y-h.s/2<=groundAt(h.x,h.z),tgt=null;
-  if(!hit)forBuildingsNear(h.x,h.z,2,o=>{if(!tgt&&o.alive&&!o.lifted&&h.y<o.base+o.h&&pip(h.x,h.z,o.pts)){tgt=o;hit=true}});
-  if(hit){HEAVY.splice(i,1);if(tgt)structDamage(tgt,h.x,h.y,h.z,h.s+2.5,0.9);else{const near=nearestBuilding(h.x,h.z,h.s);if(near)structDamage(near,h.x,near.base+1.5,h.z,h.s+1.5,0.6)}
-    chunkRain(h.x,Math.max(h.y,groundAt(h.x,h.z)),h.z,4,h.s,h.col,5);sfx(6)}}}
-
-// ---------- ERASE 미리보기 · 사라짐 ----------
-function eraseHits(r){const x0=Math.min(r.x0,r.x1),x1=Math.max(r.x0,r.x1),y0=Math.min(r.y0,r.y1),y1=Math.max(r.y0,r.y1);if(x1-x0<6||y1-y0<6)return[];
-  const crossing=r.x1<r.x0,hits=[];
-  for(const b of B){if(!b.alive||b.lifted)continue;if(Math.hypot(b.cx-cam.tx,b.cz-cam.tz)>cam.dist*1.6)continue;let inAll=true,inAny=false,vis=false;
-    for(const p of b.pts)for(const y of [b.base,b.base+b.h]){const q=project(p[0],y,p[1]);if(!q){inAll=false;continue}vis=true;
-      const inside=q[0]>=x0&&q[0]<=x1&&q[1]>=y0&&q[1]<=y1;if(inside)inAny=true;else inAll=false}
-    if(vis&&(crossing?inAny:inAll))hits.push(b)}
-  return hits}
-function outline(mg,b,h,col){const p=b.pts,y0=b.base+0.3,y1=b.base+h+0.3;
-  for(let i=0;i<p.length;i++){const a=p[i],c=p[(i+1)%p.length],l=Math.hypot(c[0]-a[0],c[1]-a[1]),ang=Math.atan2(c[1]-a[1],c[0]-a[0]);
-    for(const y of [y0,y1])pushShape(mg,CUBE,(a[0]+c[0])/2,y,(a[1]+c[1])/2,l,0.35,0.35,-ang,col,1);
-    pushShape(mg,CUBE,a[0],(y0+y1)/2,a[1],0.35,y1-y0,0.35,0,col,1)}}
-
-function updateDesign(dt){updateGrab(dt);updateExtrude(dt);updateHeavy(dt);for(let i=GHOSTS.length-1;i>=0;i--){GHOSTS[i].t-=dt;if(GHOSTS[i].t<=0)GHOSTS.splice(i,1)}
-  if(selRect&&performance.now()-selPrevT>90){selPrevT=performance.now();SELPREV=eraseHits(selRect).slice(0,60)}if(!selRect)SELPREV=[]}
+function updateDesign(dt){updateGrab(dt);updateExtrude(dt);updateSlices(dt)}
 function drawDesign(m,mg){
   const draw=(b,x,y,z,tum,dirx,dirz)=>{const ob=b.ob,ca=Math.cos(ob.ang),sa=Math.sin(ob.ang);let A=[ca,0,sa],N=[-sa,0,ca],U=[0,1,0];
     let rot=v=>v;if(tum){const ax=[dirz,0,-dirx],c=Math.cos(tum),s=Math.sin(tum);rot=v=>{const d=v[0]*ax[0]+v[2]*ax[2];const cr=[ax[1]*v[2]-ax[2]*v[1],ax[2]*v[0]-ax[0]*v[2],ax[0]*v[1]-ax[1]*v[0]];
@@ -1228,11 +1311,9 @@ function drawDesign(m,mg){
     const ca=Math.cos(b.ob.ang),sa=Math.sin(b.ob.ang),ext=Math.abs(e.dir[0]*ca+e.dir[1]*sa)*b.ob.W/2+Math.abs(-e.dir[0]*sa+e.dir[1]*ca)*b.ob.D/2;
     const piv=[b.cx+b.ob.ox+e.dir[0]*ext,b.base,b.cz+b.ob.oz+e.dir[1]*ext],back=f.rot([-e.dir[0]*ext,0,-e.dir[1]*ext]);
     drawOBB(m,[piv[0]+back[0]+f.U[0]*H/2,piv[1]+back[1]+f.U[1]*H/2,piv[2]+back[2]+f.U[2]*H/2],f.A,f.U,f.N,b.ob.W/2,H/2,b.ob.D/2,b.col,b.style,b.roof)}
-  for(const h of HEAVY)pushShape(m,CUBE,h.x,h.y,h.z,h.s,h.s*0.8,h.s,h.rot,h.col,0);
-  for(const b of SELPREV)outline(mg,b,b.h,[0.3,0.6,1]);
-  for(const g of GHOSTS)outline(mg,g.b,g.h*(g.t/0.6),[0.55,0.8,1]);
+  drawSlices(m,mg);
 }
-function clearDesign(){if(HELD)HELD.b.lifted=false;HELD=null;for(const t of THROWN)t.b.lifted=false;for(const e of EXTR)e.b.lifted=false;THROWN=[];EXTR=[];HEAVY=[];GHOSTS=[];SELPREV=[]}
+function clearDesign(){if(HELD)HELD.b.lifted=false;HELD=null;for(const t of THROWN)t.b.lifted=false;for(const e of EXTR)e.b.lifted=false;THROWN=[];EXTR=[];SLICES=[];CUTFX=[]}
 
 // ---------- 필살기 게이지 ----------
 function chargeUlt(v){if(v>0&&!ultArmed){ULT=Math.min(1,ULT+v/150000);}}
@@ -1240,9 +1321,66 @@ function updateUltUI(){const el=$('#ult');if(!el)return;el.style.setProperty('--
 function armUlt(){if(ULT<1){toast(`필살기 게이지 ${Math.floor(ULT*100)}% — 더 부수면 차올라요`);return}ultArmed=!ultArmed;
   $('#hint').textContent=ultArmed?'클릭: 클라이언트 전화 — "그냥 전부 다시 해와요"':'';if(ultArmed)toast('필살기 준비! 부술 곳을 클릭하세요',1800)}
 
-function updateTools2(dt){updateExcavs(dt);updatePours(dt);updateBlasts(dt);updateFloats(dt);updateDesign(dt)}
-function drawTools2(m,mg){drawDesign(m,mg);for(const e of EXCAVS)drawExcav(m,e);for(const p of POURS)drawPour(m,p);drawBlasts(m,mg)}
-function clearTools2(){clearDesign();EXCAVS=[];POURS=[];BLASTS=[];FLOATS=[];selRect=null;$('#marks').innerHTML=''}
+// =====================================================================
+//  공통 타격감 — 히트스톱(순간 멈춤) · 섬광 · 충격파 링 · 불덩이 · 저음 폭발음 · 예약 실행
+// =====================================================================
+let HSTOP=0, RINGS=[], LATER=[], BALLS=[];
+function hitStop(s){HSTOP=Math.max(HSTOP,s)}
+function flashScreen(a,col){const f=$('#flash');if(!f)return;f.style.background=col||'#fff';f.style.transition='none';f.style.opacity=a;requestAnimationFrame(()=>requestAnimationFrame(()=>{f.style.transition='opacity 0.9s';f.style.opacity=0}))}
+function later(t,fn){LATER.push({t,fn,mode:MODE})}
+function updateLater(dt){for(let i=LATER.length-1;i>=0;i--){const L=LATER[i];if(L.mode!==MODE){LATER.splice(i,1);continue}L.t-=dt;if(L.t<=0){LATER.splice(i,1);try{L.fn()}catch(e){console.error(e)}}}}
+function ring(x,y,z,max,col){RINGS.push({x,y,z,r:1,max,col:col||[1,0.88,0.65]})}
+function updateRings(dt){for(let i=BALLS.length-1;i>=0;i--){BALLS[i].t+=dt;if(BALLS[i].t>BALLS[i].dur)BALLS.splice(i,1)}for(let i=RINGS.length-1;i>=0;i--){const r=RINGS[i];r.r+=Math.max(25,r.max*1.6)*dt;if(r.r>r.max)RINGS.splice(i,1)}}
+function clearFx(){RINGS=[];LATER=[];BALLS=[];HSTOP=0}
+function drawFxCommon(m,mg){
+  for(const b of BALLS){const u=b.t/b.dur,r=b.max*(u<0.25?u/0.25:1-(u-0.25)/0.75*0.6),c=u<0.3?[1,0.95,0.7]:[1,0.55-u*0.3,0.12];
+    pushShape(mg,SPHERE,b.x,b.y+r*0.3,b.z,r,r*0.85,r,0,c,1);pushShape(mg,SPHERE,b.x,b.y+r*0.6,b.z,r*0.6,r*0.6,r*0.6,0,[1,1,0.85],1)}
+  for(const r of RINGS){const n=56,t=1-r.r/r.max,w=(0.6+r.max*0.035)*t+0.15;
+    for(let k=0;k<n;k++){const a=k/n*Math.PI*2;pushShape(mg,CUBE,r.x+Math.cos(a)*r.r,r.y,r.z+Math.sin(a)*r.r,w*1.6,w*0.6,w*1.6,a,r.col,1)}}
+}
+function fireball(x,y,z,size){
+  const n=Math.min(110,Math.floor(size*7));
+  for(let k=0;k<n;k++){const a=Math.random()*Math.PI*2,e=Math.random()*Math.PI-Math.PI/2,sp=size*(0.4+Math.random()*1.1);
+    const vx=Math.cos(a)*Math.cos(e)*sp,vz=Math.sin(a)*Math.cos(e)*sp,vy=Math.abs(Math.sin(e))*sp*0.8+size*0.4;
+    const r=Math.random();const c=r<0.35?[1,0.95,0.6]:r<0.7?[1,0.6,0.15]:[0.95,0.3,0.08];
+    spawn(x,y,z,vx,vy,vz,size*(0.08+Math.random()*0.18),c,0.35+Math.random()*0.6,r<0.5?2:1)}
+  later(0.18,()=>{for(let k=0;k<Math.min(28,size*2);k++)spawn(x+(Math.random()-.5)*size,y+Math.random()*size*0.5,z+(Math.random()-.5)*size,(Math.random()-.5)*size*0.5,size*0.25+Math.random()*size*0.35,(Math.random()-.5)*size*0.5,size*(0.1+Math.random()*0.12),[0.6,0.58,0.55],1.0+Math.random()*1.0,2)})
+}
+// p: 0.3(작음) ~ 2(아주 큼)
+function impact(x,y,z,p){
+  const sec=MODE==='section';
+  hitStop(0.04+0.06*p);flashScreen(Math.min(0.9,0.2+0.35*p),p>1?'#fff6e0':'#fff');
+  cam.shake=Math.max(cam.shake,sec?2+p*3:4+p*6);
+  ring(x,(sec?Math.max(0.3,y):y)+0.4,z,sec?8+p*12:25+p*45);
+  fireball(x,y,z,sec?4.5+p*4:6+p*7);BALLS.push({x,y,z,t:0,dur:0.45+p*0.15,max:sec?1.8+p*1.6:5+p*5});sfxBoom(p);
+}
+function sfxBoom(p){if(!AC||!opts.sound)return;try{const t=AC.currentTime,len=0.5+p*0.5;
+  const o=AC.createOscillator();o.type='sine';o.frequency.setValueAtTime(95+p*20,t);o.frequency.exponentialRampToValueAtTime(28,t+len);
+  const g=AC.createGain();g.gain.setValueAtTime(Math.min(0.9,0.35+p*0.3),t);g.gain.exponentialRampToValueAtTime(0.001,t+len);o.connect(g);g.connect(AC.destination);o.start(t);o.stop(t+len)}catch(e){}
+  sfx(18+p*18,0.4+p*0.6)}
+
+// ---------- 선 긋기 제스처 (쇠공 · TRIM) ----------
+let gesture=null;
+function drawGesture(){const svg=$('#gest');if(!svg)return;const l=svg.querySelector('line');
+  if(!gesture||!gesture.b){svg.style.display='none';return}
+  svg.style.display='';l.setAttribute('x1',gesture.a.x);l.setAttribute('y1',gesture.a.y);l.setAttribute('x2',gesture.b.x);l.setAttribute('y2',gesture.b.y);
+  svg.setAttribute('class',gesture.kind==='trim'?'trim':'crane')}
+function endGesture(){const g=gesture;gesture=null;drawGesture();if(!g||!g.b)return;
+  const len=Math.hypot(g.b.x-g.a.x,g.b.y-g.a.y);
+  if(MODE==='section'){const A=secPlane(g.a.x,g.a.y),Bq=secPlane(g.b.x,g.b.y);if(!A||!Bq)return;secPushUndo();
+    if(g.kind==='trim')secTrim(A,Bq);else secCraneLine(A,Bq);return}
+  if(g.kind==='trim'){snapshot();runTrimCity(g.a,g.b);return}
+  if(len<12){toast('쇠공: 휘두를 방향으로 길게 선을 그어주세요');return}
+  // 끝점은 시작점과 같은 깊이(화면과 나란한 면)에 둬서, 화면에 그은 선 그대로 휘두름
+  const A=g.wa,{o,d}=rayFrom(g.b.x,g.b.y);let f=[cam.tx-eye[0],cam.ty-eye[1],cam.tz-eye[2]];const fl=Math.hypot(...f);f=f.map(v=>v/fl);
+  const dn=d[0]*f[0]+d[1]*f[1]+d[2]*f[2];if(Math.abs(dn)<1e-4)return;const t=((A.x-o[0])*f[0]+(A.y-o[1])*f[1]+(A.z-o[2])*f[2])/dn;
+  const hb={x:o[0]+d[0]*t,y:o[1]+d[1]*t,z:o[2]+d[2]*t};hb.y=Math.max(hb.y,groundAt(hb.x,hb.z)+1.5);
+  const ins=2.5;hb.x+=f[0]*ins;hb.z+=f[2]*ins;   // 쇠공 중심이 외벽 안쪽을 지나가게
+  snapshot();spawnCraneLine({x:A.x+f[0]*ins,y:Math.max(A.y,groundAt(A.x,A.z)+1.5),z:A.z+f[2]*ins},hb)}
+
+function updateTools2(dt){updateExcavs(dt);updatePours(dt);updateFloats(dt);updateDesign(dt)}
+function drawTools2(m,mg){drawDesign(m,mg);for(const e of EXCAVS)drawExcav(m,e);for(const p of POURS)drawPour(m,p);drawCharges(m,mg)}
+function clearTools2(){clearDesign();EXCAVS=[];POURS=[];CHARGES=[];FLOATS=[];gesture=null;clearFx();updateDetBtn();$('#marks').innerHTML=''}
 
 // ---------- 낙하물 & 효과 ----------
 let FALL=[], beam=null, shock=null, quake=null;
@@ -1254,22 +1392,23 @@ function boom(x,z,size){
 }
 
 // ---------- 무기 ----------
+// hold: 동네 모드 조작(없으면 클릭), shold: 단면 모드 조작
 let weapon=0;
 const WEAPONS=[
   // 시공팀
   {id:'crew',team:'시공',name:'철거반',fire(h){spawnCrew(h)}},
-  {id:'excav',team:'시공',name:'굴착기',fire(h){spawnExcavator(h)}},
-  {id:'crane',team:'시공',name:'타워크레인',fire(h){spawnCrane(h)}},
+  {id:'excav',team:'시공',name:'굴착기',hold:'excav',shold:'excav'},
+  {id:'crane',team:'시공',name:'쇠공',hold:'line',shold:'line'},
   {id:'pour',team:'시공',name:'레미콘',fire(h){spawnPour(h)}},
-  {id:'blast',team:'시공',name:'발파 해체',fire(h){spawnBlast(h)}},
+  {id:'blast',team:'시공',name:'다이너마이트',fire(h){placeDynCity(h)},nosnap:true},
   {id:'rebar',team:'시공',name:'철근 빼기',fire(h){spawnRebar(h)}},
   // 설계팀
-  {id:'erase',team:'설계',name:'ERASE',hold:'rect'},
-  {id:'move',team:'설계',name:'MOVE',hold:'grab'},
-  {id:'extrude',team:'설계',name:'EXTRUDE',fire(h){spawnExtrude(h)}},
-  {id:'explode',team:'설계',name:'EXPLODE',fire(h){explodeBuilding(h)}},
+  {id:'move',team:'설계',name:'MOVE',hold:'grab',shold:'sgrab'},
+  {id:'extrude',team:'설계',name:'EXTRUDE',fire(h){spawnExtrude(h)},shold:'sext'},
+  {id:'trim',team:'설계',name:'TRIM',hold:'line',shold:'line'},
   {id:'stamp',team:'설계',name:'심의 보류',fire(h){spawnStamp(h)}},
 ];
+function holdOf(){const w=WEAPONS[weapon];return MODE==='section'?(w.shold||null):(w.hold||null)}
 const ULTIMATE={id:'nuke',name:'전부 다시',fire({x,z}){
     const f=$('#flash');f.style.transition='none';f.style.opacity=1;requestAnimationFrame(()=>{f.style.transition='opacity 1.6s';f.style.opacity=0});
     const v=carve(x,z,80,40);addScore(v*0.6);
@@ -1278,12 +1417,12 @@ const ULTIMATE={id:'nuke',name:'전부 다시',fire({x,z}){
     shock={x,z,r:20,max:420,id:Math.random()};boom(x,z,60);boom(x,z,45);
     for(let k=0;k<90;k++){spawn(x+(Math.random()-.5)*30,groundAt(x,z)+5,z+(Math.random()-.5)*30,(Math.random()-.5)*26,25+Math.random()*50,(Math.random()-.5)*26,3+Math.random()*5,[1,0.5+Math.random()*0.3,0.15],1.2+Math.random()*1.2,2)}
     cam.shake=14;toast('클라이언트: "그냥 전부 다시 해와요"')}};
-const HINTS=['클릭: 철거반 투입 — 인부들이 1층 기둥을 오함마로','클릭: 굴착기 브레이커 — 외벽부터 쪼아 들어가요','클릭: 타워크레인 쇠공 — 클릭한 높이를 강타','클릭: 레미콘 과타설 — 옥상에 콘크리트를 부어 과하중 붕괴','클릭: 발파 해체 — 1·2층 기둥에 장약, 3초 뒤 제자리 붕괴','클릭: 철근 빼기 — 순살 구조가 스스로 무너짐','드래그: ERASE — 왼→오 윈도우(완전 포함) / 오→왼 걸침 선택 (파랗게 미리 표시)','건물을 잡고 끌어서 놓기: MOVE — 들어 올려 던지면 떨어진 곳을 덮쳐요','클릭: EXTRUDE — 무한 증축 → 용적률 초과로 쓰러지며 옆 건물들을 덮침','클릭: EXPLODE — 블록 분해, 무거운 조각이 주변을 때림','클릭: 심의 보류 도장 — 위층부터 찍어 누름'];
-const SHINTS=['클릭: 오함마로 부재 하나씩','클릭: 브레이커로 주변 부재 쪼기','클릭: 크레인 쇠공을 옆에서 휘두르기','클릭: 과타설 — 위층부터 차례로 내려앉음','클릭: 발파 — 1·2층 기둥 동시 폭파','클릭: 철근 빼기 (기둥이 서서히 약해짐)','클릭: ERASE — 누른 부재와 주변 삭제','클릭: MOVE — 무거운 덩어리를 떨어뜨리기','클릭: EXTRUDE — 위층 하중 초과','클릭: EXPLODE — 건물 전체 분해','클릭: 심의 보류 도장'];
-function selectWeapon(i){weapon=i;pickHQ=false;document.querySelectorAll('.tool[data-w]').forEach(b=>b.classList.toggle('on',+b.dataset.w===i));
+const HINTS=['클릭: 철거반 인부떼 — 수십 명이 외벽을 타고 올라가 층마다 동시에 오함마질','건물을 누른 채로 끌기: 굴착기 직접 조종 — 브레이커 끝이 마우스를 따라가요','건물 위에서 선 긋기: 쇠공 — 그은 선을 따라 휘두르고 되돌아오며 한 번 더','클릭: 레미콘 과타설 — 옥상에 콘크리트를 부어 과하중 붕괴','클릭: 다이너마이트 설치(최대 12개, 누른 층) → Space 또는 [기폭]으로 연쇄 폭파','클릭: 철근 빼기 — 순살 구조가 스스로 무너짐','건물을 잡고 끌어서 놓기: MOVE — 들어 올려 던지면 떨어진 곳을 덮쳐요','클릭: EXTRUDE — 무한 증축 → 용적률 초과로 쓰러지며 옆 건물들을 덮침','건물을 가로질러 선 긋기: TRIM — 잘린 윗부분이 미끄러져 떨어짐','클릭: 심의 보류 도장 — 위층부터 찍어 누름'];
+const SHINTS=['클릭: 철거반 인부떼 — 외벽을 타고 각 층으로 올라가 기둥을 오함마로','부재를 누른 채로 끌기: 굴착기 직접 조종 — 브레이커 끝이 마우스를 따라가요','선 긋기: 쇠공 — 그은 선을 따라 휘둘러 지나간 자리를 쓸어버림','클릭: 레미콘 — 옥상에 타설, 위층부터 내려앉음','클릭: 다이너마이트 붙이기(최대 12개) → Space 또는 [기폭]으로 연쇄 폭파','클릭: 철근 빼기 (기둥이 서서히 약해짐)','층을 잡고 끌어서 던지기: MOVE — 빼낸 층은 위층이 내려앉고, 던진 층은 떨어진 곳을 부숴요','누른 채 위로 끌기: EXTRUDE — 끈 만큼 증축, 놓으면 하중 초과로 아래층부터 무너짐','선 긋기: TRIM — 선 위쪽이 잘려 미끄러져 떨어짐','클릭: 심의 보류 도장 — 위에서 찍어 누름'];
+function selectWeapon(i){if(i<0||i>=WEAPONS.length)return;weapon=i;pickHQ=false;document.querySelectorAll('.tool[data-w]').forEach(b=>b.classList.toggle('on',+b.dataset.w===i));
   const touch=matchMedia('(pointer:coarse)').matches;
-  if(MODE==='section'){$('#hint').textContent=SHINTS[i]+' · 드래그: 회전 · 휠: 확대';return}
-  $('#hint').textContent=HINTS[i]+(touch?' · 한 손가락 드래그: 회전 · 두 손가락: 확대':' · WASD 이동 · 드래그 회전 · 휠 확대')}
+  if(MODE==='section'){$('#hint').textContent=SHINTS[i]+' · 빈 곳 드래그: 회전 · 휠: 확대';return}
+  $('#hint').textContent=HINTS[i]+(touch?' · 빈 곳 드래그: 회전 · 두 손가락: 확대':' · WASD 이동 · 빈 곳 드래그 회전 · 휠 확대')}
 
 // ---------- 레이 피킹 ----------
 function pick(mx,my){
@@ -1304,10 +1443,10 @@ function pick(mx,my){
 
 // ---------- 되돌리기 / 전부 복구 ----------
 const UNDO=[];let BASE=null;
-function takeState(){const chunks=new Map();for(const c of CHUNKS.values())if(c.Hg)chunks.set(c.k,{H:c.Hg.slice(),VD:c.VD.slice()});return{chunks,h:B.map(b=>b.h),a:B.map(b=>b.alive),det:B.map(detSnap),t:T.map(t=>t.alive),score,maxDepth}}
+function takeState(){const chunks=new Map();for(const c of CHUNKS.values())if(c.Hg)chunks.set(c.k,{H:c.Hg.slice(),VD:c.VD.slice()});return{chunks,h:B.map(b=>b.h),h0:B.map(b=>b.h0),a:B.map(b=>b.alive),det:B.map(detSnap),t:T.map(t=>t.alive),score,maxDepth}}
 function snapshot(){UNDO.push(takeState());if(UNDO.length>15)UNDO.shift();$('#btnUndo').disabled=false;$('#btnReset').disabled=false}
 function restore(s){for(const [k,v] of s.chunks){const c=CHUNKS.get(k);if(c&&c.Hg){c.Hg.set(v.H);c.VD.set(v.VD)}}clearTools();
-  B.forEach((b,i)=>{b.lifted=false;if(i>=s.h.length)return;b.h=s.h[i];b.alive=s.a[i];if(s.det)detRestore(b,s.a[i]?s.det[i]:null)});T.forEach((t,i)=>{if(i<s.t.length)t.alive=s.t[i]});score=s.score;maxDepth=s.maxDepth;
+  B.forEach((b,i)=>{b.lifted=false;if(i>=s.h.length)return;if(s.h0)b.h0=s.h0[i];b.h=s.h[i];b.alive=s.a[i];if(s.det)detRestore(b,s.a[i]?s.det[i]:null)});T.forEach((t,i)=>{if(i<s.t.length)t.alive=s.t[i]});score=s.score;maxDepth=s.maxDepth;
   D.used.fill(0);D.rest.fill(0);FALL=[];beam=null;firing=false;humStop();shock=null;quake=null;cam.shake=0;
   groundDirty=true;bldDirty=true;rubDirty=true;treeDirty=true;updateHUD()}
 $('#btnUndo').onclick=()=>{if(MODE==='section'){const v=SUNDO.pop();if(v)secRestore(v);$('#btnUndo').disabled=!SUNDO.length;return}const s=UNDO.pop();if(s)restore(s);$('#btnUndo').disabled=!UNDO.length};
@@ -1316,26 +1455,35 @@ $('#btnReset').onclick=()=>{if(MODE==='section'){secRestore(SEC.base);SUNDO=[];$
 // ---------- 입력 ----------
 const ptrs=new Map();let drag=null,pinch=null,firing=false,pickHQ=false;
 canvas.addEventListener('contextmenu',e=>e.preventDefault());
+function cancelHolds(){if(gesture){gesture=null;drawGesture()}
+  if(drag){if(drag.excav)excavRelease();if(drag.grab)releaseGrab();if(drag.sgrab)secGrabRelease();if(drag.sext)secExtRelease()}}
+function excavRelease(){if(MODE==='section'){if(SEXC)SEXC.ctl=false;return}for(const e of EXCAVS)e.ctl=false}
 canvas.addEventListener('pointerdown',e=>{
-  if(MODE==='fps'){audioInit();ptrs.set(e.pointerId,1);fpsPointerDown(e);return}
   canvas.setPointerCapture(e.pointerId);ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});audioInit();
-  if(ptrs.size===2){firing=false;stopBeam();const [a,b]=[...ptrs.values()];pinch={d:Math.hypot(a.x-b.x,a.y-b.y),cx:(a.x+b.x)/2,cy:(a.y+b.y)/2,dist:cam.dist,theta:cam.theta,phi:cam.phi};drag=null;return}
+  if(ptrs.size===2){firing=false;cancelHolds();const [a,b]=[...ptrs.values()];pinch={d:Math.hypot(a.x-b.x,a.y-b.y),cx:(a.x+b.x)/2,cy:(a.y+b.y)/2,dist:cam.dist,theta:cam.theta,phi:cam.phi};drag=null;return}
   drag={x:e.clientX,y:e.clientY,sx:e.clientX,sy:e.clientY,btn:e.button,moved:false,shift:e.shiftKey};
-  const hold=WEAPONS[weapon].hold;
-  if(hold==='grab'&&MODE==='city'&&e.button===0&&!pickHQ&&!ultArmed){const h=pick(e.clientX,e.clientY);if(h&&h.b&&startGrab(h.b,e.clientX,e.clientY)){drag.moved=true;drag.grab=true}}
-  else if(hold==='rect'&&MODE==='city'&&e.button===0&&!pickHQ&&!ultArmed){selRect={x0:e.clientX,y0:e.clientY,x1:e.clientX,y1:e.clientY};drag.moved=true;drag.rect=true}
-  else if(hold==='path'&&MODE==='city'&&e.button===0&&!pickHQ){const h=pick(e.clientX,e.clientY);if(h){dozerPath={a:h,b:null};drag.moved=true;drag.path=true}}
-  else if(hold==='beam'&&e.button===0&&!pickHQ&&!ultArmed){firing=true;if(MODE==='section')secPushUndo();else snapshot();drag.moved=true;aimBeam(e.clientX,e.clientY)}
+  if(e.button!==0||pickHQ||ultArmed||e.shiftKey)return;
+  const hold=holdOf(),mx=e.clientX,my=e.clientY,id=WEAPONS[weapon].id;
+  if(MODE==='city'){
+    if(hold==='grab'){const h=pick(mx,my);if(h&&h.b&&startGrab(h.b,mx,my)){drag.moved=true;drag.grab=true}}
+    else if(hold==='line'){const h=pick(mx,my);if(h&&(h.b||nearestBuilding(h.x,h.z,45))){gesture={kind:id,a:{x:mx,y:my},b:null,wa:h};drag.moved=true;drag.line=true}}
+    else if(hold==='excav'){const h=pick(mx,my);if(h&&h.b){snapshot();if(startExcav(h)){drag.moved=true;drag.excav=true}}}
+  }else if(MODE==='section'&&SEC){
+    if(hold==='line'){const p=secPlane(mx,my);if(p&&Math.abs(p.x)<SEC.W/2+25&&p.y<secTop()+30&&p.y>SEC.st[0].y0-3){gesture={kind:id,a:{x:mx,y:my},b:null};drag.moved=true;drag.line=true}}
+    else if(hold==='excav'){const h=secPick(mx,my);if(h&&h.el){secPushUndo();secExcavStart(h);drag.moved=true;drag.excav=true}}
+    else if(hold==='sgrab'){const h=secPick(mx,my);if(h&&h.el){secPushUndo();if(secGrabStart(h,mx,my)){drag.moved=true;drag.sgrab=true}else SUNDO.pop()}}
+    else if(hold==='sext'){const h=secPick(mx,my);if(h&&h.el){secPushUndo();secExtStart(my);drag.moved=true;drag.sext=true}}
+  }
 });
 canvas.addEventListener('pointermove',e=>{
-  if(MODE==='fps'){fpsPointerMove(e);return}
   if(!ptrs.has(e.pointerId))return;ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
   if(pinch&&ptrs.size===2){const [a,b]=[...ptrs.values()];const d=Math.hypot(a.x-b.x,a.y-b.y);cam.dist=clamp(pinch.dist*pinch.d/d,MODE==='section'?15:120,2600);
     const cx=(a.x+b.x)/2,cy=(a.y+b.y)/2;cam.theta=pinch.theta-(cx-pinch.cx)*0.006;cam.phi=clamp(pinch.phi-(cy-pinch.cy)*0.005,0.12,1.42);return}
   if(!drag)return;
-  if(firing){aimBeam(e.clientX,e.clientY);return}
-  if(drag.path&&dozerPath){const h=pick(e.clientX,e.clientY);if(h)dozerPath.b=h;return}
-  if(drag.rect&&selRect){selRect.x1=e.clientX;selRect.y1=e.clientY;return}
+  if(drag.line&&gesture){gesture.b={x:e.clientX,y:e.clientY};drawGesture();return}
+  if(drag.excav){if(MODE==='section')secExcavAim(e.clientX,e.clientY);else for(const x of EXCAVS)if(x.ctl)excavAimAt(x,e.clientX,e.clientY);return}
+  if(drag.sgrab){secGrabMove(e.clientX,e.clientY);return}
+  if(drag.sext){secExtMove(e.clientY);return}
   if(drag.grab){moveGrab(e.clientX,e.clientY);return}
   const dx=e.clientX-drag.x,dy=e.clientY-drag.y;drag.x=e.clientX;drag.y=e.clientY;
   if(Math.hypot(e.clientX-drag.sx,e.clientY-drag.sy)>6)drag.moved=true;
@@ -1345,28 +1493,34 @@ canvas.addEventListener('pointermove',e=>{
   else{cam.theta-=dx*0.006;cam.phi=clamp(cam.phi-dy*0.005,0.12,1.42)}
 });
 function endPtr(e){
-  if(MODE==='fps'){ptrs.delete(e.pointerId);fpsPointerUp();return}
   if(!ptrs.has(e.pointerId))return;ptrs.delete(e.pointerId);
   if(pinch){if(ptrs.size<2)pinch=null;drag=null;return}
-  if(firing){firing=false;stopBeam();drag=null;return}
+  if(drag&&drag.line){endGesture();drag=null;return}
+  if(drag&&drag.excav){excavRelease();drag=null;return}
+  if(drag&&drag.sgrab){secGrabRelease();drag=null;return}
+  if(drag&&drag.sext){secExtRelease();drag=null;return}
   if(drag&&drag.grab){releaseGrab();drag=null;return}
-  if(drag&&drag.rect&&selRect){snapshot();runErase(selRect);selRect=null;drag=null;return}
-  if(drag&&drag.path&&dozerPath){snapshot();spawnDozer(dozerPath.a,dozerPath.b||dozerPath.a);dozerPath=null;drag=null;return}
-  if(MODE==='section'){if(drag&&!drag.moved&&drag.btn===0&&(ultArmed||WEAPONS[weapon].hold!=='beam')){const h=secPick(e.clientX,e.clientY);if(h){secPushUndo();if(ultArmed){secFire(-1,h);ULT=0;ultArmed=false;selectWeapon(weapon)}else secFire(weapon,h)}}drag=null;return}
+  if(MODE==='section'){if(drag&&!drag.moved&&drag.btn===0){const h=secPick(e.clientX,e.clientY);
+      if(h){if(ultArmed){secPushUndo();secFire(-1,h);ULT=0;ultArmed=false;statTool('nuke');selectWeapon(weapon)}
+        else if(!holdOf()){if(WEAPONS[weapon].id!=='blast')secPushUndo();secFire(weapon,h);statTool(WEAPONS[weapon].id)}}}
+    drag=null;return}
   if(drag&&!drag.moved&&drag.btn===0){const h=pick(e.clientX,e.clientY);
     if(pickHQ){pickHQ=false;selectWeapon(weapon);if(h&&h.b){setHQ(h.b,true);toast('사옥으로 지정했어요 (이 브라우저에 저장)')}else toast('건물을 눌러주세요')}
     else if(h&&ultArmed){snapshot();ULTIMATE.fire(h);ULT=0;ultArmed=false;statTool('nuke');selectWeapon(weapon)}
-    else if(h&&!WEAPONS[weapon].hold){snapshot();WEAPONS[weapon].fire(h);statTool(WEAPONS[weapon].id)}}
+    else if(h&&!holdOf()){const w=WEAPONS[weapon];if(!w.nosnap)snapshot();w.fire(h);if(w.id!=='blast')statTool(w.id)}}
   drag=null;
 }
 canvas.addEventListener('pointerup',endPtr);canvas.addEventListener('pointercancel',endPtr);
-canvas.addEventListener('wheel',e=>{e.preventDefault();if(MODE==='fps')return;cam.dist=clamp(cam.dist*Math.exp(e.deltaY*0.0012),MODE==='section'?15:120,2600)},{passive:false});
-function aimBeam(mx,my){if(MODE==='section'){const h=secPick(mx,my);sBeam=h?{x:h.x,y:h.y,z:h.z,hit:h,mx,my}:null;return}const h=pick(mx,my);if(h){beam={x:h.x,z:h.z,y:groundAt(h.x,h.z)}}}
+canvas.addEventListener('wheel',e=>{e.preventDefault();cam.dist=clamp(cam.dist*Math.exp(e.deltaY*0.0012),MODE==='section'?15:120,2600)},{passive:false});
 function stopBeam(){beam=null;sBeam=null;humStop()}
 const KEYS=new Set();addEventListener('keyup',e=>KEYS.delete(e.key.toLowerCase()));addEventListener('blur',()=>KEYS.clear());
 addEventListener('keydown',e=>{if(e.target.tagName==='INPUT')return;if(!e.ctrlKey&&!e.metaKey)KEYS.add(e.key.toLowerCase());
-  if(MODE==='fps'){if(e.key>='1'&&e.key<='3')fpsTool(+e.key-1);if(e.key.toLowerCase()==='x')exitFps('quit');return}
-  if(e.key.toLowerCase()==='c'&&!e.ctrlKey&&!e.metaKey)enterSection();if(e.key.toLowerCase()==='f'&&MODE==='section')enterFps();if(e.key>='1'&&e.key<='9')selectWeapon(+e.key-1);if(e.key==='0')selectWeapon(9);if(e.key==='-')selectWeapon(10);if(e.key.toLowerCase()==='q')armUlt();if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();$('#btnUndo').click()}});
+  const k=e.key.toLowerCase();
+  if(k==='c'&&!e.ctrlKey&&!e.metaKey)enterSection();
+  if(k==='f'&&MODE==='section')toggleInside();
+  if(e.key>='1'&&e.key<='9')selectWeapon(+e.key-1);if(e.key==='0')selectWeapon(9);
+  if(e.key===' '){e.preventDefault();detonate()}
+  if(k==='q')armUlt();if((e.ctrlKey||e.metaKey)&&k==='z'){e.preventDefault();$('#btnUndo').click()}});
 document.querySelectorAll('.tool[data-w]').forEach(b=>b.onclick=()=>selectWeapon(+b.dataset.w));
 
 // ---------- 사운드 ----------
@@ -1386,8 +1540,7 @@ function makeLabels(){const box=$('#labels');box.innerHTML='';LBL=[];
   makePins();
 }
 function updateLabels(){
-  drawFloats();drawSelRect();updateUltUI();
-  if(MODE==='fps'){for(const L of SLBL)L.el.style.display='none';return}
+  drawFloats();updateUltUI();
   if(MODE==='section'){updateSecLabels();return}
   const occ=new Set();
   for(const L of LBL){const b=L.b;if(!b.alive||(L.pin?!opts.pins||b.hq:!opts.labels)){L.el.style.display='none';continue}
@@ -1483,7 +1636,7 @@ async function loadFirm(f){
       if(lat!=null)lsSet('smasharch_geo3_'+f.id,{lat,lng,approx})}
   }
   CUR=f;$('#firmName').textContent=f.name;$('#firmAddr').textContent=(f.addr||'')+(f.tenant?' · 입주 건물':'');
-  for(const b of [...DETS])freeDet(b);clearTools();STATS={t0:0,kills:0,erased:0,tools:{}};ULT=0;ultArmed=false;
+  for(const b of [...DETS])freeDet(b);clearTools();STATS={t0:0,kills:0,tools:{}};ULT=0;ultArmed=false;
   BASE=null;resetWorld();LAT0=lat!=null?lat:37.5665;LNG0=lat!=null?lng:126.978;
   cam.tx=0;cam.tz=0;
   setLoading(true,'OpenStreetMap에서 사옥 주변 불러오는 중…');
@@ -1497,7 +1650,7 @@ async function loadFirm(f){
   // 하늘에서 사옥으로 날아 들어오기
   cam.theta=0.75;cam.phi=0.62;cam.dist=2400;camFly={t:0,from:{dist:2400,phi:0.62,theta:0.75},to:{dist:Math.min(1600,560*Math.max(1,1.15*innerHeight/innerWidth)),phi:0.95,theta:1.25}};
   setLoading(false);
-  if(!lsGet('smasharch_tut_v1'))setTimeout(()=>showTut(0),400);
+  if(!lsGet('smasharch_tut_v2'))setTimeout(()=>showTut(0),400);
   if(!fake&&!B.some(b=>b.hq))toast('사옥 건물을 못 찾았어요. 설정 → "사옥 건물 직접 지정"으로 골라주세요.',4500);
   else if(!fake&&!f.tenant&&parseFloor(f.addr)==null&&B.some(b=>b.hq))toast('레이드 보스 · 사옥 전체를 쓰는 회사예요. 사옥 기둥이 2배 단단해요',3500);
   else if(!fake&&f.tenant&&!approx)toast(f.name+'은(는) 이 건물 일부 층에 입주한 사무소예요.',3500);
@@ -1648,7 +1801,7 @@ function buildSectionModel(b,firm,others){
   const top=st[st.length-1];add(top.k,'roof',[-W/2,top.h,-D/2,W/2,top.h+SLAB_T,D/2],2,5,[0.70,0.71,0.70]);
   const P=Math.max(W,D)/2+28;
   const focusK=ourK!=null?ourK:Math.min(N-1,1);
-  return{b,firm,others,focusK,shown:{},W,D,N,nb,st,els,S,ourK,piloti,P,depth:-y0Bottom(st)+2,tenant:fl!=null,total:els.reduce((a,e)=>a+(e.hp0<1e8?e.w:0),0)};
+  return{b,firm,others,focusK,shown:{},W,D,N,nb,st,els,S,ourK,piloti,P,xs,zs,cw,cd,czc,inCore,add,wallCol,depth:-y0Bottom(st)+2,tenant:fl!=null,total:els.reduce((a,e)=>a+(e.hp0<1e8?e.w:0),0)};
 }
 function y0Bottom(st){return st[0].y0}
 
@@ -1659,7 +1812,7 @@ function enterSection(bArg,firmArg){
   if(!b){toast('사옥 건물이 지정되지 않았어요. 설정 → "사옥 건물 직접 지정"을 먼저 해주세요.',3500);return}
   const others=(b.firms||[]).filter(f=>'d'+f.i!==firm.key).map(f=>({name:f.short,fl:parseFloor(f.addr)}));
   SEC=buildSectionModel(b,firm,others);
-  MODE='section';SUNDO=[];SFALL=[];sQuake=null;sBeam=null;clearTools();
+  MODE='section';SUNDO=[];SFALL=[];sQuake=null;sBeam=null;clearTools();secClearTools();
   cityCam={...cam};
   const H=SEC.st[SEC.st.length-1].y0+SEC.st[SEC.st.length-1].h;
   cam.tx=0;cam.tz=0;cam.ty=H*0.42;cam.theta=0.38;cam.phi=1.22;cam.dist=Math.max(H*1.7,SEC.W*1.35,70);SEC.overCam={...cam};SEC.inside=false;
@@ -1668,7 +1821,7 @@ function enterSection(bArg,firmArg){
   D.used.fill(0);D.rest.fill(0);rubDirty=true;secDirty=true;
   SEC.base=secSnap();
   $('#btnSection').classList.add('on');$('#btnSection').lastChild.textContent='동네로';
-  document.body.classList.add('sec');  $('#secPanel').innerHTML='<div id="secInfo"></div><div id="secHint" class="k"></div><button id="btnFloor" class="btn-s" style="margin-top:5px"></button>';$('#btnFloor').onclick=enterFps;$('#btnFloor').textContent=(SEC.ourK!=null?'우리 층':floorName(SEC.focusK))+'에 직접 들어가서 부수기 (F)';
+  document.body.classList.add('sec');  $('#secPanel').innerHTML='<div id="secInfo"></div><div id="secHint" class="k"></div><button id="btnFloor" class="btn-s" style="margin-top:5px"></button>';$('#btnFloor').onclick=toggleInside;$('#btnFloor').textContent=(SEC.ourK!=null?'우리 층':floorName(SEC.focusK))+' 확대해서 보기 (F)';
   $('#secPanel').style.display='';$('#btnUndo').disabled=true;$('#btnReset').disabled=false;
   makeSecLabels();selectWeapon(weapon);
   const oc=SEC.others.length;
@@ -1678,6 +1831,7 @@ function exitSection(){
   if(MODE!=='section')return;
   const c=secCollapse();
   if(c>=0.6&&SEC.b.alive){killBuilding(SEC.b);toast('단면 모드에서 무너뜨린 사옥이 동네에서도 철거됐어요')}
+  secClearTools();CHARGES=[];updateDetBtn();
   MODE='section-exit';Object.assign(cam,cityCam);cam.ty=0;LVPcur=LVP;
   D.used.fill(0);D.rest.fill(0);rubDirty=true;SFALL=[];sQuake=null;sBeam=null;
   MODE='city';SEC=null;
@@ -1689,7 +1843,7 @@ function exitSection(){
 // ---------- 구조 판정 ----------
 function secTargets(){ // 각 층이 놓일 높이 (아래층이 무너지면 내려앉음)
   const t=[];let y=SEC.st[0].y0;
-  for(const s of SEC.st){t.push(y);y+=s.state==='crushed'?0.9:s.h}
+  for(const s of SEC.st){t.push(y);y+=s.state==='crushed'?0.9:s.state==='gone'?0:s.h}
   return t;
 }
 function storyHealth(s){let tot=0,alive=0,core=false,coreHp=0;
@@ -1698,7 +1852,7 @@ function storyHealth(s){let tot=0,alive=0,core=false,coreHp=0;
 function toggleInside(){if(!SEC)return;SEC.inside=!SEC.inside;
   if(SEC.inside){const s=SEC.S(SEC.focusK);SEC.overCam={...cam};cam.tx=0;cam.ty=s.y+0.9;cam.tz=SEC.D*0.12;cam.theta=0.22;cam.phi=1.42;cam.dist=Math.max(SEC.W*0.42,11)}
   else Object.assign(cam,SEC.overCam);
-  $('#btnFloor').textContent=SEC.inside?'단면 전체 보기':((SEC.ourK!=null?'우리 층':floorName(SEC.focusK))+' 안으로 들어가기')}
+  $('#btnFloor').textContent=SEC.inside?'단면 전체 보기 (F)':((SEC.ourK!=null?'우리 층':floorName(SEC.focusK))+' 확대해서 보기 (F)')}
 function secCheck(){
   for(const s of SEC.st){
     if(s.state==='ok'&&!s.warned&&s.k>-SEC.nb){const h=storyHealth(s);if(!h.core&&h.r<0.55&&h.r>=0.34){s.warned=1;toast(`⚠ ${floorName(s.k)} 붕괴 임박 — 기둥 ${Math.round(h.r*100)}% 남음`,2500)}}
@@ -1724,6 +1878,7 @@ function secUpdate(dt){
     else if(s.y<t[i]){s.y=t[i]}
   }
   if(moving){secDirty=true;wakeAllRubble()}
+  secUpdateTools(dt);
   if(SEC.rebar){SEC.rebarT=(SEC.rebarT||0)+dt;if(SEC.rebarT>0.2){SEC.rebarT=0;const c=SEC.els.filter(e=>e.alive&&(e.kind==='col'||e.kind==='core')&&e.k>=0);if(c.length)secDamage(c[Math.floor(Math.random()*Math.min(c.length,c.length*0.5+3))],0.5)}}
   // 레드펜
   if(sBeam&&firing){humStart();const h=sBeam.hit;if(h&&h.el&&h.el.alive){secDamage(h.el,3.5*dt);addScore(60*dt)}
@@ -1742,7 +1897,7 @@ function secUpdate(dt){
 }
 function secLand(i,v){
   // 위층 덩어리가 무너진 층 위로 떨어질 때 → 그 아래층 기둥에 충격 (연쇄 붕괴)
-  const below=SEC.st[i-1];if(!below||below.state!=='crushed'||v<5)return;
+  const below=SEC.st[i-1];if(!below||below.state==='ok'||v<5)return;
   if(SEC.st[i].state==='crushed')return;
   const mass=SEC.st.slice(i).filter(s=>s.state==='ok').length;
   const under=SEC.st[i-2];if(!under||under.state!=='ok')return;
@@ -1754,7 +1909,7 @@ function secLand(i,v){
 
 // ---------- 피해 ----------
 function elWorld(e){const s=SEC.S(e.k),b=e.box;return[b[0],b[1]+s.y,b[2],b[3],b[4]+s.y,b[5]]}
-function secDamage(e,d){if(!e.alive||e.hp0>=1e8)return;e.hp-=d;if(e.hp<=0)secDestroy(e);secDirty=true;secCheck()}
+function secDamage(e,d){if(!e.alive||e.hp0>=1e8)return;e.hp-=d;if(e.hp<=0)secDestroy(e);secDirty=true;if(!SEC_BATCH)secCheck()}
 function secDestroy(e,quiet){
   if(!e.alive)return;e.alive=false;secDirty=true;
   addScore(e.w*400);
@@ -1778,35 +1933,272 @@ function secBoom(x,y,z,size){const n=Math.min(50,Math.floor(size*2));
   for(let k=0;k<n;k++){const a=Math.random()*Math.PI*2,s=Math.random()*size*0.5;spawn(x+Math.cos(a)*s*0.2,y,z+Math.sin(a)*s*0.2,Math.cos(a)*s,4+Math.random()*size*0.4,Math.sin(a)*s+2,0.5+Math.random()*size*0.05,Math.random()<0.5?[1,0.62,0.2]:[1,0.85,0.4],0.4+Math.random()*0.5,1)}
   sfx(size)}
 
-// ---------- 무기 (단면 모드) ----------
-function secStamp(x){
-  const alive=SEC.st.filter(s=>s.state==='ok'&&s.k>=0);const n=Math.max(1,Math.ceil(alive.length*0.4));
-  const tops=alive.slice(-n);tops.reverse().forEach((s,i)=>setTimeout(()=>{if(SEC&&s.state==='ok'){crushStory(s);secCheck()}},i*260));
-  floatText(0,SEC.st[SEC.st.length-1].y0+SEC.st[SEC.st.length-1].h+4,0,'보 류','mark',3);cam.shake=8;sfx(35);
-  toast(`심의 보류! 위에서 ${n}개 층이 찍혀 내려앉아요`,2500);
-}
+// ---------- 무기 (단면 모드) — 클릭형 도구 ----------
 function secFire(wi,h){
-  const {x,y,z}=h;const id=wi<0?'nuke':WEAPONS[wi].id;const w={crane:0,crew:1,rolls:3,quake:4,nuke:5}[id];SEC.hits=(SEC.hits||0)+1;
-  if(id==='stamp'){secStamp(x);return}
-  if(id==='move'){secBlast(x,y,z,6,4);secBoom(x,y,z,14);cam.shake=Math.max(cam.shake,5);return}
-  if(id==='extrude'){const alive=SEC.st.filter(s=>s.state==='ok'&&s.k>=0);const n=Math.max(1,Math.ceil(alive.length*0.5));alive.slice(-n).reverse().forEach((s,i)=>setTimeout(()=>{if(SEC&&s.state==='ok'){crushStory(s);secCheck()}},300+i*400));cmdLine(['명령: EXTRUDE','용적률 초과 — 위층 하중을 못 버텨요']);return}
-  if(id==='excav'){secBlast(x,y,z,2.6,2.2);secBoom(x,y,z,6);cam.shake=Math.max(cam.shake,2);return}
-  if(id==='pour'){const alive=SEC.st.filter(s=>s.state==='ok'&&s.k>=0);const n=Math.max(1,Math.ceil(alive.length*0.4));alive.slice(-n).reverse().forEach((s,i)=>setTimeout(()=>{if(SEC&&s.state==='ok'){crushStory(s);secCheck()}},600+i*700));toast('과타설! 위층부터 하중을 못 버텨요',2500);return}
-  if(id==='blast'){floatText(0,6,SEC.D/2,'3','count',1);setTimeout(()=>{if(!SEC)return;for(const e of SEC.els)if(e.alive&&(e.kind==='col'||e.kind==='core')&&(e.k===0||e.k===1))secDestroy(e);secBoom(0,3,SEC.D/2,30);cam.shake=9;sfx(40,2);secCheck()},1500);toast('발파 장약 설치 — 1·2층 기둥',1500);return}
-  if(id==='erase'){let n=0;for(const e of SEC.els){if(!e.alive||e.hp0>=1e8)continue;if(boxDist(elWorld(e),x,y,z)<2.5){e.alive=false;n++;addScore(e.w*300)}}secDirty=true;secCheck();floatText(x,y+1,z,'ERASE','cad',1.4);cmdLine(['명령: ERASE',`${n}개 삭제됨`]);return}
-  if(id==='explode'){for(const e of SEC.els)if(e.alive&&e.hp0<1e8){const b=elWorld(e);spawn((b[0]+b[3])/2,(b[1]+b[4])/2,(b[2]+b[5])/2,(Math.random()-.5)*16,6+Math.random()*10,4+Math.random()*12,0.6+Math.random()*1.2,e.col);e.alive=false;addScore(e.w*300)}
-    for(const s of SEC.st)if(s.k>-SEC.nb)s.state='crushed';secDirty=true;floatText(0,10,SEC.D/2,'EXPLODE','cad',1.8);cmdLine(['명령: EXPLODE','블록 1개가 분해되었습니다']);cam.shake=8;return}
-  if(id==='dozer'){let n=0;for(const e of SEC.els){if(!e.alive||e.k!==0)continue;const b=elWorld(e);if(Math.abs((b[0]+b[3])/2-x)<3.5){secDestroy(e);n++}}secBoom(x,1.5,SEC.D/2,12);cam.shake=Math.max(cam.shake,3);secCheck();return}
-  if(id==='rebar'){for(const e of SEC.els)if(e.alive&&(e.kind==='col'||e.kind==='core'))e.hp=Math.min(e.hp,e.hp0*0.4);SEC.rebar=1;toast('철근 빼는 중… 순살 구조라 자기 무게도 못 버텨요',3000);secDirty=true;return}
-  if(w===0){SFALL.push({kind:'ball',x,y,z:z+70,tz:z,vz:-85,r:2.4,t:0,hit(o){secBlast(o.x,o.y,o.tz,5.5,3.2);secBoom(o.x,o.y,o.tz,10);cam.shake=Math.max(cam.shake,3)}})}
-  else if(w===1){if(h.el){secDamage(h.el,1);secBoom(x,y,z,3)}}
-  else if(w===3){for(let i=0;i<9;i++){const px=x+(Math.random()-.5)*12,py=Math.max(0.5,y+(Math.random()-.5)*10);
-    SFALL.push({kind:'roll',x:px,y:py,z:z+80+i*12,tz:z,vz:-90,r:1.1,t:i*0.06,rot:0,hit(o){secBlast(o.x,o.y,o.tz,3.2,2.2);secBoom(o.x,o.y,o.tz,6)}})}}
-  else if(w===4){sQuake={t:0,dur:2.6,acc:0};sfx(30,2.6);toast(SEC.piloti?'내진 검토 중… 필로티가 위험해 보여요':'내진 검토 중… 구조계산서 다시 보세요')}
-  else if(w===5){const f=$('#flash');f.style.transition='none';f.style.opacity=1;requestAnimationFrame(()=>{f.style.transition='opacity 1.6s';f.style.opacity=0});
+  const id=wi<0?'nuke':WEAPONS[wi].id;
+  if(id!=='blast')SEC.hits=(SEC.hits||0)+1;
+  if(id==='crew'){secSpawnCrew(h);return}
+  if(id==='pour'){secPour(h);return}
+  if(id==='blast'){placeDynSec(h);return}
+  if(id==='stamp'){secStamp();return}
+  if(id==='extrude'){toast('EXTRUDE: 누른 채로 위로 끌어올리세요');return}
+  if(id==='rebar'){for(const e of SEC.els)if(e.alive&&(e.kind==='col'||e.kind==='core'))e.hp=Math.min(e.hp,e.hp0*0.4);SEC.rebar=1;SREB={t:0};toast('철근 빼는 중… 순살 구조라 자기 무게도 못 버텨요',3000);sfx(15,1.6);secDirty=true;return}
+  if(id==='nuke'){const f=$('#flash');f.style.background='#fff';f.style.transition='none';f.style.opacity=1;requestAnimationFrame(()=>{f.style.transition='opacity 1.6s';f.style.opacity=0});
     for(const e of SEC.els){if(!e.alive)continue;const lv=e.k+SEC.nb;if((e.kind==='col'||e.kind==='core')&&e.k>=0&&e.k<=1)secDestroy(e);else if(Math.random()<0.5/(1+lv*0.1))secDamage(e,2)}
     secBoom(0,4,SEC.D*0.3,40);cam.shake=12;toast('클라이언트: "그냥 전부 다시 해와요"');secCheck()}
 }
+
+// =====================================================================
+//  단면 모드 도구 — 화면에 실제로 보이는 장비·인부 + 선 긋기/끌기 조작
+// =====================================================================
+let SEC_BATCH=false;
+let SCREW=[], SEXC=null, SCRANES=[], SHELD=null, SFLY=[], SEXT=null, SSLICE=[], SCUT=[], SSTAMP=null, SPOUR=null, SREB=null;
+function secClearTools(){SCREW=[];SEXC=null;SCRANES=[];SHELD=null;SFLY=[];SEXT=null;SSLICE=[];SCUT=[];SSTAMP=null;SPOUR=null;SREB=null;
+  CHARGES=CHARGES.filter(c=>c.kind!=='sec');updateDetBtn();clearFx();gesture=null;drawGesture()}
+function secPlane(mx,my,zp){if(!SEC)return null;if(zp==null)zp=SEC.D/2;const {o,d}=rayFrom(mx,my);if(Math.abs(d[2])<1e-6)return null;const t=(zp-o[2])/d[2];if(t<0)return null;return{x:o[0]+d[0]*t,y:o[1]+d[1]*t,z:zp}}
+function secTop(){let t=0;for(const s of SEC.st)if(s.state==='ok')t=Math.max(t,s.y+s.h+(s===SEC.st[SEC.st.length-1]?SLAB_T:0));return t}
+function box2(b,x,y){const dx=Math.max(b[0]-x,0,x-b[3]),dy=Math.max(b[1]-y,0,y-b[4]);return Math.hypot(dx,dy)}
+// 부재 높이 위쪽 표면 (x 위치에서 살아있는 부재의 가장 높은 윗면)
+function secSurfX(x0,x1){let top=0;for(const e of SEC.els){if(!e.alive||e.kind==='prop')continue;const b=elWorld(e);if(b[3]>x0&&b[0]<x1&&b[4]>top)top=b[4]}return top}
+// z축 회전 상자 (단면 평면에서 기울어지는 덩어리)
+function pushBoxZ(m,x,y,z,sx,sy,sz,ang,c){const cr=Math.cos(ang),sr=Math.sin(ang);m.grow(36);
+  for(const [p,n] of CUBE){const px=p[0]*sx,py=p[1]*sy,pz=p[2]*sz;m.v(x+px*cr-py*sr,y+px*sr+py*cr,z+pz,(n[0]*cr-n[1]*sr)*0.8,(n[0]*sr+n[1]*cr)*0.8,n[2]*0.8,c[0],c[1],c[2])}}
+function drawGroup(m,g){const c=Math.cos(g.rot),s=Math.sin(g.rot);
+  for(const it of g.items){const b=it.b,bx=(b[0]+b[3])/2,by=(b[1]+b[4])/2,bz=(b[2]+b[5])/2;
+    pushBoxZ(m,g.x+bx*c-by*s,g.y+bx*s+by*c,bz,b[3]-b[0],b[4]-b[1],b[5]-b[2],g.rot,it.col)}}
+function groupBreak(g,x,y){let n=0;const c=Math.cos(g.rot),s=Math.sin(g.rot);
+  for(const it of g.items){if(n>160)break;const b=it.b,bx=(b[0]+b[3])/2,by=(b[1]+b[4])/2;if(Math.random()<0.5&&g.items.length>80)continue;n++;
+    spawn(g.x+bx*c-by*s,g.y+bx*s+by*c,(b[2]+b[5])/2,(Math.random()-.5)*12+g.vx*0.2,3+Math.random()*7,1+Math.random()*6,0.3+Math.random()*Math.min(1.2,(b[3]-b[0]+b[4]-b[1])*0.25),it.col)}}
+// 2D(단면 평면) 범위 피해 — 깊이 방향 전체를 관통
+function secHit2D(x,y,r,dmg,set){SEC_BATCH=true;let n=0;
+  for(const e of SEC.els){if(!e.alive||e.hp0>=1e8)continue;if(set&&set.has(e))continue;const d=box2(elWorld(e),x,y);if(d<r){secDamage(e,dmg*(1-d/r*0.6));if(set)set.add(e);n++}}
+  SEC_BATCH=false;if(n)secCheck();return n}
+
+// ---------- 철거반 인부떼 ----------
+function secSpawnCrew(h){
+  const room=120-SCREW.filter(w=>!w.gone).length;if(room<8){toast('현장에 인부가 꽉 찼어요 — 잠시 뒤 다시');return}
+  const ok=SEC.st.filter(s=>s.state==='ok'&&s.k>=0);if(!ok.length){toast('올라갈 층이 남아있지 않아요');return}
+  const n=Math.min(room,clamp(Math.round(SEC.W*1.1+ok.length*1.6),24,60));const side=h.x>=0?1:-1,W=SEC.W,D=SEC.D;
+  for(let i=0;i<n;i++){const s=ok[Math.random()<0.65?Math.min(ok.length-1,Math.floor(Math.random()*2)):Math.min(ok.length-1,Math.floor(Math.pow(Math.random(),1.4)*ok.length))];const sd=Math.random()<0.75?side:-side;
+    SCREW.push({x:sd*(W/2+8+Math.random()*24),y:0,z:D/2-0.8-Math.random()*3.4,k:s.k,side:sd,state:'run',t:-Math.random()*1.6,el:null,vy:0,dir:sd>0?Math.PI:0,born:0,
+      vest:Math.random()<0.5?[1,0.45,0.1]:[0.95,0.85,0.15],helm:Math.random()<0.3?[0.95,0.95,0.95]:[0.98,0.8,0.1]})}
+  toast(`철거반 ${n}명 투입! 반장: "층마다 기둥 하나씩 맡아!"`,2000);sfx(10,1.2);floatText(side*(W/2+6),3,D/2,`인부 ${n}명`,'cad',1.5);
+}
+function secCrewTarget(w){let best=null,bd=1e9;
+  for(const e of SEC.els){if(!e.alive||e.k!==w.k||(e.kind!=='col'&&e.kind!=='core'))continue;const cx=(e.box[0]+e.box[3])/2;
+    const dd=Math.abs(cx-w.x)+(e.kind==='core'?3:0)+Math.random()*4;if(dd<bd){bd=dd;best=e}}return best}
+function updateSecCrew(dt){const W=SEC.W;
+  for(const w of SCREW){if(w.gone)continue;w.t+=dt;w.born+=dt;if(w.t<0)continue;const s=SEC.S(w.k);
+    if(w.born>45&&w.state!=='fall'&&w.state!=='leave'){w.state='fall';w.vy=1}
+    if((w.state==='climb'||w.state==='walk'||w.state==='hit')&&(!s||s.state!=='ok')){w.state='fall';w.vy=1}
+    if(w.state==='run'){const tx=w.side*(W/2+0.5),dx=tx-w.x;if(Math.abs(dx)<0.3){w.x=tx;w.state=w.k===0?'walk':'climb'}else{w.x+=Math.sign(dx)*Math.min(Math.abs(dx),9*dt);w.dir=dx>0?0:Math.PI}w.y=0}
+    else if(w.state==='climb'){const ty=s.y+SLAB_T;w.dir=w.side>0?Math.PI:0;if(w.y<ty)w.y=Math.min(ty,w.y+6.5*dt);else{w.y=ty;w.state='walk'}}
+    else if(w.state==='walk'){w.y=s.y+SLAB_T;if(!w.el||!w.el.alive)w.el=secCrewTarget(w);
+      if(!w.el){const up=SEC.S(w.k+1);if(up&&up.state==='ok'){w.k++;w.state='climb'}else{w.state='fall';w.vy=2}continue}
+      const b=w.el.box,cx=(b[0]+b[3])/2,sg=Math.sign(cx-w.x)||1,tx=cx-sg*((b[3]-b[0])/2+0.35),tz=Math.min(SEC.D/2-0.4,b[5]+0.35);
+      const dx=tx-w.x,dz=tz-w.z,l=Math.hypot(dx,dz);if(l<0.25){w.state='hit';w.t=Math.random()*0.3;w.dir=sg>0?0:Math.PI}
+      else{const sp=Math.min(l,5*dt);w.x+=dx/l*sp;w.z+=dz/l*sp;w.dir=Math.atan2(dz,dx)}}
+    else if(w.state==='hit'){w.y=s.y+SLAB_T;if(!w.el||!w.el.alive){w.state='walk';continue}
+      if(w.t>0.45){w.t=0;secDamage(w.el,w.el.kind==='core'?0.35:0.5);addScore(90);
+        spawn(w.x+Math.cos(w.dir)*0.5,w.y+1.1,w.z,(Math.random()-.5)*3,2,1+Math.random()*2,0.18,[0.72,0.71,0.68]);
+        if(Math.random()<0.3)spawn(w.x+Math.cos(w.dir)*0.5,w.y+1.2,w.z+0.2,(Math.random()-.5)*2,2,1,0.1,[1,0.85,0.4],0.25,1)}}
+    else if(w.state==='fall'){w.vy-=30*dt;w.y+=w.vy*dt;w.x+=w.side*1.5*dt;w.dir+=dt*8;const g=surfaceAt(w.x,w.y,w.z);if(w.y<=g&&g>-300){w.y=g;w.state='leave';w.t=0}else if(w.y<-60)w.gone=true}
+    else if(w.state==='leave'){w.x+=Math.sign(w.x||1)*9*dt;w.dir=w.x>0?0:Math.PI;if(Math.abs(w.x)>W/2+0.5)w.y=Math.max(0,w.y-12*dt);if(w.t>4)w.gone=true}}
+  if(SCREW.length&&SCREW.every(w=>w.gone))SCREW=[];
+}
+
+// ---------- 굴착기 (직접 조종) ----------
+const SX_S=1.5;
+function secExcavStart(h){const side=h.x>=0?1:-1;SEC.hits=(SEC.hits||0)+1;
+  if(!SEXC||SEXC.side!==side||SEXC.state==='leave'){SEXC={side,x:side*(SEC.W/2+34),tx:side*(SEC.W/2+7.5),z:SEC.D/2-2.6,state:'drive',idle:0,acc:0,ctl:true,aim:[h.x,h.y],tip:null,t:0,hits:0};
+    toast('굴착기 투입 — 누른 채로 끌면 브레이커가 따라가요',1800);sfx(12,1.2)}
+  SEXC.ctl=true;SEXC.idle=0;SEXC.aim=[h.x,h.y];statTool('excav')}
+function secExcavAim(mx,my){if(!SEXC)return;const p=secPlane(mx,my,SEXC.z);if(p)SEXC.aim=[p.x,p.y]}
+function sxRoot(e){return[e.x-e.side*1.0*SX_S,2.6*SX_S,e.z]}
+function updateSecExcav(dt){const e=SEXC;if(!e)return;e.t+=dt;
+  if(e.state==='drive'){const dx=e.tx-e.x;if(Math.abs(dx)<0.3){e.x=e.tx;e.state='work'}else e.x+=Math.sign(dx)*Math.min(Math.abs(dx),26*dt)}
+  if(e.state==='leave'){e.x+=e.side*14*dt;if(e.t>3)SEXC=null;return}
+  const reach=clamp(SEC.W*0.6+12,24,56),r=sxRoot(e);let t=[e.aim[0],Math.max(e.aim[1],0.4)];
+  const vx=t[0]-r[0],vy=t[1]-r[1],l=Math.hypot(vx,vy);if(l>reach){t=[r[0]+vx/l*reach,r[1]+vy/l*reach]}
+  if(!e.tip)e.tip=t.slice();const k=Math.min(1,dt*10);e.tip[0]+=(t[0]-e.tip[0])*k;e.tip[1]+=(t[1]-e.tip[1])*k;
+  if(e.state!=='work')return;
+  if(!e.ctl){e.idle+=dt;if(e.idle>7){e.state='leave';e.t=0}return}
+  e.acc+=dt;if(e.acc>0.1){e.acc=0;const n=secHit2D(e.tip[0],e.tip[1],1.7,1.0);
+    if(n){e.hits++;cam.shake=Math.max(cam.shake,1.2);if(e.hits%2)sfx(8,0.15);
+      for(let q=0;q<3;q++)spawn(e.tip[0],e.tip[1],e.z+0.5,(Math.random()-.5)*8,2+Math.random()*5,1+Math.random()*5,0.2+Math.random()*0.4,Math.random()<0.5?C_COL:C_SLAB);
+      spawn(e.tip[0],e.tip[1],e.z+0.6,(Math.random()-.5)*4,3,2,0.25,[1,0.85,0.45],0.2,1)}}
+}
+function drawSecExcav(m){const e=SEXC;if(!e)return;const r=sxRoot(e),tp=e.tip||[r[0]-e.side*8,r[1]];
+  const yaw=e.side>0?Math.PI:0;drawExcavBody(m,e.x,0,e.z,yaw,yaw,SX_S,[tp[0],tp[1],e.z],r,e.ctl&&e.state==='work',clamp(SEC.W*0.6+12,24,56)/2+1)}
+
+// ---------- 쇠공 (선 긋기) ----------
+const SBALL=1.9;
+function secCraneLine(A,B){let dx=B.x-A.x,dy=B.y-A.y,L=Math.hypot(dx,dy);
+  if(L<3){toast('쇠공: 휘두를 방향으로 길게 선을 그어주세요');SUNDO.pop();return}
+  if(L>100){B={x:A.x+dx*100/L,y:A.y+dy*100/L,z:B.z};L=100}
+  const mx=(A.x+B.x)/2,top=Math.max(secTop(),A.y,B.y),side=mx>=0?1:-1;
+  SCRANES.push({A,B,L,piv:{x:mx,y:top+12+L*0.12},mastX:side*(SEC.W/2+15),z:SEC.D/2-1.2,t:0,grow:0,phase:'rise',pass:0,lastS:0,hit:new Set(),trail:[],touched:false});
+  SEC.hits=(SEC.hits||0)+1;sfx(8);toast('쇠공 — 그은 선을 따라 휘둘러요!',1300);statTool('crane')}
+function sBall(c,s){const sag=Math.sin(Math.PI*s)*Math.min(4,c.L*0.08);return[c.A.x+(c.B.x-c.A.x)*s,c.A.y+(c.B.y-c.A.y)*s-sag]}
+function updateSecCranes(dt){
+  for(let i=SCRANES.length-1;i>=0;i--){const c=SCRANES[i];c.t+=dt;
+    if(c.phase==='rise'){c.grow=Math.min(1,c.grow+dt*2.6);if(c.grow>=1){c.phase='swing';c.t=0;sfx(12,0.8)}continue}
+    if(c.phase==='swing'){const T=0.5+c.L/80,u=Math.min(1,c.t/T),e=(1-Math.cos(Math.PI*u))/2,s=c.pass===0?e:1-e,pw=c.pass===0?1:0.6;
+      const a=c.lastS,n=Math.max(1,Math.ceil(Math.abs(s-a)*c.L/0.8)),spd=Math.abs(s-a)*c.L/Math.max(dt,1e-3);
+      for(let k=1;k<=n;k++){const p=sBall(c,a+(s-a)*k/n);const hit=secHit2D(p[0],p[1],SBALL+0.5,(2.2+Math.min(3,spd/20))*pw,c.hit);
+        if(hit&&!c.touched){c.touched=true;hitStop(0.06);cam.shake=Math.max(cam.shake,3.5*pw);secBoom(p[0],p[1],c.z,10);sfxBoom(0.5*pw)}
+        if(hit&&Math.random()<0.5)for(let q=0;q<4;q++)spawn(p[0],p[1],c.z+0.5,(Math.random()-.5)*14,3+Math.random()*6,1+Math.random()*6,0.3+Math.random()*0.6,C_SLAB)}
+      c.lastS=s;const bp=sBall(c,s);c.trail.push(bp);if(c.trail.length>7)c.trail.shift();
+      if(u>=1){if(c.pass===0){c.pass=1;c.t=0;c.hit=new Set();c.touched=false;c.trail=[]}else{c.phase='retract';c.t=0}}continue}
+    c.grow-=dt*1.8;if(c.grow<=0)SCRANES.splice(i,1)}
+}
+function drawSecCranes(m,mg){for(const c of SCRANES){const g=clamp(c.grow,0,1),H=(c.piv.y+2)*g,x=c.mastX,z=c.z-2;
+  pushShape(m,CUBE,x,H/2,z,1.4,H,1.4,0,YEL,0);for(let y=4;y<H-1;y+=4)pushShape(m,CUBE,x,y,z,1.6,0.25,1.6,0,YEL_D,0);
+  if(g<0.5)continue;const top=H,L=Math.abs(c.piv.x-x);
+  pushShape(m,CUBE,(x+c.piv.x)/2,top,z,L+3,0.9,0.9,0,YEL,0);pushShape(m,CUBE,x+Math.sign(x-c.piv.x)*4,top,z,8,0.8,0.8,0,YEL_D,0);
+  pushShape(m,CUBE,x,top+1,z,1.8,1.2,1.8,0,[0.95,0.95,0.93],0);
+  const p=c.phase==='swing'?sBall(c,c.lastS):c.phase==='rise'?(q=>[q[0],q[1]+(1-g)*15])(sBall(c,0)):sBall(c,c.pass?0:1);const by=Math.min(p[1],top-1.5);
+  drawSeg(m,[c.piv.x,top,z],[p[0],by+SBALL,c.z],0.18,STEEL);pushShape(m,SPHERE,p[0],by,c.z,SBALL,SBALL,SBALL,0,[0.16,0.16,0.18],0);
+  if(c.phase==='swing')c.trail.forEach((q,k)=>{const s=SBALL*(0.3+k/c.trail.length*0.5);pushShape(mg,CUBE,q[0],q[1],c.z,s,s,s,k,[0.95,0.9,0.75],1)})}}
+
+// ---------- 다이너마이트 ----------
+function placeDynSec(h){if(CHARGES.length>=MAX_CHARGES){toast(`장약은 ${MAX_CHARGES}개까지 — Space 로 기폭!`);return}
+  const z=Math.min(h.z,SEC.D/2)+0.25;const c={kind:'sec',el:h.el,x:h.x,y:h.y,z,s:1.5,t:0};
+  if(h.el){const b=elWorld(h.el);c.off=[h.x-b[0],h.y-b[1]]}CHARGES.push(c);sfx(3,0.15);updateDetBtn();
+  toast(`다이너마이트 ${CHARGES.length}개 — Space 또는 [기폭] 버튼`,1500)}
+function secChargePos(c){if(c.el&&c.off&&c.el.alive){const b=elWorld(c.el);c.x=b[0]+c.off[0];c.y=b[1]+c.off[1]}return c}
+function secExplodeCharge(c){if(!SEC)return;secChargePos(c);secHit2D(c.x,c.y,5.5,9);impact(c.x,c.y,c.z,1.0);floatText(c.x,c.y+2,c.z,'쾅!','boom',1);addScore(2000);SEC.hits=(SEC.hits||0)+1}
+
+// ---------- MOVE: 층을 통째로 빼서 던지기 ----------
+function secGrabStart(h,mx,my){const s=SEC.S(h.el.k);if(!s||s.state!=='ok'||s.k<0){toast('지상층 부재를 잡아주세요');return false}
+  const cy=s.y+s.h/2,items=[];
+  for(const e of SEC.els){if(e.k!==s.k||!e.alive||e.hp0>=1e8)continue;const b=elWorld(e);items.push({b:[b[0],b[1]-cy,b[2],b[3],b[4]-cy,b[5]],col:e.glass?C_GLASS:e.col});e.alive=false}
+  if(!items.length)return false;s.state='gone';secDirty=true;SEC.hits=(SEC.hits||0)+1;
+  SHELD={items,x:0,y:cy,tx:0,ty:cy,vx:0,vy:0,h:s.h,rot:0};secGrabMove(mx,my);
+  cmdLine(['명령: MOVE',`객체 선택: ${floorName(s.k)} 통째로`,'끌어서 던지세요 — 빠진 자리로 위층이 내려앉아요']);sfx(8);addScore(2500);statTool('move');
+  return true}
+function secGrabMove(mx,my){if(!SHELD)return;const p=secPlane(mx,my,0);if(p){SHELD.tx=p.x;SHELD.ty=Math.max(p.y,SHELD.h/2+0.2)}}
+function secGrabRelease(){const h=SHELD;if(!h)return;SHELD=null;const sp=Math.hypot(h.vx,h.vy),k=sp>70?70/sp:1;
+  SFLY.push({items:h.items,x:h.x,y:h.y,vx:h.vx*k,vy:h.vy*k+3,h:h.h,rot:h.rot,spin:-h.vx*k*0.02,t:0});floatText(h.x,h.y+h.h,SEC.D/2,'MOVE','cad',1)}
+function updateSecMove(dt){
+  if(SHELD){const h=SHELD,k=Math.min(1,dt*8),nx=h.x+(h.tx-h.x)*k,ny=h.y+(h.ty-h.y)*k;
+    h.vx=h.vx*0.6+((nx-h.x)/Math.max(dt,1e-3))*0.4;h.vy=h.vy*0.6+((ny-h.y)/Math.max(dt,1e-3))*0.4;h.x=nx;h.y=ny;h.rot=clamp(-h.vx*0.008,-0.4,0.4);
+    if(Math.random()<0.2)spawn(h.x+(Math.random()-.5)*SEC.W*0.8,h.y-h.h/2,SEC.D/2-1,0,-2,0,0.2+Math.random()*0.3,C_SLAB)}
+  for(let i=SFLY.length-1;i>=0;i--){const f=SFLY[i];f.t+=dt;f.vy-=30*dt;f.x+=f.vx*dt;f.y+=f.vy*dt;f.rot+=f.spin*dt;
+    const hw=SEC.W/2,bot=f.y-f.h/2;
+    const surf=Math.abs(f.x)<SEC.W/2+hw?secSurfX(f.x-hw*0.8,f.x+hw*0.8):0;
+    if(f.vy<0&&bot<=surf||f.y<-80||f.t>8){SFLY.splice(i,1);if(f.y<-80||f.t>8)continue;
+      const sp=Math.hypot(f.vx,f.vy),pw=1.5+sp*0.12;SEC_BATCH=true;let n=0;
+      for(const e of SEC.els){if(!e.alive||e.hp0>=1e8)continue;const b=elWorld(e);if(b[3]>f.x-hw&&b[0]<f.x+hw&&b[4]>bot-5&&b[1]<bot+1.5){secDamage(e,pw*(0.6+Math.random()*0.6));n++}}
+      SEC_BATCH=false;secCheck();groupBreak(f,f.x,bot);impact(f.x,Math.max(0.3,bot),SEC.D/2-1,clamp(0.6+sp/35,0.6,1.8));addScore(n*400+2000);
+      toast(n?`던진 층이 꽂혔어요! 부재 ${n}개 파손`:'던진 층이 땅에 떨어졌어요',1600)}}
+}
+
+// ---------- EXTRUDE: 위로 끌어 증축 → 놓으면 하중 초과 ----------
+function secAddStory(){
+  if(SEC.st.length>=110)return false;const top=SEC.st[SEC.st.length-1];if(top.state!=='ok')return false;
+  const k=top.k+1,h=FLOOR_H,{W,D,xs,zs,add,inCore,cw,cd,czc,wallCol}=SEC;
+  SEC.st.push({k,h,y0:top.y0+top.h,y:top.y+top.h,vy:0,state:'ok',added:1});
+  add(k,'slab',[-W/2,0,-D/2,W/2,SLAB_T,D/2],2,5,C_SLAB);
+  for(const x of xs)for(const z of zs){if(inCore(x,z))continue;add(k,'col',[x-0.38,SLAB_T,z-0.38,x+0.38,h,z+0.38],2,3,C_COL)}
+  add(k,'core',[-cw/2,SLAB_T,czc-cd/2,cw/2,h,czc+cd/2],5,6,C_CORE);
+  for(let i=0;i<xs.length-1;i++)add(k,'wall',[xs[i],SLAB_T,-D/2,xs[i+1],h,-D/2+0.3],1,1,wallCol,{glass:0.55});
+  for(let i=0;i<zs.length-1;i++){add(k,'wall',[-W/2,SLAB_T,zs[i],-W/2+0.3,h,zs[i+1]],1,1,wallCol,{glass:0.55});add(k,'wall',[W/2-0.3,SLAB_T,zs[i],W/2,h,zs[i+1]],1,1,wallCol,{glass:0.55})}
+  const roof=SEC.els.find(e=>e.kind==='roof');if(roof){roof.k=k;roof.box=[-W/2,h,-D/2,W/2,h+SLAB_T,D/2];roof.alive=true}
+  SEC.N++;secDirty=true;return true}
+function secExtStart(my){const top=secTop();const a=project(SEC.W/2,top,SEC.D/2),b=project(SEC.W/2,top+FLOOR_H,SEC.D/2);
+  SEXT={my0:my,pps:a&&b?Math.max(10,Math.abs(a[1]-b[1])):20,added:0,n0:SEC.st.filter(s=>s.k>=0&&s.state==='ok').length};SEC.hits=(SEC.hits||0)+1;
+  cmdLine(['명령: EXTRUDE','돌출 높이 지정: 위로 끌어올리세요']);statTool('extrude')}
+function secExtMove(my){if(!SEXT)return;const want=clamp(Math.floor((SEXT.my0-my)/SEXT.pps),0,Math.max(0,90-SEXT.n0));
+  while(SEXT.added<want){if(!secAddStory())break;SEXT.added++;addScore(150);sfx(2);const t=SEC.st[SEC.st.length-1];if(SEXT.added%3===0)floatText(SEC.W/2+2,t.y+t.h,SEC.D/2,`+${SEXT.added}층`,'cad',0.7)}
+  const H=secTop();cam.ty=Math.max(cam.ty,H*0.45);cam.dist=Math.max(cam.dist,H*1.45)}
+function secExtRelease(){const e=SEXT;SEXT=null;if(!e||!e.added){if(e)SUNDO.pop();return}
+  makeSecLabels();const r=e.added/Math.max(1,e.n0);
+  cmdLine(['명령: EXTRUDE',`돌출: +${e.added}층`,r>0.25?'용적률 검토: 초과 ⚠ 하부 기둥 하중 초과':'용적률 검토: 통과']);
+  if(r<=0.25){toast('아직 버틸 만해요 — 더 높이 끌어올려 보세요',2000);return}
+  const ok=SEC.st.filter(s=>s.state==='ok'&&s.k>=0);const n=Math.min(ok.length-1,Math.max(1,Math.round(ok.length*Math.min(0.85,r*0.45))));
+  toast(`용적률 초과! 아래층부터 ${n}개 층이 하중을 못 버텨요`,2600);cam.shake=Math.max(cam.shake,2.5);sfx(20,1.5);
+  for(let i=0;i<n;i++){const s=ok[i];later(0.7+i*0.5,()=>{if(!SEC||s.state!=='ok')return;
+    for(const el of SEC.els)if(el.k===s.k&&el.alive&&(el.kind==='col'||el.kind==='core'))el.hp=Math.min(el.hp,el.hp0*0.15);secDirty=true;cam.shake=Math.max(cam.shake,2);
+    later(0.2,()=>{if(SEC&&s.state==='ok'){crushStory(s);impact(0,s.y+1,SEC.D/2-1,0.8);secCheck()}})})}}
+
+// ---------- TRIM: 선을 그어 자르기 ----------
+function secTrim(A,B){let dx=B.x-A.x,dy=B.y-A.y;const L=Math.hypot(dx,dy);if(L<2){cmdLine(['명령: TRIM','절단선을 길게 그어주세요']);SUNDO.pop();return}
+  let nx=-dy/L,ny=dx/L;if(ny<0){nx=-nx;ny=-ny}
+  if(ny<0.08){nx=(A.x+B.x)/2>=0?1:-1;ny=0}   // 거의 수직선 → 바깥쪽을 잘라냄
+  const sv=(x,y)=>(x-A.x)*nx+(y-A.y)*ny;const items=[];let cutN=0;SEC_BATCH=true;
+  for(const e of SEC.els){if(!e.alive||e.hp0>=1e8)continue;const b=elWorld(e);
+    const v=[sv(b[0],b[1]),sv(b[3],b[1]),sv(b[0],b[4]),sv(b[3],b[4])],mn=Math.min(...v),mx=Math.max(...v);
+    if(mn>0.02){items.push({b:b.slice(),col:e.glass?C_GLASS:e.col});e.alive=false;continue}
+    if(mx<=0.02)continue;
+    // 걸친 부재: 넓은 판(슬래브·지붕·코어)은 선을 따라 잘라 아래쪽만 남기고, 나머지는 끊어져 나감
+    if((e.kind==='slab'||e.kind==='roof'||e.kind==='core')&&Math.abs(nx)>0.12){const ym=(b[1]+b[4])/2,xc=A.x-(ym-A.y)*ny/nx;
+      const keepLeft=sv(b[0],ym)<0;const nb=keepLeft?[b[0],xc]:[xc,b[3]],cutp=keepLeft?[xc,b[3]]:[b[0],xc];
+      if(nb[1]-nb[0]>0.6&&cutp[1]-cutp[0]>0.05){items.push({b:[cutp[0],b[1],b[2],cutp[1],b[4],b[5]],col:e.col});e.box[0]=nb[0];e.box[3]=nb[1];cutN++;continue}}
+    secDestroy(e,true);cutN++}
+  SEC_BATCH=false;
+  for(const s of SEC.st){if(s.state!=='ok'||s.k<=-SEC.nb)continue;if(!SEC.els.some(e=>e.k===s.k&&e.alive&&e.kind!=='prop'))s.state='gone'}
+  secDirty=true;secCheck();
+  if(!items.length&&!cutN){cmdLine(['명령: TRIM','자를 객체 선택: 0개 — 건물을 가로질러 그어주세요']);SUNDO.pop();return}
+  let cx=0,cy=0,mnx=1e9,mxx=-1e9,mny=1e9,mxy=-1e9;for(const it of items){const b=it.b;cx+=(b[0]+b[3])/2;cy+=(b[1]+b[4])/2}
+  cx/=Math.max(1,items.length);cy/=Math.max(1,items.length);
+  for(const it of items){const b=it.b;b[0]-=cx;b[3]-=cx;b[1]-=cy;b[4]-=cy;mnx=Math.min(mnx,b[0]);mxx=Math.max(mxx,b[3]);mny=Math.min(mny,b[1]);mxy=Math.max(mxy,b[4])}
+  let tx=dx/L,ty=dy/L;if(ty>0){tx=-tx;ty=-ty}if(Math.abs(ty)<0.06){tx=Math.sign(cx)||1;ty=0}
+  if(items.length)SSLICE.push({items,x:cx,y:cy,vx:0,vy:0,tx,ty,v:0,rot:0,w:0,t:0,phase:'slide',bb:[mnx,mxx,mny,mxy]});
+  SCUT.push({A,B,t:0.7});SEC.hits=(SEC.hits||0)+1;
+  for(let k=0;k<30;k++){const u=Math.random();spawn(A.x+dx*u,A.y+dy*u,SEC.D/2+0.2,(Math.random()-.5)*4,2+Math.random()*3,1+Math.random()*3,0.12,[0.6,0.9,1],0.5,1)}
+  hitStop(0.08);flashScreen(0.25,'#9fd8ff');sfx(14,0.5);addScore(items.length*250+cutN*200);statTool('trim');
+  floatText((A.x+B.x)/2,(A.y+B.y)/2+2,SEC.D/2,'TRIM','cad',1.3);
+  cmdLine(['명령: TRIM','절단 경계 선택: 선 1개',`자를 객체 선택: ${items.length+cutN}개 — 위쪽이 미끄러져 떨어져요`]);
+}
+function updateSecSlices(dt){
+  for(let i=SCUT.length-1;i>=0;i--){SCUT[i].t-=dt;if(SCUT[i].t<=0)SCUT.splice(i,1)}
+  for(let i=SSLICE.length-1;i>=0;i--){const g=SSLICE[i];g.t+=dt;
+    if(g.x0==null)g.x0=g.x;
+    if(g.phase==='slide'){g.v+=12*dt;g.vx=g.tx*g.v;g.vy=g.ty*g.v;g.w=-Math.sign(g.tx||1)*0.7;if(Math.abs(g.x-g.x0)>(g.bb[1]-g.bb[0])*0.45||g.t>1.6){g.phase='fall';g.ft=0}}else{g.vy-=30*dt;g.ft+=dt}
+    g.x+=g.vx*dt;g.y+=g.vy*dt;g.rot+=g.w*dt;
+    if(g.phase!=='fall')continue;
+    const c=Math.cos(g.rot),s=Math.sin(g.rot);let my=1e9,mxp=0;for(const [px,py] of [[g.bb[0],g.bb[2]],[g.bb[1],g.bb[2]],[g.bb[0],g.bb[3]],[g.bb[1],g.bb[3]]]){const y=g.y+px*s+py*c;if(y<my){my=y;mxp=g.x+px*c-py*s}}
+    const surf=Math.abs(mxp)<SEC.W/2&&g.ft>0.3?secSurfX(mxp-0.5,mxp+0.5):0;
+    if(my<=surf||g.t>7){SSLICE.splice(i,1);if(g.t>7)continue;const n=secHit2D(mxp,surf+0.5,7,4);groupBreak(g,mxp,surf);
+      impact(mxp,Math.max(0.3,surf),SEC.D/2-1,clamp(0.5+g.items.length/120,0.5,1.8));addScore(n*300+1500)}}
+}
+function drawSecCut(mg){for(const c of SCUT){const a=c.t/0.7,dx=c.B.x-c.A.x,dy=c.B.y-c.A.y,L=Math.hypot(dx,dy),n=Math.ceil(L/0.6);
+  for(let k=0;k<=n;k++){const u=k/n;pushShape(mg,CUBE,c.A.x+dx*u,c.A.y+dy*u,SEC.D/2+0.15,0.35*a+0.1,0.35*a+0.1,0.35*a+0.1,0,[0.55,0.88,1],1)}}}
+
+// ---------- 레미콘 · 심의 보류 · 철근 빼기 (보이게) ----------
+function secPour(h){if(SPOUR){toast('이미 타설 중이에요');return}const ok=SEC.st.filter(s=>s.state==='ok'&&s.k>=0);
+  SPOUR={side:h.x>=0?1:-1,t:0,boom:0,load:0,state:'boom',n:Math.max(1,Math.ceil(ok.length*0.4)),done:0,acc:0};toast('레미콘 도착 — 옥상에 타설 시작',1500);sfx(10,1.4)}
+function updateSecPour(dt){const p=SPOUR;if(!p)return;p.t+=dt;
+  if(p.state==='boom'){p.boom=Math.min(1,p.boom+dt*0.9);if(p.boom>=1)p.state='pump'}
+  else if(p.state==='pump'){p.load+=dt*0.55;const top=secTop();if(Math.random()<0.8)spawn((Math.random()-.5)*0.8,top+6,SEC.D/2-2.6+(Math.random()-.5)*0.6,(Math.random()-.5),-8,0,0.25+Math.random()*0.25,[0.58,0.58,0.56]);
+    if(p.load>1.1){if(!p.warn){p.warn=1;toast('과타설! 설계하중 초과 — 위층부터 내려앉아요',2200)}p.acc+=dt;
+      if(p.acc>0.7){p.acc=0;const ok=SEC.st.filter(s=>s.state==='ok'&&s.k>=0);const s=ok[ok.length-1];
+        if(s&&ok.length>1){crushStory(s);impact(0,s.y+s.h,SEC.D/2-1,0.6);secCheck();p.done++}if(p.done>=p.n||ok.length<=1){p.state='leave';p.t=0}}}}
+  else{p.boom=Math.max(0,p.boom-dt);if(p.t>2.5)SPOUR=null}}
+function drawSecPour(m){const p=SPOUR;if(!p)return;const s=1.4,x=p.side*(SEC.W/2+9),z=SEC.D/2-2.6,top=secTop();
+  pushShape(m,CUBE,x,1.2*s,z,5.6*s,0.8*s,2.2*s,0,[0.25,0.25,0.27],0);pushShape(m,CUBE,x-p.side*1.9*s,2.2*s,z,1.6*s,1.6*s,2.1*s,0,[0.95,0.95,0.95],0);
+  pushShape(m,SPHERE,x+p.side*0.8*s,2.6*s,z,2.2*s,1.2*s,1.2*s,p.t*2,[0.98,0.55,0.12],0);
+  if(p.boom>0){const root=[x,3.6*s,z],end=[0,top+6,z],mid=[(x)*0.55,Math.max(root[1],end[1])+8,z],k=p.boom;
+    drawSeg(m,root,[root[0]+(mid[0]-root[0])*k,root[1]+(mid[1]-root[1])*k,z],0.5*s,YEL);if(k>=1)drawSeg(m,mid,end,0.45*s,YEL_D);
+    if(p.load>0){const l=Math.min(1.4,p.load);pushShape(m,SPHERE,0,top+0.2,0,SEC.W*0.32*l,0.4+l*1.4,SEC.D*0.42*l,0,[0.6,0.6,0.58],0)}}}
+function secStamp(){const ok=SEC.st.filter(s=>s.state==='ok'&&s.k>=0);const n=Math.max(1,Math.ceil(ok.length*0.4));
+  const stop=ok.length>n?ok[ok.length-n].y:0;SSTAMP={y:secTop()+55,vy:-110,state:'drop',t:0,n,done:0,stop};sfx(5)}
+function updateSecStamp(dt){const s=SSTAMP;if(!s)return;s.t+=dt;
+  if(s.state==='drop'){s.y+=s.vy*dt;const top=secTop();if(s.y<=top){s.y=top;s.state='press';s.t=0;impact(0,top,SEC.D/2-1,1.1);floatText(0,top+4,SEC.D/2,'보 류','mark',3);toast(`심의 보류! 위에서 ${s.n}개 층을 찍어 눌러요`,2200)}}
+  else if(s.state==='press'){s.y-=9*dt;for(const st of SEC.st){if(st.state==='ok'&&st.k>=0&&st.y+st.h*0.5>s.y&&s.done<s.n){crushStory(st);s.done++;cam.shake=Math.max(cam.shake,3);secCheck()}}
+    if(s.done>=s.n||s.y<=s.stop||s.t>6){s.state='lift';s.t=0}}
+  else{s.y+=45*dt;if(s.t>1.8)SSTAMP=null}}
+function drawSecStamp(m){const s=SSTAMP;if(!s)return;const W=SEC.W*0.92,D=SEC.D*0.92,red=[0.82,0.10,0.10],dk=[0.36,0.22,0.14];
+  pushShape(m,CUBE,0,s.y+1.4,0,W,2.8,D,0,red,0);pushShape(m,CUBE,0,s.y+3.8,0,W*0.8,2,D*0.8,0,[0.95,0.93,0.88],0);
+  pushShape(m,CUBE,0,s.y+4.8+W*0.25,0,W*0.16,W*0.5,W*0.16,0,dk,0);pushShape(m,SPHERE,0,s.y+5+W*0.55,0,W*0.2,W*0.16,W*0.2,0,dk,0)}
+function drawSecRebar(m){const r=SREB;if(!r)return;let n=0;for(const e of SEC.els){if(!e.alive||e.kind!=='col'||e.k<0)continue;if(n++>60)break;const b=elWorld(e),cx=(b[0]+b[3])/2,cz=(b[2]+b[5])/2;
+  const y=b[4]+Math.max(0,r.t-((cx*7+cz*3)%0.6+0.6)%0.6)*7;pushShape(m,CUBE,cx+0.15,y+1.5,cz,0.08,3,0.08,0,REBAR,0);pushShape(m,CUBE,cx-0.15,y+1.2,cz,0.08,3,0.08,0,REBAR,0)}}
+
+function secUpdateTools(dt){updateSecCrew(dt);updateSecExcav(dt);updateSecCranes(dt);updateSecMove(dt);updateSecSlices(dt);updateSecPour(dt);updateSecStamp(dt);if(SREB){SREB.t+=dt;if(SREB.t>3.5)SREB=null}}
+function drawSecTools(m,mg){for(const w of SCREW)drawWorker(m,w,1.3);drawSecExcav(m);drawSecCranes(m,mg);
+  if(SHELD)drawGroup(m,SHELD);for(const f of SFLY)drawGroup(m,f);for(const g of SSLICE)drawGroup(m,g);drawSecCut(mg);
+  drawSecPour(m);drawSecStamp(m);drawSecRebar(m);for(const c of CHARGES)if(c.kind==='sec')secChargePos(c);drawCharges(m,mg)}
 
 // ---------- 피킹 ----------
 function rayBox(o,d,b){let t0=0,t1=1e9;for(let a=0;a<3;a++){const lo=b[a],hi=b[a+3];if(Math.abs(d[a])<1e-9){if(o[a]<lo||o[a]>hi)return null;continue}
@@ -1821,7 +2213,6 @@ function secPick(mx,my){
 
 // ---------- 지면/잔해 ----------
 function surfaceAt(x,y,z){
-  if(MODE==='fps'&&FP)return(Math.abs(x)<FP.W/2+0.2&&Math.abs(z)<FP.D/2+0.2)?0:-400;
   if(MODE!=='section'||!SEC)return groundAt(x,z);
   if(Math.abs(x)>SEC.P||Math.abs(z)>SEC.P)return -400;
   if(Math.abs(x)<=SEC.W/2&&Math.abs(z)<=SEC.D/2){
@@ -1867,6 +2258,7 @@ function drawSecDyn(m,mg){
     if(o.kind==='ball'){pushShape(m,SPHERE,o.x,o.y,o.z,o.r,o.r,o.r,0,[0.22,0.23,0.25],0);pushShape(m,CUBE,o.x,o.y+40,o.z+30,0.2,80,0.2,0,[0.15,0.15,0.15],0)}
     else{pushShape(m,CUBE,o.x,o.y,o.z,o.r*2.6,o.r*0.6,o.r*0.6,o.rot,[0.96,0.96,0.94],0)}}
   if(sBeam&&firing){const L=90;pushShape(mg,CUBE,sBeam.x,sBeam.y,sBeam.z+L/2,0.18,0.18,L,0,[1,0.12,0.08],1);pushShape(mg,CUBE,sBeam.x,sBeam.y,sBeam.z+L/2,0.5,0.5,L,0,[1,0.5,0.45],1);pushShape(mg,SPHERE,sBeam.x,sBeam.y,sBeam.z,0.6,0.6,0.6,0,[1,0.6,0.2],1)}
+  drawSecTools(m,mg);
 }
 
 // ---------- 점수 / 목표 ----------
@@ -1910,14 +2302,14 @@ function makeSecLabels(){const box=$('#labels');box.innerHTML='';SLBL=[];
 }
 function updateSecLabels(){
   for(const L of SLBL){const s=L.s;const x=L.ours||L.top?SEC.W/2+1:-SEC.W/2-1.5;const y=L.top?s.y+s.h+3:s.y+s.h*0.6;
-    const p=project(x,y,SEC.D/2);if(!p||!opts.labels||s.state==='crushed'&&!L.ours){L.el.style.display='none';continue}
+    const p=project(x,y,SEC.D/2);if(!p||!opts.labels||(s.state==='crushed'||s.state==='gone')&&!L.ours){L.el.style.display='none';continue}
     L.el.style.display='';L.el.style.left=p[0]+'px';L.el.style.top=p[1]+'px';L.el.style.transform=L.ours||L.top?'translate(0,-50%)':'translate(-100%,-50%)'}
 }
 
 // ---------- 되돌리기 ----------
-function secSnap(){return{e:SEC.els.map(e=>[e.hp,e.alive]),s:SEC.st.map(s=>[s.y,s.state]),score}}
-function secRestore(v){SEC.els.forEach((e,i)=>{e.hp=v.e[i][0];e.alive=v.e[i][1]});SEC.st.forEach((s,i)=>{s.y=v.s[i][0];s.state=v.s[i][1];s.vy=0});score=v.score;
-  D.used.fill(0);D.rest.fill(0);rubDirty=true;SFALL=[];sQuake=null;sBeam=null;cam.shake=0;secDirty=true;updateHUD()}
+function secSnap(){return{n:SEC.els.length,ns:SEC.st.length,N:SEC.N,e:SEC.els.map(e=>[e.hp,e.alive,e.k,e.box.slice()]),s:SEC.st.map(s=>[s.y,s.state]),score}}
+function secRestore(v){SEC.els.length=v.n;SEC.st.length=v.ns;SEC.N=v.N;secClearTools();SEC.els.forEach((e,i)=>{e.hp=v.e[i][0];e.alive=v.e[i][1];e.k=v.e[i][2];e.box=v.e[i][3].slice()});SEC.st.forEach((s,i)=>{s.y=v.s[i][0];s.state=v.s[i][1];s.vy=0});score=v.score;
+  D.used.fill(0);D.rest.fill(0);rubDirty=true;SFALL=[];sQuake=null;sBeam=null;cam.shake=0;secDirty=true;makeSecLabels();updateHUD()}
 function secPushUndo(){SUNDO.push(secSnap());if(SUNDO.length>20)SUNDO.shift();$('#btnUndo').disabled=false}
 
 
@@ -2005,233 +2397,6 @@ async function submitRank(){
   finally{setTimeout(()=>$('#rankSubmit').disabled=false,3000)}
 }
 
-// =====================================================================
-//  1인칭 모드 — 우리 층 사무실에 직접 들어가서 3분 안에 초토화
-//  구조 안정도가 0이 되면 층이 무너지기 시작 → 비상계단으로 탈출
-// =====================================================================
-let FP=null;
-const mFps=new MB(1<<15);
-const FTOOLS=[
-  {id:'hammer',name:'오함마',cd:0.5,dmg:1.1,range:2.4,area:0.7},
-  {id:'pry',name:'빠루',cd:0.24,dmg:0.55,range:2.1,area:0.3,soft:3},
-  {id:'breaker',name:'브레이커',hold:true,dps:2.6,range:1.9,area:0.5,struct:2},
-];
-const FMAT={ceil:{hp:0.4,pts:30,c:[0.80,0.80,0.78]},glass:{hp:0.5,pts:120,c:[0.55,0.70,0.80]},gyp:{hp:1.4,pts:150,c:[0.92,0.91,0.88]},
-  desk:{hp:1.2,pts:120,c:[0.80,0.66,0.48]},mon:{hp:0.4,pts:90,c:[0.12,0.13,0.15]},chair:{hp:0.6,pts:60,c:[0.22,0.24,0.28]},
-  duct:{hp:1.4,pts:200,c:[0.78,0.79,0.80]},pipe:{hp:0.6,pts:150,c:[0.80,0.15,0.12]},light:{hp:0.3,pts:60,c:[1,1,0.94]},
-  item:{hp:1,pts:0,c:[0.9,0.9,0.9]},col:{hp:6,pts:900,c:[0.70,0.69,0.66]},core:{hp:16,pts:3000,c:[0.62,0.62,0.60]},shelf:{hp:1.2,pts:140,c:[0.55,0.45,0.35]}};
-const SOFT={ceil:1,glass:1,gyp:1,light:1,duct:1,pipe:1};
-
-function buildFpsRoom(){
-  const k=SEC.focusK,s=SEC.S(k),W=SEC.W,D=SEC.D,H=s.h,ceil=Math.min(2.7,H-0.65),R=mulberry(SEC.b.id%9973+11);
-  const els=[];const add=(kind,box,o)=>{const m=FMAT[kind];const e=Object.assign({kind,box,hp:m.hp,hp0:m.hp,pts:m.pts,col:m.c,alive:true},o||{});els.push(e);return e};
-  // 구조체: 단면 모델의 기둥·코어 위치를 그대로 사용
-  let core=null;
-  for(const e of SEC.els){if(e.k!==k||!e.alive)continue;const b=e.box;
-    if(e.kind==='col')add('col',[b[0],0,b[2],b[3],H,b[5]]);
-    if(e.kind==='core')core=add('core',[b[0],0,b[2],b[3],H,b[5]])}
-  // 외피: 사방 창호 (허리벽 위 유리)
-  const step=3.0;
-  for(let x=-W/2;x<W/2-0.1;x+=step){const x1=Math.min(W/2,x+step);for(const z of [D/2-0.12,-D/2+0.12]){
-    if(core&&z<0&&x1>core.box[0]&&x<core.box[3]&&core.box[2]<-D/2+1.2)continue;
-    add('gyp',[x,0,z-0.1,x1,0.9,z+0.1],{col:[0.75,0.74,0.72]});add('glass',[x+0.05,0.9,z-0.04,x1-0.05,ceil,z+0.04],{glassP:1})}}
-  for(let z=-D/2;z<D/2-0.1;z+=step){const z1=Math.min(D/2,z+step);for(const x of [W/2-0.12,-W/2+0.12]){
-    add('gyp',[x-0.1,0,z,x+0.1,0.9,z1],{col:[0.75,0.74,0.72]});add('glass',[x-0.04,0.9,z+0.05,x+0.04,ceil,z1-0.05],{glassP:1})}}
-  // 천장 텍스 (2.4m 모듈) · 조명
-  const T=2.4;for(let x=-W/2;x<W/2-0.05;x+=T)for(let z=-D/2;z<D/2-0.05;z+=T){const x1=Math.min(W/2,x+T),z1=Math.min(D/2,z+T);
-    const lit=((Math.round(x/T)+Math.round(z/T))%3===0);add(lit?'light':'ceil',[x+0.02,ceil,z+0.02,x1-0.02,ceil+0.04,z1-0.02],{glow:1})}
-  // 천장 속: 덕트 · 스프링클러 배관
-  for(let z=-D/2+3;z<D/2-2;z+=7){add('duct',[-W/2+0.6,ceil+0.15,z,W/2-0.6,ceil+0.55,z+0.9])}
-  for(let x=-W/2+2;x<W/2-1;x+=6){add('pipe',[x,ceil+0.08,-D/2+0.6,x+0.08,ceil+0.14,D/2-0.6],{name:'sprinkler'})}
-  // 회의실 (유리 칸막이) · 경량 칸막이
-  const mz=-D/2+(core?core.box[5]-core.box[2]+2:4);
-  const mx0=W/2-Math.min(10,W*0.35);
-  for(let x=mx0;x<W/2-0.3;x+=1.5)add('glass',[x,0,mz-0.04,Math.min(W/2-0.3,x+1.45),ceil,mz+0.04],{name:'meeting'});
-  for(let z=-D/2+0.3;z<mz;z+=1.5)add('gyp',[mx0-0.06,0,z,mx0+0.06,ceil,Math.min(mz,z+1.45)]);
-  if(W>24)for(let z=-D/2+0.3;z<mz-1.2;z+=1.5)add('gyp',[-W/2+8-0.06,0,z,-W/2+8+0.06,ceil,Math.min(mz-1.2,z+1.45)]);
-  // 책상 줄 (모니터 · 의자)
-  const avoid=(x0,z0,x1,z1)=>els.some(e=>(e.kind==='col'||e.kind==='core')&&x1>e.box[0]-0.3&&x0<e.box[3]+0.3&&z1>e.box[2]-0.3&&z0<e.box[5]+0.3);
-  for(let z=mz+2.2;z<D/2-2;z+=3.4)for(let x=-W/2+1.5;x<W/2-2.5;x+=1.7){
-    if(avoid(x,z,x+1.5,z+0.8)||R()<0.08)continue;
-    add('desk',[x,0.70,z,x+1.5,0.75,z+0.8]);add('desk',[x+0.05,0,z+0.05,x+0.12,0.70,z+0.75],{col:[0.3,0.3,0.32]});add('desk',[x+1.38,0,z+0.05,x+1.45,0.70,z+0.75],{col:[0.3,0.3,0.32]});
-    add('mon',[x+0.35,0.75,z+0.1,x+0.95,1.15,z+0.15]);if(R()<0.6)add('mon',[x+0.95,0.75,z+0.12,x+1.35,1.1,z+0.16]);
-    add('chair',[x+0.5,0,z+0.95,x+1.0,0.95,z+1.45]);
-    if(R()<0.1)for(let i=0;i<3;i++)add('item',[x+1.25,0.75+i*0.12,z+0.5,x+1.38,0.86+i*0.12,z+0.63],{name:'ramen',col:i%2?[0.85,0.15,0.12]:[0.95,0.95,0.92],hp:0.2,hp0:0.2})}
-  // 건축사무소 특수 집기
-  const sx=-W/2+1.2,sz=mz+0.6;
-  add('item',[sx,0,sz,sx+1.6,1.15,sz+0.75],{name:'plotter',col:[0.2,0.2,0.22]});
-  for(let i=0;i<6;i++)add('item',[sx+1.9,0.02+Math.floor(i/3)*0.26,sz+(i%3)*0.27,sx+3.1,0.27+Math.floor(i/3)*0.26,sz+0.25+(i%3)*0.27],{name:'rolls',col:[0.97,0.97,0.95],hp:0.3,hp0:0.3});
-  add('item',[sx+3.6,0,sz,sx+4.2,1.0,sz+0.6],{name:'nas',col:[0.1,0.11,0.13]});
-  const tx=0,tz=D/2-3.2;add('desk',[tx-1.6,0,tz,tx+1.6,0.9,tz+1.4],{col:[0.92,0.92,0.9]});
-  for(let i=0;i<5;i++){const bx=tx-1.4+i*0.62,hh=0.3+R()*0.9;add('item',[bx,0.9,tz+0.3,bx+0.48,0.9+hh,tz+0.9],{name:'model',col:[0.98,0.98,0.97]})}
-  for(let i=0;i<3;i++)add('item',[-W/2+0.4,0.2,-D/2+5+i*0.8,-W/2+0.46,1.2,-D/2+5.6+i*0.8],{name:'sample',col:[[0.72,0.55,0.38],[0.62,0.62,0.6],[0.78,0.78,0.8]][i]});
-  add('item',[-W/2+0.3,0.6,mz+5,-W/2+0.38,2.0,mz+8],{name:'pinup',col:[0.93,0.90,0.82]});
-  add('item',[W/2-1.0,0,mz+1,W/2-0.4,0.9,mz+1.6],{name:'coffee',col:[0.55,0.55,0.58]});
-  add('item',[mx0+2,0,-D/2+1.5,mx0+4.2,0.78,-D/2+2.5],{name:'boss',col:[0.35,0.24,0.16]});
-  for(let x=mx0+1;x<W/2-1;x+=1.2)add('shelf',[x,0,-D/2+0.4,x+1.1,1.9,-D/2+0.8]);
-  // 비상계단 문 (코어 앞면)
-  let exit;if(core){const b=core.box;exit={x:(b[0]+b[3])/2,z:b[5]+0.05};}else exit={x:-W/2+1,z:-D/2+1};
-  const destroyable=els.filter(e=>e.kind!=='col'&&e.kind!=='core').reduce((a,e)=>a+e.hp0,0);
-  return{k,W,D,H,ceil,els,exit,destroyable};
-}
-
-// ---------- 진입 / 종료 ----------
-function enterFps(){
-  if(!SEC)return;if(SEC.S(SEC.focusK).state!=='ok'){toast('그 층은 이미 무너졌어요');return}
-  const r=buildFpsRoom();
-  FP=Object.assign(r,{x:r.exit.x,z:r.exit.z+1.6,yaw:0,pitch:-0.05,tool:0,cd:0,swing:0,t:180,stab:100,state:'play',collapseT:0,score0:score,broken:{},holding:false,lock:false,dust:0,shown:{}});
-  FP.yaw=Math.PI;   // 사무실 안쪽(+z)을 바라보도록
-  SEC.prevCam={...cam};MODE='fps';D.used.fill(0);D.rest.fill(0);rubDirty=true;FP.dirty=true;
-  document.body.classList.add('fps');$('#fpsHud').style.display='';fpsTool(0);
-  toast(`마감 D-1 · ${floorName(r.k)} 사무실 3분 안에 초토화! 기둥·코어를 건드리면 구조 안정도가 떨어져요`,4200);
-}
-function exitFps(result){
-  if(MODE!=='fps')return;try{document.exitPointerLock&&document.exitPointerLock()}catch(e){}
-  const ruin=fpsRuin();
-  MODE='section';Object.assign(cam,SEC.prevCam);D.used.fill(0);D.rest.fill(0);rubDirty=true;
-  document.body.classList.remove('fps');$('#fpsHud').style.display='none';
-  // 단면 모델에 결과 반영
-  const s=SEC.S(FP.k);
-  if(ruin>0.4)for(const e of SEC.els)if(e.k===FP.k&&e.alive&&(e.kind==='prop'||e.kind==='wall'))secDestroy(e,true);
-  if(result==='collapse'||result==='escape'){if(s.state==='ok'){crushStory(s);secCheck()}}
-  secDirty=true;makeSecLabels();selectWeapon(weapon);
-  if(result)showFpsResult(result,ruin);
-  FP=null;
-}
-function fpsRuin(){let d=0;for(const e of FP.els)if(e.kind!=='col'&&e.kind!=='core'&&!e.alive)d+=e.hp0;return FP.destroyable?d/FP.destroyable:0}
-function showFpsResult(result,ruin){
-  const gained=score-FP.score0,items=Object.keys(FP.broken).map(k=>`${({model:'모형',plotter:'플로터',rolls:'도면 롤',nas:'NAS',sample:'샘플',pinup:'핀업 보드',coffee:'커피머신',boss:'소장실',ramen:'컵라면 탑',sprinkler:'스프링클러'})[k]||k}`).join(' · ')||'-';
-  const g=ruin>=0.85?'S':ruin>=0.65?'A':ruin>=0.45?'B':ruin>=0.25?'C':'D';
-  const title={time:'마감 시간 종료',escape:'비상계단 탈출 성공!',collapse:'붕괴에 깔렸어요…',quit:'철수'}[result];
-  $('#fpsResBody').innerHTML=`<div class="rep-head"><div>${title}</div><small>${esc(SEC.firm.name)} · ${floorName(FP.k)}</small></div>
-  <table class="rep"><tr><th>초토화율</th><td>${Math.round(ruin*100)}% <b>${g}</b></td></tr><tr><th>구조 안정도</th><td>${Math.max(0,Math.round(FP.stab))}%</td></tr>
-  <tr><th>남은 시간</th><td>${Math.max(0,Math.ceil(FP.t))}초</td></tr><tr><th>부순 집기</th><td>${esc(items)}</td></tr><tr><th>획득 점수</th><td>${fmt(gained)}점</td></tr></table>`;
-  $('#mFpsRes').classList.add('open');
-}
-
-// ---------- 도구 ----------
-function fpsTool(i){if(!FP)return;FP.tool=i;document.querySelectorAll('#fpsTools button').forEach((b,j)=>b.classList.toggle('on',j===i))}
-function fpsDir(){const cp=Math.cos(FP.pitch);return[Math.sin(FP.yaw)*cp*-1,Math.sin(FP.pitch),Math.cos(FP.yaw)*cp*-1]}
-function fpsEye(){return[FP.x,1.6,FP.z]}
-function fpsPick(range){const o=fpsEye(),d=fpsDir();let best=range,hit=null;
-  for(const e of FP.els){if(!e.alive)continue;const t=rayBox(o,d,e.box);if(t!=null&&t<best){best=t;hit=e}}
-  return hit?{e:hit,p:[o[0]+d[0]*best,o[1]+d[1]*best,o[2]+d[2]*best]}:null}
-function fpsHit(dt){
-  const T=FTOOLS[FP.tool];const h=fpsPick(T.range);if(!h){if(!T.hold)sfx(2);return}
-  const dmgBase=T.hold?T.dps*dt:T.dmg;
-  for(const e of FP.els){if(!e.alive)continue;const d=boxDist(e.box,...h.p);if(e!==h.e&&d>T.area)continue;
-    let dmg=dmgBase*(e===h.e?1:0.5);if(T.soft&&SOFT[e.kind])dmg*=T.soft;if(T.struct&&(e.kind==='col'||e.kind==='core'))dmg*=T.struct;
-    fpsDamage(e,dmg,h.p)}
-  if(!T.hold){sfx(h.e.kind==='glass'?5:8);FP.shake=0.25;for(let k=0;k<5;k++)spawn(h.p[0],h.p[1],h.p[2],(Math.random()-.5)*3,1+Math.random()*2,(Math.random()-.5)*3,0.05+Math.random()*0.08,h.e.col)}
-  else if(Math.random()<0.5)spawn(h.p[0],h.p[1],h.p[2],(Math.random()-.5)*2,1,(Math.random()-.5)*2,0.04,[0.7,0.7,0.68],0.3,1);
-}
-function fpsDamage(e,dmg,p){
-  e.hp-=dmg;FP.dirty=true;
-  if(e.kind==='col')FP.stab-=dmg*1.6;if(e.kind==='core')FP.stab-=dmg*0.9;
-  if(e.hp>0)return;e.alive=false;addScore(e.pts);
-  const [x0,y0,z0,x1,y1,z1]=e.box,cx=(x0+x1)/2,cy=(y0+y1)/2,cz=(z0+z1)/2;
-  const n=Math.min(14,Math.ceil((x1-x0+y1-y0+z1-z0)*2));
-  for(let k=0;k<n;k++)spawn(x0+Math.random()*(x1-x0),y0+Math.random()*(y1-y0),z0+Math.random()*(z1-z0),(Math.random()-.5)*3,Math.random()*2,(Math.random()-.5)*3,0.08+Math.random()*Math.min(0.35,(x1-x0+z1-z0)*0.15),e.col);
-  if(e.kind==='col'){FP.stab-=10;toast('⚠ 기둥 파괴! 구조 안정도 급감',1600);FP.shake=0.8;sfx(25)}
-  if(e.kind==='core'){FP.stab-=30;FP.shake=1.2;sfx(35)}
-  if(e.kind==='glass')for(let k=0;k<8;k++)spawn(cx,cy,cz,(Math.random()-.5)*4,Math.random()*2,(Math.random()-.5)*4,0.06,[0.75,0.88,0.95],1.2,1);
-  if(e.name==='sprinkler'&&!FP.broken.sprinkler){FP.broken.sprinkler=1;addScore(1500);toast('스프링클러 배관 파손! 사무실 물바다 +1,500',2200)}
-  if(e.name==='sprinkler')FP.water=(FP.water||0)+4;
-  const it=e.name&&ITEMS[e.name];
-  if(it){if(!FP.broken[e.name]){FP.broken[e.name]=1;addScore(it.pts);toast(it.msg+' +'+fmt(it.pts),2200)}
-    if(e.name==='plotter'||e.name==='rolls')for(let k=0;k<20;k++)spawn(cx,y1,cz,(Math.random()-.5)*5,3+Math.random()*4,(Math.random()-.5)*5,0.12+Math.random()*0.15,Math.random()<0.6?[0.97,0.97,0.95]:[0.35,0.5,0.85],2.5,3);
-    if(e.name==='model')for(let k=0;k<20;k++)spawn(cx,y1,cz,(Math.random()-.5)*3,2+Math.random()*3,(Math.random()-.5)*3,0.05+Math.random()*0.08,[[0.98,0.98,0.97],[0.9,0.25,0.2],[0.25,0.45,0.85]][k%3],3,3)}
-  // 받침이 없어진 위 물건 떨어뜨리기
-  for(const o of FP.els){if(!o.alive||o===e||o.kind==='ceil'||o.kind==='light'||o.kind==='duct'||o.kind==='pipe')continue;
-    if(Math.abs(o.box[1]-y1)<0.06&&o.box[3]>x0&&o.box[0]<x1&&o.box[5]>z0&&o.box[2]<z1){o.alive=false;spawn((o.box[0]+o.box[3])/2,o.box[1],(o.box[2]+o.box[5])/2,0,0,0,Math.min(0.5,(o.box[3]-o.box[0])),o.col);addScore(o.pts*0.5)}}
-}
-
-// ---------- 매 프레임 ----------
-function fpsUpdate(dt){
-  if(!FP)return;
-  if(FP.state==='play'||FP.state==='collapse'){
-    // 이동 (WASD) + 충돌
-    let fx=0,fz=0;const k=KEYS;if(k.has('w')||k.has('arrowup'))fz+=1;if(k.has('s')||k.has('arrowdown'))fz-=1;if(k.has('d')||k.has('arrowright'))fx+=1;if(k.has('a')||k.has('arrowleft'))fx-=1;
-    if(k.has('q')&&!FP.lock)FP.yaw+=dt*2;if(k.has('e')&&!FP.lock)FP.yaw-=dt*2;
-    const sp=(k.has('shift')?5.5:3.2)*dt,sy=Math.sin(FP.yaw),cy=Math.cos(FP.yaw);
-    let nx=FP.x+(-sy*fz+cy*fx)*sp,nz=FP.z+(-cy*fz-sy*fx)*sp;
-    nx=clamp(nx,-FP.W/2+0.5,FP.W/2-0.5);nz=clamp(nz,-FP.D/2+0.5,FP.D/2-0.5);
-    for(const e of FP.els){if(!e.alive||e.box[4]<0.5||e.box[1]>1.6||e.kind==='ceil'||e.kind==='light')continue;const b=e.box,r=0.3;
-      const qx=clamp(nx,b[0],b[3]),qz=clamp(nz,b[2],b[5]),dx=nx-qx,dz=nz-qz,dd=Math.hypot(dx,dz);
-      if(dd<r){if(dd>1e-4){nx=qx+dx/dd*r;nz=qz+dz/dd*r}else{nx=FP.x;nz=FP.z}}}
-    FP.x=nx;FP.z=nz;
-    // 공격
-    FP.cd-=dt;const T=FTOOLS[FP.tool];
-    if(FP.holding&&T.hold){fpsHit(dt);FP.swing=(FP.swing+dt*20)%6.28;FP.shake=Math.max(FP.shake||0,0.08);humStart()}else if(T.hold)humStop();
-    if(FP.swingT>0)FP.swingT-=dt;
-    // 시간 · 구조
-    FP.t-=dt;
-    if(FP.stab<50&&Math.random()<(50-FP.stab)/50*0.6)spawn(FP.x+(Math.random()-.5)*8,FP.ceil-0.05,FP.z+(Math.random()-.5)*8,0,-0.5,0,0.03+Math.random()*0.05,[0.8,0.79,0.76],1.5,1);
-    if(FP.stab<25&&Math.random()<0.02){FP.shake=0.4;sfx(6)}
-    if(FP.water>0){FP.water-=dt;for(let k=0;k<3;k++)spawn(FP.x+(Math.random()-.5)*10,FP.ceil,FP.z+(Math.random()-.5)*10,0,-3,0,0.04,[0.55,0.75,0.95],0.8,1)}
-    if(FP.state==='play'&&FP.stab<=0){FP.state='collapse';FP.collapseT=12;toast('구조 붕괴 시작! 초록색 비상구로 12초 안에 탈출하세요',4000);sfx(40,3)}
-    if(FP.state==='collapse'){FP.collapseT-=dt;FP.shake=Math.max(FP.shake||0,0.25+0.5*(1-FP.collapseT/12));
-      if(Math.random()<0.3)spawn(FP.x+(Math.random()-.5)*6,FP.ceil,FP.z+(Math.random()-.5)*6,0,-2,0,0.2+Math.random()*0.4,[0.62,0.6,0.57]);
-      if(Math.hypot(FP.x-FP.exit.x,FP.z-FP.exit.z)<1.4){addScore(20000);toast('탈출 성공! +20,000',2500);FP.state='done';exitFps('escape');return}
-      if(FP.collapseT<=0){FP.state='done';exitFps('collapse');return}}
-    if(FP.t<=0&&FP.state==='play'){FP.state='done';exitFps('time');return}
-  }
-  if(FP.shake>0)FP.shake=Math.max(0,FP.shake-dt*1.5);
-  // 조준: 닿는 거리 안에 있으면 표시
-  {const h=fpsPick(FTOOLS[FP.tool].range);$('#cross').classList.toggle('hit',!!h);
-   const NM={col:'기둥 — 구조!',core:'코어 — 구조!',glass:'유리',gyp:'석고보드 벽',ceil:'천장 텍스',light:'조명',duct:'덕트',pipe:'스프링클러 배관',desk:'책상',mon:'모니터',chair:'의자',shelf:'서가',
-     model:'공모전 모형',plotter:'플로터',rolls:'도면 롤',nas:'NAS',sample:'마감재 샘플',pinup:'핀업 보드',coffee:'커피머신',boss:'소장실 책상',ramen:'컵라면 탑',meeting:'회의실 유리'};
-   const t=h?(NM[h.e.name]||NM[h.e.kind]||''):'';const el=$('#fpsTarget');if(el.textContent!==t)el.textContent=t;el.className=h&&(h.e.kind==='col'||h.e.kind==='core')?'warn':''}
-  // HUD
-  const ruin=fpsRuin(),tm=Math.max(0,FP.state==='collapse'?FP.collapseT:FP.t);
-  $('#fpsTime').textContent=FP.state==='collapse'?`탈출 ${tm.toFixed(1)}초`:`${Math.floor(tm/60)}:${String(Math.floor(tm%60)).padStart(2,'0')}`;
-  $('#fpsTime').classList.toggle('warn',FP.state==='collapse'||tm<30);
-  $('#fpsStab i').style.width=Math.max(0,FP.stab)+'%';$('#fpsStab i').style.background=FP.stab>50?'#3ec46d':FP.stab>25?'#f2b51d':'#e8452c';
-  $('#fpsStabV').textContent=Math.max(0,Math.round(FP.stab))+'%';$('#fpsRuin').textContent=`초토화 ${Math.round(ruin*100)}%`;
-  if(FP.dirty){FP.dirty=false;buildFpsMesh()}
-}
-function fpsCam(){
-  const sh=FP.shake||0,e=[FP.x+(Math.random()-.5)*sh*0.15,1.6+(Math.random()-.5)*sh*0.15,FP.z+(Math.random()-.5)*sh*0.15],d=fpsDir();
-  eye=e;VP=mul(persp(1.15,canvas.width/canvas.height,0.05,300),lookAt(e,[e[0]+d[0],e[1]+d[1],e[2]+d[2]],[0,1,0]));
-}
-function buildFpsMesh(){
-  const m=mFps;m.reset();const {W,D,H,ceil}=FP;
-  const fl=[0.62,0.63,0.62],slab=[0.70,0.69,0.66];
-  secBox(m,-W/2-0.3,-0.3,-D/2-0.3,W/2+0.3,0,D/2+0.3,fl,slab,slab);          // 바닥
-  secBox(m,-W/2-0.3,H,-D/2-0.3,W/2+0.3,H+0.3,D/2+0.3,slab,slab,slab);       // 윗층 슬래브 하부
-  for(const e of FP.els){if(!e.alive)continue;const b=e.box;let c=e.col;
-    if(e.hp<e.hp0&&(e.kind==='col'||e.kind==='core')){const s=1-e.hp/e.hp0;c=[c[0]+(0.9-c[0])*s,c[1]+(0.4-c[1])*s,c[2]+(0.25-c[2])*s]}
-    else if(e.hp<e.hp0)c=[c[0]*0.8,c[1]*0.8,c[2]*0.8];
-    if(e.glow){m.grow(36);pushShape(m,CUBE,(b[0]+b[3])/2,(b[1]+b[4])/2,(b[2]+b[5])/2,b[3]-b[0],b[4]-b[1],b[5]-b[2],0,c,1);continue}
-    secBox(m,b[0],b[1],b[2],b[3],b[4],b[5],c,c,c)}
-  // 비상구
-  const ex=FP.exit;pushShape(m,CUBE,ex.x,1.05,ex.z,1.0,2.1,0.08,0,[0.2,0.45,0.3],0);
-  pushShape(m,CUBE,ex.x,2.35,ex.z+0.05,0.7,0.25,0.05,0,[0.15,0.95,0.4],1);
-  m.upload();
-}
-function drawFpsHand(m,mg){
-  if(!FP)return;const T=FTOOLS[FP.tool];const d=fpsDir(),r=[Math.cos(FP.yaw),0,-Math.sin(FP.yaw)],u=[0,1,0];
-  const sw=FP.swingT>0?Math.sin((1-FP.swingT/0.25)*Math.PI):0;
-  const P=(f,rr,uu)=>[eye[0]+d[0]*f+r[0]*rr+u[0]*uu,eye[1]+d[1]*f+r[1]*rr+u[1]*uu,eye[2]+d[2]*f+r[2]*rr+u[2]*uu];
-  const base=P(0.5+sw*0.25,0.26,-0.3+sw*0.12);const head=P(0.66+sw*0.35,0.24,-0.14+sw*0.05);
-  const rot=Math.atan2(-d[2],d[0]);
-  if(T.id==='breaker'){const j=FP.holding?(Math.random()-.5)*0.03:0;drawSeg(m,base,[head[0]+j,head[1]+j,head[2]],0.04,[0.95,0.75,0.1]);pushShape(m,CUBE,head[0],head[1]-0.03,head[2],0.03,0.03,0.03,rot,[0.3,0.3,0.32],0)}
-  else{drawSeg(m,base,head,0.022,T.id==='pry'?[0.35,0.36,0.4]:[0.55,0.38,0.2]);pushShape(m,CUBE,head[0],head[1]+0.02,head[2],T.id==='pry'?0.025:0.12,T.id==='pry'?0.12:0.06,0.06,rot,T.id==='pry'?[0.75,0.12,0.1]:[0.3,0.31,0.33],0)}
-}
-
-// ---------- 입력 ----------
-function fpsPointerDown(e){
-  if(e.pointerType==='mouse'&&!FP.lock&&canvas.requestPointerLock){try{const r=canvas.requestPointerLock();if(r&&r.catch)r.catch(()=>{})}catch(err){}}
-  FP.drag={x:e.clientX,y:e.clientY,moved:false};
-  if(e.button===0){const T=FTOOLS[FP.tool];if(T.hold)FP.holding=true;else if(FP.cd<=0){FP.cd=T.cd;FP.swingT=0.25;fpsHit(0)}}
-}
-function fpsPointerMove(e){
-  if(FP.lock){FP.yaw-=e.movementX*0.0028;FP.pitch=clamp(FP.pitch-e.movementY*0.0028,-1.3,1.3);return}
-  if(FP.drag){const dx=e.clientX-FP.drag.x,dy=e.clientY-FP.drag.y;FP.drag.x=e.clientX;FP.drag.y=e.clientY;FP.yaw-=dx*0.005;FP.pitch=clamp(FP.pitch-dy*0.005,-1.3,1.3)}
-}
-function fpsPointerUp(){if(FP){FP.holding=false;FP.drag=null;humStop()}}
-document.addEventListener('pointerlockchange',()=>{if(FP)FP.lock=document.pointerLockElement===canvas});
-
 // ---------- 메인 루프 ----------
 function resize(){const dpr=Math.min(devicePixelRatio||1,2);canvas.width=Math.floor(innerWidth*dpr);canvas.height=Math.floor(innerHeight*dpr)}
 function layoutHUD(){const tb=$('#toolbar');if(!tb)return;const r=tb.getBoundingClientRect(),gap=innerHeight-r.top;
@@ -2242,7 +2407,6 @@ addEventListener('resize',()=>{resize();layoutHUD()});resize();setTimeout(layout
 let last=performance.now(),hudT=0;
 const FOG=[0.902,0.914,0.922];
 function drawScene(shadowPass){
-  if(MODE==='fps'){mFps.draw();mRub.draw();mDyn.draw();if(!shadowPass)mGlow.draw();return}
   if(MODE==='section'){mSec.draw();mRub.draw();mDyn.draw();if(!shadowPass)mGlow.draw();return}
   if(!shadowPass)mGround.draw();
   const vis=[];for(const c of CHUNKS.values()){if(Math.hypot(c.ox+TILE/2-cam.tx,c.oz+TILE/2-cam.tz)<CULL_R+Math.max(0,cam.dist-800))vis.push(c)}
@@ -2252,9 +2416,10 @@ function drawScene(shadowPass){
   if(!shadowPass)mGlow.draw();
 }
 function frame(now){
-  const dt=Math.min(0.05,(now-last)/1000);last=now;
-  if(MODE==='fps'){fpsUpdate(dt);updateFloats(dt)}
-  else if(MODE==='section'){secUpdate(dt);updateFloats(dt)}
+  let dt=Math.min(0.05,(now-last)/1000);last=now;const rdt=dt;
+  if(HSTOP>0){HSTOP=Math.max(0,HSTOP-rdt);dt*=0.05}   // 히트스톱: 순간 멈춤
+  updateLater(dt);updateRings(dt);
+  if(MODE==='section'){secUpdate(dt);updateFloats(dt)}
   else{
   for(let i=FALL.length-1;i>=0;i--){const o=FALL[i];o.vy-=60*dt;o.y+=o.vy*dt;if(o.tx!=null){const k=Math.min(1,dt*1.2);o.x+=(o.tx-o.x)*k;o.z+=(o.tz-o.z)*k;o.rot+=dt*4}
     if(o.y-o.r<=groundAt(o.x,o.z)){if(o.tx!=null){o.x=o.tx;o.z=o.tz}FALL.splice(i,1);o.hit(o)}}
@@ -2280,14 +2445,14 @@ function frame(now){
     if(Math.random()<0.1){const a=Math.random()*Math.PI*2,r=Math.random()*200;carve(quake.x+Math.cos(a)*r,quake.z+Math.sin(a)*r,6+Math.random()*6,1+Math.random()*1.5)}
     if(quake.t>quake.dur)quake=null}
   }
-  if(cam.shake>0)cam.shake=Math.max(0,cam.shake-dt*10);
-  if(MODE==='city'){moveCam(dt);LVPcur=LVP=cityLVP()}
-  if(MODE==='fps'&&FP)fpsCam();else updateCam();
+  if(cam.shake>0)cam.shake=Math.max(0,cam.shake-rdt*10);
+  if(MODE==='city'){moveCam(rdt);LVPcur=LVP=cityLVP()}
+  updateCam();
   updateWorld(dt);
   if(MODE==='city')updateDet(dt);
   if(MODE==='section'&&secDirty){secDirty=false;buildSection()}
   updateDebris(dt);
-  const useSh=opts.shadows&&SH_OK&&MODE!=='fps';
+  const useSh=opts.shadows&&SH_OK;
   if(useSh){
     gl.bindFramebuffer(gl.FRAMEBUFFER,shFB);gl.viewport(0,0,SHSIZE,SHSIZE);gl.clearColor(1,1,1,1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
     gl.useProgram(sprog);gl.uniformMatrix4fv(SU.uLVP,false,LVPcur);drawScene(true);
@@ -2332,7 +2497,7 @@ function openReport(){
   const d=new Date();const date=`${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`;
   const pct=tot?Math.round(dead/tot*100):0;
   $('#repBody').innerHTML=`<div class="rep-head"><div>철거 공사 일보</div><small>${date} · ${esc(CUR?CUR.name:'')}</small></div>
-  <table class="rep"><tr><th>공정률(파괴율)</th><td>${pct}%</td></tr><tr><th>철거 동수</th><td>${dead}동 / ${tot}동${STATS.erased?` (ERASE ${STATS.erased})`:''}</td></tr>
+  <table class="rep"><tr><th>공정률(파괴율)</th><td>${pct}%</td></tr><tr><th>철거 동수</th><td>${dead}동 / ${tot}동</td></tr>
   <tr><th>철거한 건축사무소</th><td>${n.d} / ${n.t}곳</td></tr><tr><th>투입 장비·도구</th><td>${esc(tools)}</td></tr>
   <tr><th>공사 기간</th><td>${Math.floor(sec/60)}분 ${sec%60}초</td></tr><tr><th>점수</th><td>${fmt(score)}점</td></tr><tr><th>최종 직급</th><td><b>${RANKS[k][2]}</b></td></tr></table>
   <div class="rep-sign"><span>감리 확인</span><span class="stamp">철거<br>완료</span></div>`;
@@ -2342,21 +2507,22 @@ $('#btnReport').onclick=openReport;
 $('#repShare').onclick=()=>{closeModals();$('#btnShare').click()};
 $('#repRank').onclick=()=>{closeModals();openRank()};
 $('#ult').onclick=armUlt;
+$('#btnDet').onclick=detonate;
 
 // ---------- 튜토리얼 ----------
 const TUT=[
-  ['회사를 고르고 돌아다니세요','전국 건축사사무소 9천여 곳 중 하나를 고르면 그 동네로 날아가요. WASD(또는 방향키)로 이동하면 주변 지도가 계속 이어서 만들어져요. 드래그로 회전, 휠로 확대. 노란 이름표가 사옥(입주 건물), 파란 핀은 근처 다른 건축사무소예요.'],
-  ['시공팀 도구 (1~6)','건물을 클릭하면 장비가 출동해요. 철거반·굴착기는 1층부터, 크레인은 클릭한 높이를, 레미콘은 옥상 과하중, 발파는 기둥을 한 번에, 철근 빼기는 건물이 스스로 무너지게 해요.'],
-  ['설계팀 도구 (7~0, -)','ERASE: 드래그로 범위 선택 — 왼→오는 완전히 들어간 건물, 오→왼은 걸친 건물까지(CAD와 같아요). 선택되는 건물이 파랗게 미리 보여요. MOVE: 건물을 잡고 끌어서 놓으면 날아가 떨어진 곳을 덮쳐요. EXTRUDE: 끝없이 증축하다 용적률 초과로 쓰러지며 옆 건물들을 덮쳐요. EXPLODE: 블록 분해, 무거운 조각이 주변을 때려요. 심의 보류(-): 도장으로 찍어 누르기.'],
-  ['구조대로 무너져요','외벽이 떨어지면 기둥·슬래브가 드러나고, 한 층의 기둥이 절반 넘게 부러지면 그 층이 주저앉아요. 1층 기둥을 노리면 빨리 무너지고, 잔해는 옆 건물까지 덮쳐요. 많이 부수면 오른쪽 아래 필살기 게이지가 차요(Q).'],
-  ['단면 · 1인칭 · 랭킹 · 정복','[단면](C 키)으로 우리 층만 정밀 철거하고, 단면에서 F 키로 그 층에 직접 들어가 3분 안에 사무실을 초토화하세요(오함마·빠루·브레이커). 기둥·코어를 건드리면 구조 안정도가 떨어지고, 0이 되면 초록 비상구로 탈출해야 해요. 그다음 [랭킹]에 점수 등록, [일보]로 철거 공사 일보를 받아 공유하세요. Ctrl+Z 되돌리기, 드래그 회전, 휠 확대.']
+  ['회사를 고르고 돌아다니세요','전국 건축사사무소 9천여 곳 중 하나를 고르면 그 동네로 날아가요. WASD(또는 방향키)로 이동하면 주변 지도가 계속 이어서 만들어져요. 빈 곳을 드래그하면 회전, 우클릭(또는 Shift) 드래그로 이동, 휠로 확대해요.'],
+  ['시공팀 도구 (1~6)','철거반: 인부 수십 명이 외벽을 타고 올라가 층마다 오함마질. 굴착기: 건물을 누른 채 끌면 브레이커가 마우스를 따라가요. 쇠공: 건물 위에 선을 그으면 그 선을 따라 휘둘러요. 레미콘: 옥상 과하중. 다이너마이트: 여러 곳에 붙이고 Space(기폭)로 연쇄 폭파. 철근 빼기: 순살 구조.'],
+  ['설계팀 도구 (7~0)','MOVE: 건물을 잡아 끌어서 던지기. EXTRUDE: 무한 증축 → 쓰러지며 옆 건물을 덮침. TRIM: 건물을 가로질러 선을 그으면 잘린 윗부분이 미끄러져 떨어져요. 심의 보류: 위에서 찍어 누름. Q: 필살기 "전부 다시".'],
+  ['구조대로 무너져요','외벽이 떨어지면 기둥·슬래브가 드러나고, 한 층의 기둥이 절반 넘게 부러지면 그 층이 주저앉아요. 1층 기둥을 노리면 빨리 무너지고, 잔해가 옆 건물까지 덮쳐요. Ctrl+Z 되돌리기.'],
+  ['단면 · 랭킹 · 정복','[단면](C 키)으로 사옥을 잘라 우리 층만 정밀 철거해요. 단면에서는 장비와 인부가 화면에 그대로 보이고, 층을 통째로 빼서 던지거나(MOVE) 위로 끌어 증축(EXTRUDE)할 수 있어요. F 키로 우리 층 확대. 철거 일보로 랭킹 등록, [정복]에서 구별 진행도를 확인하세요.'],
 ];
 let tutI=0;
 function showTut(i){tutI=clamp(i,0,TUT.length-1);$('#tutStep').textContent=`${tutI+1} / ${TUT.length}`;$('#tutTitle').textContent=TUT[tutI][0];$('#tutText').textContent=TUT[tutI][1];
   $('#tutPrev').disabled=tutI===0;$('#tutNext').textContent=tutI===TUT.length-1?'시작하기':'다음';$('#mTut').classList.add('open')}
 $('#tutPrev').onclick=()=>showTut(tutI-1);
-$('#tutNext').onclick=()=>{if(tutI===TUT.length-1){closeModals();lsSet('smasharch_tut_v1',1)}else showTut(tutI+1)};
-$('#tutSkip').onclick=()=>{closeModals();lsSet('smasharch_tut_v1',1)};
+$('#tutNext').onclick=()=>{if(tutI===TUT.length-1){closeModals();lsSet('smasharch_tut_v2',1)}else showTut(tutI+1)};
+$('#tutSkip').onclick=()=>{closeModals();lsSet('smasharch_tut_v2',1)};
 $('#btnHelp').onclick=()=>showTut(0);
 
 function updateWorld(dt){
@@ -2370,11 +2536,6 @@ function updateWorld(dt){
   groundDirty=bldDirty=treeDirty=false;
 }
 
-$('#fpsExit').onclick=()=>exitFps('quit');
-document.querySelectorAll('#fpsTools button').forEach((b,i)=>b.onclick=()=>fpsTool(i));
-$('#fpsResBack').onclick=()=>closeModals();
-$('#fpsResAgain').onclick=()=>{closeModals();enterFps()};
-for(const [id,key] of [['fpsFwd','w'],['fpsBack','s']]){const b=$('#'+id);b.addEventListener('pointerdown',e=>{e.preventDefault();KEYS.add(key)});for(const ev of ['pointerup','pointerleave','pointercancel'])b.addEventListener(ev,()=>KEYS.delete(key))}
 
 // =====================================================================
 //  구별 정복 진행도 — 부순 건축사무소를 시도·시군구별로 집계
