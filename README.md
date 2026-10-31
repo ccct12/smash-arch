@@ -8,9 +8,11 @@
 | 파일 | 하는 일 |
 |---|---|
 | `index.html` | 화면과 시작 코드. 구글 시트에서 사무소 목록을 받은 뒤 `game.js`를 실행해요 |
-| `game.js` | 게임 본체 (3D 렌더링, 파괴, 단면, 1인칭, 랭킹, 구별 정복) |
+| `game.js` | 게임 본체 (3D 렌더링, 파괴, 단면, 랭킹, 구별 정복) |
 | `config.js` | **배포 전에 고칠 파일.** Apps Script 웹앱 주소를 넣어요 |
 | `data/firms.json` | 시트 연결이 안 될 때 쓰는 사무소 목록 스냅샷 (2026-10-31 기준 9,456곳) |
+| `tools/build_tiles.py` | 지도 타일 만드는 스크립트 (GitHub Actions가 실행) |
+| `.github/workflows/` | `build-tiles.yml`(지도 타일 만들기) · `deploy.yml`(사이트 배포) |
 | `apps-script/Api.gs` | 구글 시트에 넣을 서버 코드 (사무소 목록 · 랭킹 · 정복 기록). GitHub에는 올라가도 상관없지만 실행은 시트에서 해요 |
 
 ## 1. 구글 시트에 서버 코드 넣기
@@ -42,8 +44,21 @@ window.SMASH_CONFIG = {
 
 1. GitHub에서 새 저장소를 만듭니다 (예: `smash-arch`, Public).
 2. **Add file → Upload files**로 이 폴더 안의 파일을 폴더 구조 그대로 올립니다. (`index.html`이 저장소 맨 위에 있어야 해요)
-3. 저장소 **Settings → Pages → Build and deployment**에서 Source를 **Deploy from a branch**, Branch를 **main / (root)**로 저장합니다.
-4. 1~2분 뒤 `https://<GitHub 아이디>.github.io/smash-arch/` 에서 열려요.
+3. 저장소 **Settings → Pages → Build and deployment**에서 Source를 **GitHub Actions**로 바꿉니다.
+   - 예전처럼 "Deploy from a branch"로 두면 지도 타일이 붙지 않아요.
+4. 파일을 올리면 **Actions** 탭에서 `사이트 배포`가 자동으로 돌고, 1~2분 뒤 `https://<GitHub 아이디>.github.io/smash-arch/` 에서 열려요.
+
+## 4. 지도 타일 (첫 화면을 빠르게)
+
+공용 지도 서버(Overpass)는 붐비면 수십 초씩 걸려서, 사무소 주변 지도를 미리 만들어 사이트에 같이 올려요.
+
+1. **Actions → 지도 타일 만들기 → Run workflow**를 누릅니다. (처음 한 번. 이후 매월 2일 새벽에 자동으로 갱신)
+2. 한국 OSM 파일(Geofabrik)을 받아 사무소 주변 750m만 잘라 `tiles/`를 만들고, 릴리스 `tiles-latest`에 `tiles.tar`로 올려요. 보통 20~60분 걸려요.
+3. 끝나면 `사이트 배포`가 이어서 돌면서 타일을 사이트에 붙여요. 사이트의 `tiles/meta.json`이 열리면 성공이에요.
+
+- 게임은 미리 만든 타일 → 브라우저 저장본 → 공용 서버 순서로 찾아요. 타일 범위 밖(멀리 축소하거나 목록에 없는 주소)만 공용 서버에 물어봐요.
+- 범위를 바꾸려면 Run workflow에서 반경(m)을 고치면 돼요. 넓힐수록 용량이 커져요 (GitHub Pages는 사이트 1GB까지).
+- 릴리스 `tiles-latest`는 워크플로가 관리하니 지우지 마세요. 지우면 다음 배포부터 타일 없이 공용 서버만 써요.
 
 ## 시트와 게임이 이어지는 방식
 
@@ -65,5 +80,5 @@ window.SMASH_CONFIG = {
 ## 알려둘 점
 
 - 누구나 점수와 철거 기록을 보낼 수 있는 구조라 조작을 완벽히 막지는 못해요. 이상한 기록은 시트에서 행을 지우면 돼요.
-- 지도는 무료 공용 OpenStreetMap(Overpass) 서버를 써서, 처음 가는 지역은 몇 초 걸릴 수 있어요.
+- 지도 타일 범위 밖은 무료 공용 OpenStreetMap(Overpass) 서버를 써서, 처음 가는 지역은 10~30초 걸릴 수 있어요. 한 번 받은 지역은 브라우저에 저장돼 다음부터 바로 떠요.
 - 코드를 고친 뒤 Apps Script는 **배포 → 배포 관리 → 수정 → 버전: 새 버전**으로 다시 배포해야 반영돼요. (웹앱 주소는 그대로예요)

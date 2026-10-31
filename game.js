@@ -306,25 +306,76 @@ const IDB=(()=>{let dbp=null;const open=()=>dbp||(dbp=new Promise((res,rej)=>{tr
     async set(k,v){try{const db=await open();db.transaction('osm','readwrite').objectStore('osm').put(v,k)}catch(e){}}}})();
 // 게임에 쓰는 것만 요청 (보행로·자전거길·기타 토지이용 제외) → 응답이 훨씬 작아짐
 function osmQuery(bb){return `[out:json][timeout:40];(way["building"](${bb});way["highway"~"^(motorway|trunk|primary|secondary|tertiary|residential|unclassified|service|living_street|pedestrian)(_link)?$"](${bb});way["landuse"~"^(grass|meadow|forest|recreation_ground|village_green|cemetery|reservoir|basin)$"](${bb});way["leisure"~"^(park|garden|pitch|playground|golf_course)$"](${bb});way["natural"~"^(water|wood|scrub|grassland|sand|beach)$"](${bb});node["natural"="tree"](${bb});node["office"="architect"](${bb});way["office"="architect"](${bb});node["name"~"건축사|건축사무소|Architect",i](${bb});way["name"~"건축사|건축사무소"](${bb}););out tags geom qt;`}
-let EP_I=0;
-async function fetchArea(i0,j0,i1,j1){
-  const [la0,ln0]=unproj(i0*TILE-TILE/2-10,j1*TILE+TILE/2+10),[la1,ln1]=unproj(i1*TILE+TILE/2+10,j0*TILE-TILE/2-10);
-  const bb=[la0,ln0,la1,ln1].map(v=>v.toFixed(5)).join(',');const key='v3:'+bb;
-  const hit=await IDB.get(key);if(hit)return hit;
-  const body='data='+encodeURIComponent(osmQuery(bb)),hd={'Content-Type':'application/x-www-form-urlencoded'};
-  // 서버 두 곳에 동시에 보내고 먼저 오는 응답 사용 (한쪽이 밀려 있어도 기다리지 않음)
-  const a=OVERPASS[EP_I%OVERPASS.length],b=OVERPASS[(EP_I+1)%OVERPASS.length];EP_I++;
-  const one=ep=>fetchT(ep,{method:'POST',body,headers:hd},45000).then(j=>{if(!j||!j.elements)throw new Error('bad');return j});
-  let json;try{json=await Promise.any([one(a),one(b)])}catch(e){json=await one(OVERPASS[(EP_I+1)%OVERPASS.length])}
-  IDB.set(key,json);return json;
-}
+// ---------- 미리 만든 지도 타일 (tiles/) — GitHub Actions가 한국 OSM 파일에서 사무소 주변만 잘라 둔 것 ----------
+// 셀: 위도 0.004° × 경도 0.005° (약 440m). tiles/meta.json 이 없으면 공개 지도 서버(Overpass)만 사용
+const STATIC={meta:null,ready:null,cells:new Map()};
+STATIC.ready=(async()=>{try{const c=new AbortController();const t=setTimeout(()=>c.abort(),4000);
+  const r=await fetch('tiles/meta.json',{signal:c.signal,cache:'no-cache'});clearTimeout(t);if(!r.ok)return null;const m=await r.json();
+  if(!m||!m.cellLat||!m.cellLon)return null;STATIC.meta=m;return m}catch(e){return null}})();
+async function gunzipJSON(buf){const u=new Uint8Array(buf);
+  if(u[0]===0x1f&&u[1]===0x8b){if(typeof DecompressionStream==='undefined')throw new Error('no gzip');
+    const s=new Blob([u]).stream().pipeThrough(new DecompressionStream('gzip'));return JSON.parse(await new Response(s).text())}
+  return JSON.parse(new TextDecoder().decode(u))}
+// 셀 하나 받기: 있으면 {e:[...]} · 범위 밖이면 null
+function staticCell(ci,cj){const k=ci+'/'+cj;let p=STATIC.cells.get(k);if(p)return p;
+  p=(async()=>{const r=await fetch(`tiles/${ci}/${cj}.bin`);if(r.status===404)return null;if(!r.ok)throw new Error('HTTP '+r.status);return gunzipJSON(await r.arrayBuffer())})();
+  p.catch(()=>STATIC.cells.delete(k));STATIC.cells.set(k,p);if(STATIC.cells.size>400)STATIC.cells.delete(STATIC.cells.keys().next().value);return p}
+// 압축 형식 → Overpass 응답과 같은 모양 ({elements:[{type,id,tags,geometry|lat,lon}]})
+function expandCell(d,out,seen){const o0=d.o[0],o1=d.o[1];
+  for(const [t,id,tags,c] of d.e){const key=t+id;if(seen.has(key))continue;seen.add(key);
+    let la=o0,lo=o1;const g=[];for(let i=0;i<c.length;i+=2){la+=c[i];lo+=c[i+1];g.push({lat:la/1e6,lon:lo/1e6})}
+    if(t===0)out.push({type:'node',id,tags,lat:g[0].lat,lon:g[0].lon});else out.push({type:'way',id,tags,geometry:g})}}
+async function staticArea(la0,ln0,la1,ln1){
+  const m=await Promise.race([STATIC.ready,new Promise(r=>setTimeout(()=>r(null),4000))]);if(!m)return null;
+  const ci0=Math.floor(la0/m.cellLat),ci1=Math.floor(la1/m.cellLat),cj0=Math.floor(ln0/m.cellLon),cj1=Math.floor(ln1/m.cellLon);
+  if((ci1-ci0+1)*(cj1-cj0+1)>64)return null;
+  const jobs=[];for(let i=ci0;i<=ci1;i++)for(let j=cj0;j<=cj1;j++)jobs.push(staticCell(i,j));
+  const cells=await Promise.all(jobs);if(cells.some(c=>!c))return null;   // 한 칸이라도 범위 밖이면 공개 서버로
+  const elements=[],seen=new Set();for(const d of cells)expandCell(d,elements,seen);return{elements,src:'static'}}
+
+// ---------- 지도 범위 받기: 미리 만든 타일 → 브라우저 저장본 → 공개 지도 서버 ----------
+let EP_I=0,OVP_BUSY=0,AREA_SRC='';
+const AREA_P=new Map();   // 같은 범위 요청은 하나로 합침 (미리 받기와 실제 불러오기가 겹쳐도 한 번만)
+function areaBBox(i0,j0,i1,j1,lat0,lng0){const k=Math.cos(lat0*Math.PI/180)*111320;
+  const U=(x,z)=>[lat0-z/110540,lng0+x/k];
+  const [la0,ln0]=U(i0*TILE-TILE/2-10,j1*TILE+TILE/2+10),[la1,ln1]=U(i1*TILE+TILE/2+10,j0*TILE-TILE/2-10);return[la0,ln0,la1,ln1]}
+function fetchArea(i0,j0,i1,j1,opt){return fetchAreaAt(i0,j0,i1,j1,LAT0,LNG0,opt)}
+function fetchAreaAt(i0,j0,i1,j1,lat0,lng0,opt){opt=opt||{};
+  const bbA=areaBBox(i0,j0,i1,j1,lat0,lng0),bb=bbA.map(v=>v.toFixed(5)).join(',');
+  let p=AREA_P.get(bb);
+  if(p&&!(opt.full&&p.staticOnly))return p;
+  p=(async()=>{
+    try{const s=await staticArea(...bbA);if(s)return s}catch(e){}
+    const hit=await IDB.get('v3:'+bb);if(hit)return hit;
+    if(opt.staticOnly)return null;
+    return overpassArea(bb,opt.bg)})();
+  p.staticOnly=!!opt.staticOnly;
+  p.then(v=>{if(!v)AREA_P.delete(bb)},()=>AREA_P.delete(bb));
+  AREA_P.set(bb,p);if(AREA_P.size>24)AREA_P.delete(AREA_P.keys().next().value);
+  return p}
+async function overpassArea(bb,bg){
+  // 배경(주변 타일) 요청은 한 번에 하나, 서버 한 곳에만 — 공개 서버가 요청을 막지 않게
+  if(bg){while(OVP_BUSY>=1)await new Promise(r=>setTimeout(r,250))}
+  OVP_BUSY++;
+  try{const body='data='+encodeURIComponent(osmQuery(bb)),hd={'Content-Type':'application/x-www-form-urlencoded'};
+    const one=ep=>fetchT(ep,{method:'POST',body,headers:hd},45000).then(j=>{if(!j||!j.elements)throw new Error('bad');return j});
+    let json;
+    if(bg){const a=OVERPASS[EP_I++%OVERPASS.length];try{json=await one(a)}catch(e){json=await one(OVERPASS[EP_I++%OVERPASS.length])}}
+    else{// 첫 화면: 서버 두 곳에 동시에 보내고 먼저 오는 응답 사용
+      const a=OVERPASS[EP_I%OVERPASS.length],b=OVERPASS[(EP_I+1)%OVERPASS.length];EP_I++;
+      try{json=await Promise.any([one(a),one(b)])}catch(e){json=await one(OVERPASS[(EP_I+1)%OVERPASS.length])}}
+    IDB.set('v3:'+bb,json);json.src='overpass';return json}
+  finally{OVP_BUSY--}}
+// 회사 목록에서 고르기 전에 미리 받아 두기
+let prefT=0;
+function prefetchFirm(f,full){if(!f||f.lat==null)return;fetchAreaAt(0,0,0,0,f.lat,f.lng,full?{full:true}:{staticOnly:true}).catch(()=>{})}
 /** 여러 타일을 한 번의 요청으로 불러와 세계에 추가. 반환: 추가된 건물 수 */
-async function loadTiles(list){
+async function loadTiles(list,opt){
   const cs=list.map(([i,j])=>getChunk(i,j,true)).filter(c=>c.state==='none');if(!cs.length)return 0;
   cs.forEach(c=>c.state='loading');const gen=WORLD.gen;
   const i0=Math.min(...cs.map(c=>c.i)),i1=Math.max(...cs.map(c=>c.i)),j0=Math.min(...cs.map(c=>c.j)),j1=Math.max(...cs.map(c=>c.j));
   let data=null;
-  if(!WORLD.fake){try{data=parseOSM(await fetchArea(i0,j0,i1,j1))}catch(e){data=null}}
+  if(!WORLD.fake){try{const j=await fetchArea(i0,j0,i1,j1,opt);AREA_SRC=j&&j.src||AREA_SRC;data=j?parseOSM(j):null}catch(e){data=null}}
   if(gen!==WORLD.gen)return 0;
   if(!data){if(WORLD.fake){data={bs:[],rs:[],lus:[],treeNodes:[]};for(const c of cs){const f=fakeCity((c.i*31+c.j*17+WORLD.gen)|0,c.ox,c.oz);data.bs.push(...f.bs);data.rs.push(...f.rs);data.lus.push(...f.lus)}}
     else{WORLD.failed++;cs.forEach(c=>c.state='none');setTimeout(()=>{},0);return -1}}
@@ -341,21 +392,24 @@ async function loadTiles(list){
   basePlaneAt='';
   return B.length-n0;
 }
-function loadTile(i,j){return loadTiles([[i,j]])}
-function neededTiles(){const r=cam.dist>1300?2:LOAD_R,ti=tileOf(cam.tx),tj=tileOf(cam.tz),out=[];
+function loadTile(i,j){return loadTiles([[i,j]],{full:true})}
+function neededTiles(){const r=cam.dist>1300&&!camFly?2:LOAD_R,ti=tileOf(cam.tx),tj=tileOf(cam.tz),out=[];
   for(let d=0;d<=r;d++)for(let i=ti-d;i<=ti+d;i++)for(let j=tj-d;j<=tj+d;j++){if(Math.max(Math.abs(i-ti),Math.abs(j-tj))!==d)continue;const c=getChunk(i,j);if(!c||c.state==='none')out.push([i,j])}
   return out}
-let retryAt=0;
+let retryAt=0,retryN=0,tileWaitT=0;
 function pumpTiles(){
   if(!CUR||MODE!=='city')return;const need=neededTiles();
-  $('#tileBox').style.display=need.length||tileBusy?'':'none';if(need.length||tileBusy)$('#tileBox').textContent=`주변 지도 불러오는 중… (${need.length+tileBusy*3})`;
-  if(!need.length||tileBusy>=2||performance.now()<retryAt)return;
-  // 첫 타일 기준 3×3 블록 안에서 아직 없는 타일을 한 요청으로 묶음
+  // 안내는 1.5초 넘게 기다릴 때만 작게 표시 (미리 만든 타일은 금방 와서 안 보임)
+  if(need.length||tileBusy){if(!tileWaitT)tileWaitT=performance.now()}else tileWaitT=0;
+  const show=tileWaitT&&performance.now()-tileWaitT>1500;const tb=$('#tileBox');
+  tb.style.display=show?'':'none';if(show){const t=`주변 지도 ${need.length+tileBusy*3}칸 받는 중${OVP_BUSY?' · 처음 가는 동네라 조금 걸려요':''}`;if(tb.textContent!==t)tb.textContent=t}
+  if(!need.length||tileBusy>=3||performance.now()<retryAt)return;
+  // 첫 타일 기준 3×3 블록 안에서 아직 없는 타일을 한 요청으로 묶음 (가까운 타일부터)
   const [a,b]=need[0],bi=Math.floor((a+1)/3)*3-1,bj=Math.floor((b+1)/3)*3-1;
   const grp=need.filter(([i,j])=>i>=bi&&i<=bi+2&&j>=bj&&j<=bj+2).slice(0,9);
   tileBusy++;
-  loadTiles(grp).then(n=>{if(n<0){retryAt=performance.now()+4000;if(!pumpTiles.warned){pumpTiles.warned=1;toast('지도 서버가 바빠요. 잠시 뒤 다시 시도해요',2500)}}
-    else{buildNeighborhood();if(MODE==='city')makeLabels()}}).finally(()=>{tileBusy--});
+  loadTiles(grp,{bg:true}).then(n=>{if(n<0){retryN++;retryAt=performance.now()+Math.min(30000,3000*Math.pow(2,retryN-1));if(!pumpTiles.warned){pumpTiles.warned=1;toast('지도 서버가 바빠요. 잠시 뒤 다시 시도해요',2500)}}
+    else{retryN=0;buildNeighborhood();if(MODE==='city')makeLabels()}}).finally(()=>{tileBusy--});
 }
 // 카메라를 따라다니는 그림자 범위
 function cityLVP(){const cx=Math.round(cam.tx/40)*40,cz=Math.round(cam.tz/40)*40,R=clamp(cam.dist*0.75,320,900);
@@ -1639,7 +1693,8 @@ async function loadFirm(f){
   for(const b of [...DETS])freeDet(b);clearTools();STATS={t0:0,kills:0,tools:{}};ULT=0;ultArmed=false;
   BASE=null;resetWorld();LAT0=lat!=null?lat:37.5665;LNG0=lat!=null?lng:126.978;
   cam.tx=0;cam.tz=0;
-  setLoading(true,'OpenStreetMap에서 사옥 주변 불러오는 중…');
+  setLoading(true,'사옥 주변 지도 불러오는 중…');
+  const slowMsg=setTimeout(()=>{if($('#loading').classList.contains('on'))setLoading(true,'처음 가는 동네라 OpenStreetMap 서버에서 받는 중… (보통 10~30초, 한 번 받으면 다음부터 바로 떠요)')},2500);
   WORLD.fake=lat==null;let n=await loadTile(0,0);
   let fake=WORLD.fake;
   if(!fake&&n<3){resetWorld();WORLD.fake=true;fake=true;await loadTile(0,0);toast(lat==null?'주소 위치를 찾지 못해 가상 단지로 시작해요. 다른 회사 → 좌표 입력으로 다시 시도해보세요.':'지도 데이터를 불러오지 못해 가상 단지로 시작해요.',4500);$('#firmAddr').textContent=(f.addr||'')+' · 가상 단지'}
@@ -1649,7 +1704,7 @@ async function loadFirm(f){
   BASE=takeState();updateHUD();
   // 하늘에서 사옥으로 날아 들어오기
   cam.theta=0.75;cam.phi=0.62;cam.dist=2400;camFly={t:0,from:{dist:2400,phi:0.62,theta:0.75},to:{dist:Math.min(1600,560*Math.max(1,1.15*innerHeight/innerWidth)),phi:0.95,theta:1.25}};
-  setLoading(false);
+  clearTimeout(slowMsg);setLoading(false);
   if(!lsGet('smasharch_tut_v2'))setTimeout(()=>showTut(0),400);
   if(!fake&&!B.some(b=>b.hq))toast('사옥 건물을 못 찾았어요. 설정 → "사옥 건물 직접 지정"으로 골라주세요.',4500);
   else if(!fake&&!f.tenant&&parseFloor(f.addr)==null&&B.some(b=>b.hq))toast('레이드 보스 · 사옥 전체를 쓰는 회사예요. 사옥 기둥이 2배 단단해요',3500);
@@ -1664,9 +1719,10 @@ document.querySelectorAll('[data-close]').forEach(b=>b.onclick=closeModals);
 document.querySelectorAll('.modal').forEach(m=>m.addEventListener('pointerdown',e=>{if(e.target===m)closeModals()}));
 $('#btnFirm').onclick=()=>{$('#mFirm').classList.add('open');setTimeout(()=>$('#customQ').focus(),50)};
 $('#btnSet').onclick=()=>$('#mSet').classList.add('open');
-function firmButton(name,addr,onclick){const b=document.createElement('button');b.className='firm';b.innerHTML='<b></b><span></span>';b.querySelector('b').textContent=name;b.querySelector('span').textContent=addr;b.onclick=onclick;return b}
+function firmButton(name,addr,onclick,firm){const b=document.createElement('button');
+  if(firm){b.addEventListener('pointerenter',()=>{clearTimeout(prefT);prefT=setTimeout(()=>prefetchFirm(firm,true),350)});b.addEventListener('pointerleave',()=>clearTimeout(prefT));b.addEventListener('pointerdown',()=>prefetchFirm(firm,true))}b.className='firm';b.innerHTML='<b></b><span></span>';b.querySelector('b').textContent=name;b.querySelector('span').textContent=addr;b.onclick=onclick;return b}
 FIRMS.forEach(presetFromData);
-const fl=$('#firmList');for(const f of FIRMS)fl.appendChild(firmButton(f.name,f.addr,()=>loadFirm(f)));
+const fl=$('#firmList');for(const f of FIRMS)fl.appendChild(firmButton(f.name,f.addr,()=>loadFirm(f),f));
 $('#firmCount').textContent=FIRMDATA.length?fmt(FIRMDATA.length)+'곳 (좌표 확정 '+fmt(FIRM_GEO_COUNT)+')'+(window.FIRMDATA_SRC==='snapshot'?' · 저장된 목록':''):'목록을 불러오지 못했어요 (주소 검색은 가능)';
 const norm=s=>s.toLowerCase().replace(/\(주\)|㈜|주식회사|\(유\)|\(합\)|유한회사|합자회사|[\s·.,\-()]/g,'');
 const FIDX=FIRMDATA.map(([n,a])=>norm(n)+'|'+norm(a));
@@ -1679,7 +1735,7 @@ function runSearch(){const q=$('#customQ').value.trim();const box=$('#searchRes'
   box.style.display='';
   if(m){box.appendChild(firmButton('좌표로 이동',`${m[1]}, ${m[2]}`,()=>loadFirm({name:'좌표 '+(+m[1]).toFixed(4)+', '+(+m[2]).toFixed(4),addr:'',lat:+m[1],lng:+m[2]})));return}
   const nq=norm(q);const hits=[];for(let i=0;i<FIDX.length&&hits.length<40;i++)if(FIDX[i].includes(nq))hits.push(i);
-  for(const i of hits)box.appendChild(firmButton(FIRMDATA[i][0],FIRMDATA[i][1]+GEO_TAG[FIRMDATA[i][4]],()=>loadFirm(firmFromData(i))));
+  hits.forEach((i,n)=>{const f=firmFromData(i);box.appendChild(firmButton(FIRMDATA[i][0],FIRMDATA[i][1]+GEO_TAG[FIRMDATA[i][4]],()=>loadFirm(f),f));if(n<3)setTimeout(()=>{if($('#customQ').value.trim()===q)prefetchFirm(f,false)},400)});
   box.appendChild(firmButton('“'+q+'” 주소로 직접 찾기','목록에 없으면 주소나 건물 이름으로 검색',()=>loadFirm({name:q,addr:q,q:addrQueries(q)})));
 }
 $('#customQ').addEventListener('input',runSearch);
