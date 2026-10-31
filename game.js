@@ -1,0 +1,2463 @@
+"use strict";
+
+/* =========================================================
+   SMASH ARCH — 건축사사무소 사옥 부수기 (비공식 팬 게임)
+   - 의존성 없음: WebGL 직접 렌더링 (그림자 맵 포함)
+   - 건물/도로/녹지/나무: OpenStreetMap Overpass API (실행 시 브라우저에서 호출)
+   - 전국 건축사사무소 목록: 공공데이터포털 '전국건축사사무소표준데이터' (사무소명·주소만 사용)
+   ========================================================= */
+
+// ---------- 회사 목록 ----------
+// [사무소명, 원본주소, 위도, 경도, 상태]  상태: 0 좌표 확정 · 1 근사(이름검색) · 2 좌표 없음(작업 중/실패)
+// 좌표는 구글 시트(Apps Script 웹앱 ?action=firms)에서 실행할 때 불러옴. 실패하면 data/firms.json 스냅샷 사용
+const FIRMDATA = Array.isArray(window.FIRMDATA_BOOT)?window.FIRMDATA_BOOT:[];
+// [사무소명, 원본주소, 위도, 경도, 상태, 키번호(=시트 번호-1), 시도, 시군구]
+// 좌표 이상치: 같은 시군구 중심에서 60km 넘게 떨어진 좌표는 "확인 필요"(1)로 표시
+(function flagOutliers(){const g=new Map();for(const r of FIRMDATA){if(r[4]!==0||r[2]==null||!r[7])continue;const k=r[6]+' '+r[7];if(!g.has(k))g.set(k,[[],[]]);const a=g.get(k);a[0].push(r[2]);a[1].push(r[3])}
+  const med=a=>{const s=[...a].sort((x,y)=>x-y);return s[s.length>>1]};const c=new Map([...g].map(([k,v])=>[k,[med(v[0]),med(v[1])]]));
+  for(const r of FIRMDATA){if(r[4]!==0||r[2]==null)continue;const m=c.get(r[6]+' '+r[7]);if(!m)continue;const dy=(r[2]-m[0])*110.5,dx=(r[3]-m[1])*111.3*Math.cos(m[0]*Math.PI/180);if(Math.hypot(dx,dy)>60)r[4]=1}})();
+const FIRM_GEO_COUNT = FIRMDATA.filter(r=>r[4]===0).length;
+// 대형사 목록: 좌표가 없으면 공공데이터에서 같은 주소의 확정 좌표를 가져옴 (시트 작업이 진행될수록 자동 반영)
+function presetFromData(f){if(f.lat!=null&&f.dkey)return;const key=(f.addr||'').replace(/\([^)]*\)/g,'').replace(/^서울\s/,'서울특별시 ').trim();
+  const row=FIRMDATA.find(r=>r[4]===0&&r[1].replace(/\s+/g,' ').startsWith(key));if(row){if(f.lat==null){f.lat=row[2];f.lng=row[3]}if(!f.dkey)f.dkey='d'+row[5]}}
+const FIRMS = [
+  {key:'map',dkey:'d5523',name:'MAP 종합건축사사무소', addr:'서울 송파구 송파대로22길 5-23 (MAP DESIGN CAMPUS)', lat:37.4884025081465, lng:127.121785337452},
+  {key:'samoo',  name:'삼우종합건축사사무소', addr:'서울 강동구 천호대로 1077 (이스트센트럴타워)', lat:37.53726, lng:127.13144},
+  {key:'heerim', name:'희림종합건축사사무소', addr:'서울 강동구 상일로6길 39', q:addrQueries('서울특별시 강동구 상일로6길 39'), approxLast:true},
+  {key:'haeahn', name:'해안종합건축사사무소', addr:'서울 강남구 봉은사로 208 (해안빌딩)', lat:37.50736, lng:127.03483},
+  {key:'gansam', name:'간삼건축', addr:'서울 중구 동호로20다길 16', q:addrQueries('서울특별시 중구 동호로20다길 16'), approxLast:true},
+  {key:'junglim',name:'정림건축', addr:'서울 중구 세종대로12길 12', q:addrQueries('서울특별시 중구 세종대로12길 12'), approxLast:true},
+];
+// 주소 → 지오코딩 후보 (마지막은 도로 이름까지만 = 근사 위치)
+function addrQueries(addr){
+  const a1=addr.replace(/\([^)]*\)/g,' ').split(',')[0].replace(/\s+/g,' ').trim();
+  const tk=a1.split(' ');
+  const out=[a1];
+  if(tk.length>2)out.push(tk.slice(1).join(' '));
+  let ri=-1;for(let i=tk.length-1;i>=0;i--){if(/(로|길)$/.test(tk[i])||/(로|길)\d*번?길?$/.test(tk[i])){ri=i;break}}
+  if(ri>0)out.push(tk.slice(0,ri+1).join(' '));
+  return [...new Set(out)];
+}
+
+// ---------- 설정 ----------
+const FLOOR_Y = -60, BOTTOM_Y = -75;
+const opts = {sound:true, labels:true, debris:true, shadows:true, pins:true};
+try{ const s = JSON.parse(localStorage.getItem('smasharch_opts')||'null'); if(s) Object.assign(opts,s);}catch(e){}
+
+// ---------- 유틸 ----------
+const $ = s => document.querySelector(s);
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+function mulberry(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function toast(msg,ms=2200){const t=$('#toast');t.textContent=msg;t.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(()=>t.classList.remove('show'),ms)}
+function fmt(n){return Math.floor(n).toLocaleString('ko-KR')}
+function lsGet(k){try{return JSON.parse(localStorage.getItem(k)||'null')}catch(e){return null}}
+function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
+const CSSCOL={white:[.95,.95,.95],grey:[.6,.6,.6],gray:[.6,.6,.6],silver:[.75,.75,.75],black:[.2,.2,.2],red:[.7,.25,.2],brown:[.5,.35,.25],beige:[.85,.8,.68],yellow:[.9,.82,.45],blue:[.35,.5,.7],green:[.4,.6,.45],orange:[.85,.55,.3],maroon:[.5,.2,.18]};
+function parseColor(s){if(!s)return null;s=s.trim().toLowerCase();if(CSSCOL[s])return CSSCOL[s];const m=s.match(/^#?([0-9a-f]{6})$/);if(m){const n=parseInt(m[1],16);return[(n>>16&255)/255,(n>>8&255)/255,(n&255)/255]}return null}
+
+// ---------- WebGL ----------
+const canvas = $('#gl');
+const gl = canvas.getContext('webgl',{antialias:true}) || canvas.getContext('experimental-webgl');
+if(!gl){ document.body.innerHTML='<p style="padding:40px;color:#111">이 브라우저는 WebGL을 지원하지 않아요.</p>'; throw new Error('no webgl'); }
+const DERIV=!!gl.getExtension('OES_standard_derivatives');
+const HIGHP=(()=>{const f=gl.getShaderPrecisionFormat(gl.FRAGMENT_SHADER,gl.HIGH_FLOAT);return f&&f.precision>0})();
+const PREC=HIGHP?'precision highp float;\n':'precision mediump float;\n';
+
+const VS=PREC+`
+attribute vec3 aP;attribute vec3 aN;attribute vec3 aC;attribute vec2 aX;
+uniform mat4 uVP;uniform mat4 uLVP;uniform vec3 uCam;uniform vec3 uTgt;uniform vec2 uFogR;
+varying vec3 vC;varying vec3 vN;varying vec3 vW;varying vec2 vX;varying vec4 vL;varying float vF;varying float vE;
+void main(){
+  vec4 w=vec4(aP,1.0);gl_Position=uVP*w;
+  vW=aP;vN=aN;vC=aC;vX=aX;vL=uLVP*w;
+  vE=length(aN)<0.1?1.0:0.0;
+  vF=clamp((length(aP.xz-uTgt.xz)-uFogR.x)/uFogR.y,0.0,1.0);
+}`;
+const FS=(DERIV?'#extension GL_OES_standard_derivatives : enable\n':'')+PREC+`
+uniform sampler2D uSh;uniform vec3 uFog;uniform vec3 uSun;uniform vec3 uCam;uniform float uShOn;uniform float uTexel;
+varying vec3 vC;varying vec3 vN;varying vec3 vW;varying vec2 vX;varying vec4 vL;varying float vF;varying float vE;
+float unpack(vec4 c){return dot(c,vec4(1.0,1.0/255.0,1.0/65025.0,1.0/16581375.0));}
+float shadowAt(float nd){
+  if(uShOn<0.5)return 1.0;
+  vec3 p=vL.xyz/vL.w*0.5+0.5;
+  if(p.x<0.0||p.x>1.0||p.y<0.0||p.y>1.0||p.z>1.0)return 1.0;
+  float bias=0.0006+0.0016*(1.0-nd);float s=0.0;
+  for(int x=-1;x<=1;x++)for(int y=-1;y<=1;y++){
+    float d=unpack(texture2D(uSh,p.xy+vec2(float(x),float(y))*uTexel));
+    s+=(p.z-bias>d)?0.0:1.0;}
+  return s/9.0;
+}
+void main(){
+  if(vE>0.5){gl_FragColor=vec4(mix(vC,uFog,vF),1.0);return;}
+  vec3 n=normalize(vN);vec3 c=vC;float glass=0.0;
+  if(vX.x>=0.0){
+    float u=vX.x,st=vX.y,y=vW.y;
+    float fy=fract((y-0.4)/3.4);float fx;float win=0.0;float avg=0.3;
+    if(st<0.5){fx=fract(u/3.2);win=step(0.2,fx)*step(fx,0.8)*step(0.3,fy)*step(fy,0.8);avg=0.3;}
+    else if(st<1.5){fx=fract(u/1.8);win=step(0.40,fy)*step(fy,0.88)*step(0.08,fx);avg=0.44;}
+    else if(st<2.5){fx=fract(u/1.7);win=step(0.05,fx)*step(0.05,fy)*(1.0-step(0.94,fy));avg=0.85;}
+    else{fx=fract(u/4.6);win=step(0.3,fx)*step(fx,0.7)*step(0.34,fy)*step(fy,0.72);avg=0.15;}
+    if(y<3.9&&y>0.3&&st<2.5&&st>-0.5){float g=fract(u/4.2);win=max(win,step(0.06,g)*step(g,0.94)*0.9);}
+    #ifdef GL_OES_standard_derivatives
+    float fw=max(fwidth(u),fwidth(y));win=mix(win,avg,clamp((fw-0.35)/1.2,0.0,1.0));
+    #endif
+    float pn=fract(sin(floor(u/1.7)*12.9898+floor(y/3.4)*78.233)*43758.5453);
+    vec3 gc=mix(vec3(0.20,0.28,0.37),vec3(0.50,0.61,0.72),clamp(0.25+pn*0.25+clamp(y*0.004,0.0,0.35),0.0,1.0));
+    c=mix(c,gc,win);glass=win;
+  }
+  float nd=max(dot(n,uSun),0.0);
+  float sh=nd>0.0?shadowAt(nd):0.0;
+  float hemi=0.50+0.16*n.y;
+  vec3 col=c*(hemi+0.60*nd*sh);
+  if(glass>0.0){vec3 v=normalize(uCam-vW);vec3 r=reflect(-uSun,n);col+=vec3(0.9,0.92,0.95)*pow(max(dot(r,v),0.0),30.0)*0.55*glass*sh+vec3(0.05,0.07,0.09)*glass*(1.0-abs(n.y));}
+  gl_FragColor=vec4(mix(col,uFog,vF),1.0);
+}`;
+const SVS=`precision highp float;attribute vec3 aP;uniform mat4 uLVP;void main(){gl_Position=uLVP*vec4(aP,1.0);}`;
+const SFS=PREC+`vec4 pack(float d){vec4 e=fract(d*vec4(1.0,255.0,65025.0,16581375.0));e-=e.yzww*vec4(1.0/255.0,1.0/255.0,1.0/255.0,0.0);return e;}
+void main(){gl_FragColor=pack(gl_FragCoord.z);}`;
+function sh(t,s){const o=gl.createShader(t);gl.shaderSource(o,s);gl.compileShader(o);if(!gl.getShaderParameter(o,gl.COMPILE_STATUS))throw new Error(gl.getShaderInfoLog(o));return o}
+function mkProg(v,f){const p=gl.createProgram();gl.attachShader(p,sh(gl.VERTEX_SHADER,v));gl.attachShader(p,sh(gl.FRAGMENT_SHADER,f));
+  gl.bindAttribLocation(p,0,'aP');gl.bindAttribLocation(p,1,'aN');gl.bindAttribLocation(p,2,'aC');gl.bindAttribLocation(p,3,'aX');gl.linkProgram(p);
+  if(!gl.getProgramParameter(p,gl.LINK_STATUS))throw new Error(gl.getProgramInfoLog(p));return p}
+const prog=mkProg(VS,FS), sprog=mkProg(SVS,SFS);
+const U={};for(const n of['uVP','uLVP','uCam','uFog','uSun','uSh','uShOn','uTexel','uTgt','uFogR'])U[n]=gl.getUniformLocation(prog,n);
+const SU={uLVP:gl.getUniformLocation(sprog,'uLVP')};
+gl.enable(gl.DEPTH_TEST);gl.disable(gl.CULL_FACE);
+for(let i=0;i<4;i++)gl.enableVertexAttribArray(i);
+
+// 그림자 맵
+const SHSIZE=Math.min(2048,gl.getParameter(gl.MAX_TEXTURE_SIZE));
+const shTex=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,shTex);
+gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,SHSIZE,SHSIZE,0,gl.RGBA,gl.UNSIGNED_BYTE,null);
+gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
+gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+const shFB=gl.createFramebuffer();gl.bindFramebuffer(gl.FRAMEBUFFER,shFB);
+gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,shTex,0);
+const shRB=gl.createRenderbuffer();gl.bindRenderbuffer(gl.RENDERBUFFER,shRB);gl.renderbufferStorage(gl.RENDERBUFFER,gl.DEPTH_COMPONENT16,SHSIZE,SHSIZE);
+gl.framebufferRenderbuffer(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.RENDERBUFFER,shRB);
+const SH_OK=gl.checkFramebufferStatus(gl.FRAMEBUFFER)===gl.FRAMEBUFFER_COMPLETE;
+gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+
+const STRIDE=11;
+class MB{ // x y z | nx ny nz | r g b | u style
+  constructor(cap=4096){this.a=new Float32Array(cap*STRIDE);this.n=0;this.buf=gl.createBuffer();}
+  reset(){this.n=0}
+  grow(k){if((this.n+k)*STRIDE>this.a.length){let c=this.a.length*2;while((this.n+k)*STRIDE>c)c*=2;const b=new Float32Array(c);b.set(this.a.subarray(0,this.n*STRIDE));this.a=b;}}
+  v(x,y,z,nx,ny,nz,r,g,b,u=-1,s=0){const a=this.a,i=this.n*STRIDE;a[i]=x;a[i+1]=y;a[i+2]=z;a[i+3]=nx;a[i+4]=ny;a[i+5]=nz;a[i+6]=r;a[i+7]=g;a[i+8]=b;a[i+9]=u;a[i+10]=s;this.n++}
+  upload(){gl.bindBuffer(gl.ARRAY_BUFFER,this.buf);gl.bufferData(gl.ARRAY_BUFFER,this.a.subarray(0,this.n*STRIDE),gl.DYNAMIC_DRAW)}
+  draw(){if(!this.n)return;gl.bindBuffer(gl.ARRAY_BUFFER,this.buf);const S=STRIDE*4;
+    gl.vertexAttribPointer(0,3,gl.FLOAT,false,S,0);gl.vertexAttribPointer(1,3,gl.FLOAT,false,S,12);gl.vertexAttribPointer(2,3,gl.FLOAT,false,S,24);gl.vertexAttribPointer(3,2,gl.FLOAT,false,S,36);
+    gl.drawArrays(gl.TRIANGLES,0,this.n)}
+}
+const mGround=new MB(1<<17), mRoad=new MB(1<<15), mBld=new MB(1<<17), mTree=new MB(1<<16), mRub=new MB(1<<14), mDyn=new MB(1<<14), mGlow=new MB(1<<12);
+
+// ---------- 카메라 ----------
+const cam={theta:0.75,phi:0.92,dist:820,tx:0,ty:0,tz:0,shake:0};
+let VP=new Float32Array(16), eye=[0,0,0];
+const SUN=(()=>{const v=[0.62,0.62,-0.42];const l=Math.hypot(...v);return v.map(x=>x/l)})();
+function persp(f,a,n,fa){const t=1/Math.tan(f/2),nf=1/(n-fa);return[t/a,0,0,0,0,t,0,0,0,0,(fa+n)*nf,-1,0,0,2*fa*n*nf,0]}
+function ortho(l,r,b,t,n,f){return[2/(r-l),0,0,0,0,2/(t-b),0,0,0,0,-2/(f-n),0,-(r+l)/(r-l),-(t+b)/(t-b),-(f+n)/(f-n),1]}
+function lookAt(e,c,u){let z=[e[0]-c[0],e[1]-c[1],e[2]-c[2]];let l=Math.hypot(...z);z=z.map(v=>v/l);let x=[u[1]*z[2]-u[2]*z[1],u[2]*z[0]-u[0]*z[2],u[0]*z[1]-u[1]*z[0]];l=Math.hypot(...x);x=x.map(v=>v/l);const y=[z[1]*x[2]-z[2]*x[1],z[2]*x[0]-z[0]*x[2],z[0]*x[1]-z[1]*x[0]];
+ return[x[0],y[0],z[0],0,x[1],y[1],z[1],0,x[2],y[2],z[2],0,-(x[0]*e[0]+x[1]*e[1]+x[2]*e[2]),-(y[0]*e[0]+y[1]*e[1]+y[2]*e[2]),-(z[0]*e[0]+z[1]*e[1]+z[2]*e[2]),1]}
+function mul(a,b){const o=new Float32Array(16);for(let i=0;i<4;i++)for(let j=0;j<4;j++){let s=0;for(let k=0;k<4;k++)s+=a[k*4+j]*b[i*4+k];o[i*4+j]=s}return o}
+let LVP=mul(ortho(-560,560,-560,560,10,2600),lookAt([SUN[0]*1300,SUN[1]*1300,SUN[2]*1300],[0,0,0],[0,1,0]));
+const FOV=0.75;
+let camFly=null;
+function moveCam(dt){
+  if(camFly){camFly.t=Math.min(1,camFly.t+dt/1.6);const e=1-Math.pow(1-camFly.t,3);for(const k of ['dist','phi','theta'])cam[k]=camFly.from[k]+(camFly.to[k]-camFly.from[k])*e;if(camFly.t>=1)camFly=null}
+  let fx=0,fz=0;const k=KEYS;if(k.has('w')||k.has('arrowup'))fz+=1;if(k.has('s')||k.has('arrowdown'))fz-=1;if(k.has('d')||k.has('arrowright'))fx+=1;if(k.has('a')||k.has('arrowleft'))fx-=1;
+  if(!fx&&!fz)return;camFly=null;const sp=cam.dist*0.75*(k.has('shift')?2.2:1)*dt,st=Math.sin(cam.theta),ct=Math.cos(cam.theta);
+  cam.tx+=(-st*fz+ct*fx)*sp;cam.tz+=(-ct*fz-st*fx)*sp;
+}
+function updateCam(){
+  const sx=cam.shake?(Math.random()-.5)*cam.shake:0, sz=cam.shake?(Math.random()-.5)*cam.shake:0;
+  eye=[cam.tx+cam.dist*Math.sin(cam.phi)*Math.sin(cam.theta)+sx, cam.ty+cam.dist*Math.cos(cam.phi), cam.tz+cam.dist*Math.sin(cam.phi)*Math.cos(cam.theta)+sz];
+  VP=mul(persp(FOV,canvas.width/canvas.height,2,6000),lookAt(eye,[cam.tx+sx,cam.ty,cam.tz+sz],[0,1,0]));
+}
+function project(x,y,z){const m=VP;const cx=m[0]*x+m[4]*y+m[8]*z+m[12],cy=m[1]*x+m[5]*y+m[9]*z+m[13],w=m[3]*x+m[7]*y+m[11]*z+m[15];if(w<=0.1)return null;return[(cx/w*0.5+0.5)*innerWidth,(0.5-cy/w*0.5)*innerHeight]}
+function rayFrom(mx,my){
+  const c=[cam.tx,cam.ty,cam.tz];let f=[c[0]-eye[0],c[1]-eye[1],c[2]-eye[2]];let l=Math.hypot(...f);f=f.map(v=>v/l);
+  let r=[-f[2],0,f[0]];l=Math.hypot(...r);r=r.map(v=>v/l);
+  const u=[r[1]*f[2]-r[2]*f[1],r[2]*f[0]-r[0]*f[2],r[0]*f[1]-r[1]*f[0]];
+  const t=Math.tan(FOV/2),asp=innerWidth/innerHeight,nx=(mx/innerWidth)*2-1,ny=1-(my/innerHeight)*2;
+  let d=[f[0]+r[0]*nx*t*asp+u[0]*ny*t,f[1]+r[1]*nx*t*asp+u[1]*ny*t,f[2]+r[2]*nx*t*asp+u[2]*ny*t];l=Math.hypot(...d);
+  return{o:eye.slice(),d:d.map(v=>v/l)};
+}
+
+// ---------- 열린 맵: 400m 타일(청크) ----------
+// 각 타일이 지면 높이맵·도로·건물·나무 메시를 따로 가짐. 카메라가 움직이면 주변 타일을 차례로 불러옴.
+const TILE=400, CN=80, CELL=TILE/CN, CV=CN+1;
+const LOAD_R=1, CULL_R=1250;
+const CHUNKS=new Map();
+let groundDirty=false, maxDepth=0;
+const ckey=(i,j)=>i+','+j;
+const tileOf=v=>Math.floor((v+TILE/2)/TILE);
+function getChunk(i,j,create){const k=ckey(i,j);let c=CHUNKS.get(k);
+  if(!c&&create){c={i,j,k,ox:i*TILE-TILE/2,oz:j*TILE-TILE/2,state:'none',Hg:null,mg:new MB(1<<12),mr:new MB(1<<10),mb:new MB(1<<12),mt:new MB(1<<10),blds:[],trees:[],roads:[],dG:false,dB:false,dT:false};CHUNKS.set(k,c)}
+  return c}
+function chunkAt(x,z,create){return getChunk(tileOf(x),tileOf(z),create)}
+function groundAt(x,z){
+  const c=chunkAt(x,z);if(!c||!c.Hg)return 0;
+  const fx=(x-c.ox)/CELL,fz=(z-c.oz)/CELL;let i=clamp(Math.floor(fx),0,CN-1),j=clamp(Math.floor(fz),0,CN-1);const u=fx-i,v=fz-j;const H=c.Hg;
+  return H[j*CV+i]*(1-u)*(1-v)+H[j*CV+i+1]*u*(1-v)+H[(j+1)*CV+i]*(1-u)*v+H[(j+1)*CV+i+1]*u*v;
+}
+function vtxAt(x,z){const c=chunkAt(x,z);if(!c||!c.Hg)return null;const i=clamp(Math.round((x-c.ox)/CELL),0,CN),j=clamp(Math.round((z-c.oz)/CELL),0,CN);return{c,k:j*CV+i}}
+function depthAt(x,z){const v=vtxAt(x,z);return v?v.c.H0[v.k]-v.c.Hg[v.k]:0}
+function vdAt(x,z){const v=vtxAt(x,z);return v?v.c.VD[v.k]:0}
+const LANDCOL={green:[0.36,0.52,0.30],forest:[0.26,0.42,0.24],water:[0.30,0.48,0.62],sand:[0.78,0.72,0.58],park:[0.40,0.56,0.33],pitch:[0.33,0.55,0.32],parking:[0.50,0.50,0.49],plaza:[0.66,0.64,0.60]};
+function initChunkGround(c){
+  const N=CV*CV;c.Hg=new Float32Array(N);c.H0=new Float32Array(N);c.VD=new Float32Array(N);c.GCOL=new Float32Array(N*3);
+  const R=mulberry((c.i*7919+c.j*104729)|0);const noise=new Float32Array(N);for(let k=0;k<N;k++)noise[k]=R();c.noise=noise;
+  const paved=new Float32Array(N);
+  for(const b of B){const r=Math.sqrt(b.area)/2+12;if(b.cx+r<c.ox||b.cx-r>c.ox+TILE||b.cz+r<c.oz||b.cz-r>c.oz+TILE)continue;
+    const i0=Math.max(0,Math.floor((b.cx-r-c.ox)/CELL)),i1=Math.min(CN,Math.ceil((b.cx+r-c.ox)/CELL)),j0=Math.max(0,Math.floor((b.cz-r-c.oz)/CELL)),j1=Math.min(CN,Math.ceil((b.cz+r-c.oz)/CELL));
+    for(let j=j0;j<=j1;j++)for(let i=i0;i<=i1;i++){const d=Math.hypot(c.ox+i*CELL-b.cx,c.oz+j*CELL-b.cz);if(d<r)paved[j*CV+i]=Math.max(paved[j*CV+i],1-d/r*0.5)}}
+  for(let j=0;j<=CN;j++)for(let i=0;i<=CN;i++){const k=j*CV+i;
+    let n=0,cnt=0;for(let dj=-2;dj<=2;dj++)for(let di=-2;di<=2;di++){const ii=i+di,jj=j+dj;if(ii>=0&&jj>=0&&ii<=CN&&jj<=CN){n+=noise[jj*CV+ii];cnt++}}n/=cnt;
+    const p=clamp(paved[k],0,1);const g=[0.40+n*0.06,0.47+n*0.10,0.36+n*0.04],a=[0.47+n*0.04,0.47+n*0.04,0.46+n*0.04],pv=[0.66,0.65,0.62];
+    const base=n>0.53?g:a;for(let q=0;q<3;q++)c.GCOL[k*3+q]=base[q]*(1-p*0.8)+pv[q]*p*0.8}
+  for(const lu of LANDUSE)paintLanduse(c,lu);
+  c.dG=true;
+}
+function paintLanduse(c,lu){if(!c.Hg)return;const [x0,z0,x1,z1]=lu.bb;if(x1<c.ox||x0>c.ox+TILE||z1<c.oz||z0>c.oz+TILE)return;const col=LANDCOL[lu.kind];
+  for(let j=Math.max(0,Math.floor((z0-c.oz)/CELL));j<=Math.min(CN,Math.ceil((z1-c.oz)/CELL));j++)
+    for(let i=Math.max(0,Math.floor((x0-c.ox)/CELL));i<=Math.min(CN,Math.ceil((x1-c.ox)/CELL));i++){
+      if(!pip(c.ox+i*CELL,c.oz+j*CELL,lu.pts))continue;const k=j*CV+i,n=c.noise[k]*0.06;
+      c.GCOL[k*3]=col[0]+n;c.GCOL[k*3+1]=col[1]+n*1.4;c.GCOL[k*3+2]=col[2]+n*0.5;
+      if(lu.kind==='water'&&c.Hg[k]===c.H0[k]){c.Hg[k]=c.H0[k]=-0.6}}
+  c.dG=true}
+function groundColor(c,k,out){
+  const d=c.H0[k]-c.Hg[k];let r=c.GCOL[k*3],g=c.GCOL[k*3+1],b=c.GCOL[k*3+2];
+  if(c.Hg[k]>c.H0[k]+0.15){r=0.72;g=0.63;b=0.48}
+  else if(d>0.35){if(c.Hg[k]<=FLOOR_Y+0.5){r=1.0;g=0.5;b=0.12}
+    else{const ring=(Math.floor(d/2.2)%2)?1:0;const t=Math.min(d/45,1);r=(0.70-0.05*t)+ring*0.10;g=(0.60+0.08*t)+ring*0.11;b=(0.45+0.25*t)+ring*0.12}}
+  out[0]=r;out[1]=g;out[2]=b}
+function buildChunkGround(c){
+  const m=c.mg;m.reset();if(!c.Hg){m.upload();return}m.grow(CN*CN*6);const H=c.Hg;
+  const ca=[0,0,0],cb=[0,0,0],cc=[0,0,0],cd=[0,0,0];
+  for(let j=0;j<CN;j++)for(let i=0;i<CN;i++){
+    const k00=j*CV+i,k10=k00+1,k01=k00+CV,k11=k01+1;const x0=c.ox+i*CELL,x1=x0+CELL,z0=c.oz+j*CELL,z1=z0+CELL;
+    const y00=H[k00],y10=H[k10],y01=H[k01],y11=H[k11];
+    groundColor(c,k00,ca);groundColor(c,k10,cb);groundColor(c,k01,cc);groundColor(c,k11,cd);
+    let ux=0,uy=y01-y00,uz=CELL,vx=CELL,vy=y10-y00,vz=0;
+    let nx=uy*vz-uz*vy,ny=uz*vx-ux*vz,nz=ux*vy-uy*vx;let l=Math.hypot(nx,ny,nz);nx/=l;ny/=l;nz/=l;if(ny<0){nx=-nx;ny=-ny;nz=-nz}
+    m.v(x0,y00,z0,nx,ny,nz,ca[0],ca[1],ca[2]);m.v(x0,y01,z1,nx,ny,nz,cc[0],cc[1],cc[2]);m.v(x1,y10,z0,nx,ny,nz,cb[0],cb[1],cb[2]);
+    ux=-CELL;uy=y01-y10;uz=CELL;vx=0;vy=y11-y10;vz=CELL;
+    nx=uy*vz-uz*vy;ny=uz*vx-ux*vz;nz=ux*vy-uy*vx;l=Math.hypot(nx,ny,nz);nx/=l;ny/=l;nz/=l;if(ny<0){nx=-nx;ny=-ny;nz=-nz}
+    m.v(x1,y10,z0,nx,ny,nz,cb[0],cb[1],cb[2]);m.v(x0,y01,z1,nx,ny,nz,cc[0],cc[1],cc[2]);m.v(x1,y11,z1,nx,ny,nz,cd[0],cd[1],cd[2]);
+  }
+  m.upload();buildChunkRoads(c);
+}
+// 땅 파기 — 여러 타일에 걸쳐도 동작. 반환: 파낸 부피
+function carve(x,z,r,depth,rim=true,vdInc=0){
+  let vol=0;const R2=r*1.35;
+  for(let ti=tileOf(x-R2);ti<=tileOf(x+R2);ti++)for(let tj=tileOf(z-R2);tj<=tileOf(z+R2);tj++){
+    const c=getChunk(ti,tj);if(!c||!c.Hg)continue;const H=c.Hg,H0=c.H0,VD=c.VD;
+    const i0=Math.max(0,Math.floor((x-R2-c.ox)/CELL)),i1=Math.min(CN,Math.ceil((x+R2-c.ox)/CELL));
+    const j0=Math.max(0,Math.floor((z-R2-c.oz)/CELL)),j1=Math.min(CN,Math.ceil((z+R2-c.oz)/CELL));
+    for(let j=j0;j<=j1;j++)for(let i=i0;i<=i1;i++){
+      const k=j*CV+i,d=Math.hypot(c.ox+i*CELL-x,c.oz+j*CELL-z);
+      if(d<r){const prof=1-(d/r)*(d/r);
+        if(vdInc){const dd=depth*prof;VD[k]=Math.max(VD[k],H0[k]-H[k])+vdInc*prof;const ny=Math.max(FLOOR_Y,H[k]-dd);vol+=(H[k]-ny)*CELL*CELL;H[k]=ny}
+        else{const target=Math.max(FLOOR_Y,H0[k]-depth*prof);if(target<H[k]){vol+=(H[k]-target)*CELL*CELL;H[k]=target}VD[k]=Math.max(VD[k],H0[k]-H[k])}
+        if(VD[k]>maxDepth)maxDepth=VD[k];
+      }else if(rim&&d<R2&&!vdInc){const t=(d-r)/(R2-r);const up=depth*0.07*Math.sin(t*Math.PI);if(H[k]>=H0[k]-0.1)H[k]=Math.max(H[k],H0[k]+up)}
+    }
+    c.dG=true;c.dT=true;
+  }
+  forBuildingsNear(x,z,r+20,b=>{if(b.alive&&groundAt(b.cx,b.cz)<b.base-2.5)killBuilding(b,true)});
+  forTreesNear(x,z,r+2,t=>{if(t.alive&&groundAt(t.x,t.z)<-1.2)killTree(t)});
+  return vol;
+}
+
+// ---------- 도로 (타일별) ----------
+let LANDUSE=[];
+function addRoad(rd){for(let s=0;s<rd.pts.length-1;s++){const [ax,az]=rd.pts[s],[bx,bz]=rd.pts[s+1];if(Math.hypot(bx-ax,bz-az)<0.01)continue;
+  const c=chunkAt((ax+bx)/2,(az+bz)/2,true);c.roads.push({ax,az,bx,bz,w:rd.w,c:rd.c,lift:rd.lift,line:rd.line});c.dG=true}}
+function buildChunkRoads(c){
+  const m=c.mr;m.reset();c.roads.sort((a,b)=>a.lift-b.lift);
+  for(const s of c.roads){const {ax,az,bx,bz}=s,w=s.w/2,col=s.c,lift=s.lift;const len=Math.hypot(bx-ax,bz-az);
+    const n=Math.max(1,Math.ceil(len/CELL));const px=-(bz-az)/len*w,pz=(bx-ax)/len*w;
+    for(let q=0;q<n;q++){const t0=q/n,t1=(q+1)/n;const x0=ax+(bx-ax)*t0,z0=az+(bz-az)*t0,x1=ax+(bx-ax)*t1,z1=az+(bz-az)*t1;
+      if(depthAt((x0+x1)/2,(z0+z1)/2)>0.4)continue;
+      const y0=groundAt(x0,z0)+lift,y1=groundAt(x1,z1)+lift;m.grow(12);
+      m.v(x0+px,y0,z0+pz,0,1,0,...col);m.v(x0-px,y0,z0-pz,0,1,0,...col);m.v(x1+px,y1,z1+pz,0,1,0,...col);
+      m.v(x1+px,y1,z1+pz,0,1,0,...col);m.v(x0-px,y0,z0-pz,0,1,0,...col);m.v(x1-px,y1,z1-pz,0,1,0,...col);
+      if(s.line&&q%2===0){const lw=0.18,lx=-(bz-az)/len*lw,lz=(bx-ax)/len*lw,yl=0.03,lc=[0.88,0.82,0.45];
+        m.v(x0+lx,y0+yl,z0+lz,0,1,0,...lc);m.v(x0-lx,y0+yl,z0-lz,0,1,0,...lc);m.v(x1+lx,y1+yl,z1+lz,0,1,0,...lc);
+        m.v(x1+lx,y1+yl,z1+lz,0,1,0,...lc);m.v(x0-lx,y0+yl,z0-lz,0,1,0,...lc);m.v(x1-lx,y1+yl,z1-lz,0,1,0,...lc)}}}
+  m.upload()}
+
+// 아직 안 불러온 타일 자리를 채우는 평평한 바닥 (안개 속으로 사라짐)
+function buildBasePlane(){const m=mGround;m.reset();const ti=tileOf(cam.tx),tj=tileOf(cam.tz),col=[0.50,0.51,0.50];
+  for(let i=ti-4;i<=ti+4;i++)for(let j=tj-4;j<=tj+4;j++){const c=getChunk(i,j);if(c&&c.Hg)continue;const x0=i*TILE-TILE/2,z0=j*TILE-TILE/2,x1=x0+TILE,z1=z0+TILE;m.grow(6);
+    m.v(x0,0,z0,0,1,0,...col);m.v(x0,0,z1,0,1,0,...col);m.v(x1,0,z0,0,1,0,...col);m.v(x1,0,z0,0,1,0,...col);m.v(x0,0,z1,0,1,0,...col);m.v(x1,0,z1,0,1,0,...col)}
+  m.upload();basePlaneAt=ti+','+tj}
+let basePlaneAt='';
+
+// ---------- 타일 불러오기 (묶음 요청 · 동시 2개 · 브라우저 저장) ----------
+const SEEN={b:new Set(),r:new Set(),l:new Set(),t:new Set()};const OSMARCH=new Map();
+let TQ=[],tileBusy=0,WORLD={fake:false,gen:0,failed:0};
+function resetWorld(){for(const c of CHUNKS.values()){for(const m of [c.mg,c.mr,c.mb,c.mt])try{gl.deleteBuffer(m.buf)}catch(e){}}
+  CHUNKS.clear();OSMARCH.clear();SEEN.b.clear();SEEN.r.clear();SEEN.l.clear();SEEN.t.clear();B=[];T=[];LANDUSE=[];BGRID=new Map();TGRID=new Map();TQ=[];maxDepth=0;WORLD={fake:false,gen:WORLD.gen+1,failed:0};basePlaneAt=''}
+// IndexedDB 캐시: 한 번 받은 지역은 다음부터 즉시
+const IDB=(()=>{let dbp=null;const open=()=>dbp||(dbp=new Promise((res,rej)=>{try{const r=indexedDB.open('smasharch',1);r.onupgradeneeded=()=>r.result.createObjectStore('osm');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)}catch(e){rej(e)}}));
+  return{async get(k){try{const db=await open();return await new Promise(res=>{const q=db.transaction('osm').objectStore('osm').get(k);q.onsuccess=()=>res(q.result||null);q.onerror=()=>res(null)})}catch(e){return null}},
+    async set(k,v){try{const db=await open();db.transaction('osm','readwrite').objectStore('osm').put(v,k)}catch(e){}}}})();
+// 게임에 쓰는 것만 요청 (보행로·자전거길·기타 토지이용 제외) → 응답이 훨씬 작아짐
+function osmQuery(bb){return `[out:json][timeout:40];(way["building"](${bb});way["highway"~"^(motorway|trunk|primary|secondary|tertiary|residential|unclassified|service|living_street|pedestrian)(_link)?$"](${bb});way["landuse"~"^(grass|meadow|forest|recreation_ground|village_green|cemetery|reservoir|basin)$"](${bb});way["leisure"~"^(park|garden|pitch|playground|golf_course)$"](${bb});way["natural"~"^(water|wood|scrub|grassland|sand|beach)$"](${bb});node["natural"="tree"](${bb});node["office"="architect"](${bb});way["office"="architect"](${bb});node["name"~"건축사|건축사무소|Architect",i](${bb});way["name"~"건축사|건축사무소"](${bb}););out tags geom qt;`}
+let EP_I=0;
+async function fetchArea(i0,j0,i1,j1){
+  const [la0,ln0]=unproj(i0*TILE-TILE/2-10,j1*TILE+TILE/2+10),[la1,ln1]=unproj(i1*TILE+TILE/2+10,j0*TILE-TILE/2-10);
+  const bb=[la0,ln0,la1,ln1].map(v=>v.toFixed(5)).join(',');const key='v3:'+bb;
+  const hit=await IDB.get(key);if(hit)return hit;
+  const body='data='+encodeURIComponent(osmQuery(bb)),hd={'Content-Type':'application/x-www-form-urlencoded'};
+  // 서버 두 곳에 동시에 보내고 먼저 오는 응답 사용 (한쪽이 밀려 있어도 기다리지 않음)
+  const a=OVERPASS[EP_I%OVERPASS.length],b=OVERPASS[(EP_I+1)%OVERPASS.length];EP_I++;
+  const one=ep=>fetchT(ep,{method:'POST',body,headers:hd},45000).then(j=>{if(!j||!j.elements)throw new Error('bad');return j});
+  let json;try{json=await Promise.any([one(a),one(b)])}catch(e){json=await one(OVERPASS[(EP_I+1)%OVERPASS.length])}
+  IDB.set(key,json);return json;
+}
+/** 여러 타일을 한 번의 요청으로 불러와 세계에 추가. 반환: 추가된 건물 수 */
+async function loadTiles(list){
+  const cs=list.map(([i,j])=>getChunk(i,j,true)).filter(c=>c.state==='none');if(!cs.length)return 0;
+  cs.forEach(c=>c.state='loading');const gen=WORLD.gen;
+  const i0=Math.min(...cs.map(c=>c.i)),i1=Math.max(...cs.map(c=>c.i)),j0=Math.min(...cs.map(c=>c.j)),j1=Math.max(...cs.map(c=>c.j));
+  let data=null;
+  if(!WORLD.fake){try{data=parseOSM(await fetchArea(i0,j0,i1,j1))}catch(e){data=null}}
+  if(gen!==WORLD.gen)return 0;
+  if(!data){if(WORLD.fake){data={bs:[],rs:[],lus:[],treeNodes:[]};for(const c of cs){const f=fakeCity((c.i*31+c.j*17+WORLD.gen)|0,c.ox,c.oz);data.bs.push(...f.bs);data.rs.push(...f.rs);data.lus.push(...f.lus)}}
+    else{WORLD.failed++;cs.forEach(c=>c.state='none');setTimeout(()=>{},0);return -1}}
+  const n0=B.length,t0=T.length;
+  for(const a of (data.archPois||[]))if(!OSMARCH.has(a.id))OSMARCH.set(a.id,a);
+  for(const b of data.bs){if(SEEN.b.has(b.id))continue;SEEN.b.add(b.id);b.ck=chunkAt(b.cx,b.cz,true);b.ck.blds.push(b);B.push(b);indexBuilding(b,B.length-1);b.ck.dB=true}
+  for(const rd of data.rs){if(rd.id!=null){if(SEEN.r.has(rd.id))continue;SEEN.r.add(rd.id)}addRoad(rd)}
+  const newLu=[];for(const lu of data.lus){if(lu.id!=null){if(SEEN.l.has(lu.id))continue;SEEN.l.add(lu.id)}LANDUSE.push(lu);newLu.push(lu)}
+  LANDUSE.sort((a,b)=>b.area-a.area);
+  for(const lu of newLu)for(const o of CHUNKS.values())if(o.Hg&&!cs.includes(o))paintLanduse(o,lu);
+  for(const c of cs){initChunkGround(c);plantTreesTile(c,data,newLu);c.state='ready';
+    if(BASE)BASE.chunks.set(c.k,{H:c.Hg.slice(),VD:c.VD.slice()})}
+  if(BASE){for(let k=n0;k<B.length;k++){BASE.h[k]=B[k].h;BASE.a[k]=true;BASE.det[k]=null}for(let k=t0;k<T.length;k++)BASE.t[k]=true}
+  basePlaneAt='';
+  return B.length-n0;
+}
+function loadTile(i,j){return loadTiles([[i,j]])}
+function neededTiles(){const r=cam.dist>1300?2:LOAD_R,ti=tileOf(cam.tx),tj=tileOf(cam.tz),out=[];
+  for(let d=0;d<=r;d++)for(let i=ti-d;i<=ti+d;i++)for(let j=tj-d;j<=tj+d;j++){if(Math.max(Math.abs(i-ti),Math.abs(j-tj))!==d)continue;const c=getChunk(i,j);if(!c||c.state==='none')out.push([i,j])}
+  return out}
+let retryAt=0;
+function pumpTiles(){
+  if(!CUR||MODE!=='city')return;const need=neededTiles();
+  $('#tileBox').style.display=need.length||tileBusy?'':'none';if(need.length||tileBusy)$('#tileBox').textContent=`주변 지도 불러오는 중… (${need.length+tileBusy*3})`;
+  if(!need.length||tileBusy>=2||performance.now()<retryAt)return;
+  // 첫 타일 기준 3×3 블록 안에서 아직 없는 타일을 한 요청으로 묶음
+  const [a,b]=need[0],bi=Math.floor((a+1)/3)*3-1,bj=Math.floor((b+1)/3)*3-1;
+  const grp=need.filter(([i,j])=>i>=bi&&i<=bi+2&&j>=bj&&j<=bj+2).slice(0,9);
+  tileBusy++;
+  loadTiles(grp).then(n=>{if(n<0){retryAt=performance.now()+4000;if(!pumpTiles.warned){pumpTiles.warned=1;toast('지도 서버가 바빠요. 잠시 뒤 다시 시도해요',2500)}}
+    else{buildNeighborhood();if(MODE==='city')makeLabels()}}).finally(()=>{tileBusy--});
+}
+// 카메라를 따라다니는 그림자 범위
+function cityLVP(){const cx=Math.round(cam.tx/40)*40,cz=Math.round(cam.tz/40)*40,R=clamp(cam.dist*0.75,320,900);
+  return mul(ortho(-R,R,-R,R,10,3000),lookAt([cx+SUN[0]*1400,SUN[1]*1400,cz+SUN[2]*1400],[cx,0,cz],[0,1,0]))}
+
+// ---------- 건물 ----------
+let B=[];let BGRID=new Map(); const BG=30;let bldDirty=true;
+function markB(b){if(b&&b.ck)b.ck.dB=true;else bldDirty=true}
+function polyArea(p){let a=0;for(let i=0;i<p.length;i++){const q=p[(i+1)%p.length];a+=p[i][0]*q[1]-q[0]*p[i][1]}return a/2}
+function pinTri(p,a,b,c){const s=(u,v,w)=>(u[0]-w[0])*(v[1]-w[1])-(v[0]-w[0])*(u[1]-w[1]);const d1=s(p,a,b),d2=s(p,b,c),d3=s(p,c,a);return !((d1<0||d2<0||d3<0)&&(d1>0||d2>0||d3>0))}
+function earcut(pts){const n=pts.length;const idx=[...Array(n).keys()];const tris=[];let guard=0;
+  while(idx.length>3&&guard++<n*n+10){let found=false;
+    for(let i=0;i<idx.length;i++){const a=idx[(i+idx.length-1)%idx.length],b=idx[i],c=idx[(i+1)%idx.length];const A=pts[a],Bp=pts[b],C=pts[c];
+      const cr=(Bp[0]-A[0])*(C[1]-A[1])-(Bp[1]-A[1])*(C[0]-A[0]);if(cr<=1e-7)continue;
+      let ok=true;for(const k of idx){if(k===a||k===b||k===c)continue;if(pinTri(pts[k],A,Bp,C)){ok=false;break}}
+      if(ok){tris.push(a,b,c);idx.splice(i,1);found=true;break}}
+    if(!found)break}
+  if(idx.length===3)tris.push(idx[0],idx[1],idx[2]);else for(let i=1;i<idx.length-1;i++)tris.push(idx[0],idx[i],idx[i+1]);
+  return tris}
+function pip(x,z,p){let ins=false;for(let i=0,j=p.length-1;i<p.length;j=i++){const xi=p[i][0],zi=p[i][1],xj=p[j][0],zj=p[j][1];if(((zi>z)!==(zj>z))&&(x<(xj-xi)*(z-zi)/(zj-zi)+xi))ins=!ins}return ins}
+function cleanRing(pts){if(pts.length>2){const f=pts[0],l=pts[pts.length-1];if(Math.abs(f[0]-l[0])<0.01&&Math.abs(f[1]-l[1])<0.01)pts=pts.slice(0,-1)}
+  // 거의 일직선인 점 제거
+  const out=[];for(let i=0;i<pts.length;i++){const a=pts[(i+pts.length-1)%pts.length],b=pts[i],c=pts[(i+1)%pts.length];const cr=(b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0]);if(Math.abs(cr)>0.05||pts.length<=4)out.push(b)}
+  return out.length>=3?out:pts}
+function makeBuilding(id,pts,tags){
+  pts=cleanRing(pts);if(pts.length<3)return null;
+  let a=polyArea(pts);if(a<0){pts=pts.slice().reverse();a=-a}
+  if(a<8)return null;
+  let cx=0,cz=0;for(const p of pts){cx+=p[0];cz+=p[1]}cx/=pts.length;cz/=pts.length;
+  const R=mulberry(typeof id==='number'?id:String(id).length*7919);
+  tags=tags||{};const bt=tags.building||'yes',name=tags.name||'';
+  let h=0;
+  if(tags.height)h=parseFloat(tags.height);
+  if(!h&&tags['building:levels'])h=parseFloat(tags['building:levels'])*3.4+1.2;
+  const isHouse=/^(house|detached|garage|garages|shed|hut|kiosk|roof|semidetached_house|bungalow|cabin|farm_auxiliary|greenhouse)$/.test(bt);
+  const isApt=/^(apartments|residential|dormitory)$/.test(bt)||/\d+\s*동$/.test(name)||/아파트/.test(name);
+  if(!h||!isFinite(h)){
+    if(isHouse)h=3.5+R()*4;
+    else if(isApt)h=a>500?35+R()*45:12+R()*10;
+    else if(a<120)h=7+R()*7;else if(a<600)h=10+R()*20;else if(a<2500)h=14+R()*36;else h=12+R()*28;
+  }
+  h=clamp(h,3,320);
+  // 스타일: 0 창문형, 1 아파트(발코니 띠), 2 커튼월, 3 저층 주택
+  let style=isHouse?3:isApt?1:0;
+  if(!isHouse&&!isApt&&(/office|commercial|retail/.test(bt)||h>45)&&R()<0.7)style=2;
+  if(h<9&&style===0&&R()<0.5)style=3;
+  const tint=0.92+R()*0.08;
+  const pal0=[[0.88,0.88,0.86],[0.84,0.85,0.86],[0.90,0.87,0.80],[0.78,0.76,0.73],[0.72,0.55,0.45],[0.86,0.83,0.76]];
+  const pal1=[[0.93,0.93,0.91],[0.91,0.90,0.86],[0.88,0.89,0.90]];
+  const pal2=[[0.62,0.70,0.78],[0.55,0.62,0.68],[0.70,0.74,0.76],[0.50,0.58,0.66]];
+  const pal3=[[0.90,0.86,0.78],[0.80,0.70,0.60],[0.92,0.92,0.90],[0.70,0.52,0.42]];
+  const pal=[pal0,pal1,pal2,pal3][style];
+  let col=parseColor(tags['building:colour'])||pal[Math.floor(R()*pal.length)].map(v=>v*tint);
+  const rc=parseColor(tags['roof:colour']);
+  let roof=rc||(style===3?[[0.62,0.32,0.26],[0.30,0.42,0.58],[0.40,0.55,0.42],[0.55,0.55,0.55]][Math.floor(R()*4)]:R()<0.55?[0.42+R()*0.06,0.60+R()*0.06,0.52+R()*0.04]:[0.70,0.71,0.70]);
+  // 옥상 설비 (큰 건물)
+  const units=[];
+  if(style!==3&&a>250&&pip(cx,cz,pts)){const n=1+Math.floor(R()*3);const s=Math.sqrt(a);
+    for(let k=0;k<n;k++){const w=s*(0.12+R()*0.15),d=s*(0.12+R()*0.15),ox=(R()-.5)*s*0.3,oz=(R()-.5)*s*0.3,hh=1.8+R()*2.5;
+      if(pip(cx+ox-w/2,cz+oz-d/2,pts)&&pip(cx+ox+w/2,cz+oz+d/2,pts)&&pip(cx+ox+w/2,cz+oz-d/2,pts)&&pip(cx+ox-w/2,cz+oz+d/2,pts))units.push([ox,oz,w,d,hh])}}
+  return{id,pts,tris:earcut(pts),area:a,cx,cz,h,h0:h,base:0,alive:true,col,roof,style,units,name,hq:false};
+}
+function indexBuilding(b,i){let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9;for(const p of b.pts){x0=Math.min(x0,p[0]);x1=Math.max(x1,p[0]);z0=Math.min(z0,p[1]);z1=Math.max(z1,p[1])}b.bb=[x0,z0,x1,z1];
+  for(let gx=Math.floor(x0/BG);gx<=Math.floor(x1/BG);gx++)for(let gz=Math.floor(z0/BG);gz<=Math.floor(z1/BG);gz++){const k=gx+','+gz;if(!BGRID.has(k))BGRID.set(k,[]);BGRID.get(k).push(i)}}
+function forBuildingsNear(x,z,r,fn){const seen=new Set();for(let gx=Math.floor((x-r)/BG);gx<=Math.floor((x+r)/BG);gx++)for(let gz=Math.floor((z-r)/BG);gz<=Math.floor((z+r)/BG);gz++){const l=BGRID.get(gx+','+gz);if(!l)continue;for(const i of l){if(seen.has(i))continue;seen.add(i);fn(B[i])}}}
+function distToBuilding(b,x,z){if(pip(x,z,b.pts))return 0;let best=1e9;const p=b.pts;for(let i=0;i<p.length;i++){const a=p[i],c=p[(i+1)%p.length];const dx=c[0]-a[0],dz=c[1]-a[1];const l2=dx*dx+dz*dz||1;let t=((x-a[0])*dx+(z-a[1])*dz)/l2;t=clamp(t,0,1);best=Math.min(best,Math.hypot(a[0]+dx*t-x,a[1]+dz*t-z))}return best}
+function boxMesh(m,x0,y0,z0,x1,y1,z1,c){ // 축 정렬 상자 (창문 없음)
+  const ct=[c[0]*1.04,c[1]*1.04,c[2]*1.04];m.grow(36);
+  const q=(a,b,cc,d,n,col)=>{m.v(...a,...n,...col);m.v(...b,...n,...col);m.v(...cc,...n,...col);m.v(...a,...n,...col);m.v(...cc,...n,...col);m.v(...d,...n,...col)};
+  q([x0,y1,z0],[x1,y1,z0],[x1,y1,z1],[x0,y1,z1],[0,1,0],ct);
+  q([x0,y0,z1],[x1,y0,z1],[x1,y1,z1],[x0,y1,z1],[0,0,1],c);q([x0,y0,z0],[x1,y0,z0],[x1,y1,z0],[x0,y1,z0],[0,0,-1],c);
+  q([x1,y0,z0],[x1,y0,z1],[x1,y1,z1],[x1,y1,z0],[1,0,0],c);q([x0,y0,z0],[x0,y0,z1],[x0,y1,z1],[x0,y1,z0],[-1,0,0],c);
+}
+function buildBuildings(){for(const c of CHUNKS.values())buildChunkBuildings(c)}
+function buildChunkBuildings(c){
+  const m=c.mb;m.reset();c.dB=false;
+  for(const b of c.blds){
+    if(!b.alive||b.h<0.5||b.det||b.lifted)continue;
+    const intact=b.h>=b.h0-0.3;
+    const y0=b.base-1.5,y1=b.base+b.h,p=b.pts,c=b.col,cb=[c[0]*0.80,c[1]*0.80,c[2]*0.82],st=b.style;
+    const par=intact&&st!==3?0.9:0;
+    m.grow(p.length*12+b.tris.length+b.units.length*36);
+    let u=0;
+    for(let i=0;i<p.length;i++){const a=p[i],q=p[(i+1)%p.length];let nx=q[1]-a[1],nz=-(q[0]-a[0]);const l=Math.hypot(nx,nz)||1;nx/=l;nz/=l;
+      const u1=u+l;
+      m.v(a[0],y0,a[1],nx,0,nz,...cb,u,st);m.v(q[0],y0,q[1],nx,0,nz,...cb,u1,st);m.v(q[0],y1,q[1],nx,0,nz,...c,u1,st);
+      m.v(a[0],y0,a[1],nx,0,nz,...cb,u,st);m.v(q[0],y1,q[1],nx,0,nz,...c,u1,st);m.v(a[0],y1,a[1],nx,0,nz,...c,u,st);
+      if(par){const pc=[c[0]*1.02,c[1]*1.02,c[2]*1.02];
+        m.v(a[0],y1,a[1],nx,0,nz,...pc);m.v(q[0],y1,q[1],nx,0,nz,...pc);m.v(q[0],y1+par,q[1],nx,0,nz,...pc);
+        m.v(a[0],y1,a[1],nx,0,nz,...pc);m.v(q[0],y1+par,q[1],nx,0,nz,...pc);m.v(a[0],y1+par,a[1],nx,0,nz,...pc);}
+      u=u1+0.7;
+    }
+    const r=intact?b.roof:[0.56,0.54,0.51];
+    for(let t=0;t<b.tris.length;t+=3){for(let q=0;q<3;q++){const P=p[b.tris[t+q]];m.v(P[0],y1+0.02,P[1],0,1,0,r[0],r[1],r[2])}}
+    if(par){ // 파라펫 윗면(테두리)
+      const pc=[c[0]*1.06,c[1]*1.06,c[2]*1.06],k=0.94;
+      for(let i=0;i<p.length;i++){const a=p[i],q=p[(i+1)%p.length];
+        const ai=[b.cx+(a[0]-b.cx)*k,b.cz+(a[1]-b.cz)*k],qi=[b.cx+(q[0]-b.cx)*k,b.cz+(q[1]-b.cz)*k],y=y1+par;
+        m.v(a[0],y,a[1],0,1,0,...pc);m.v(q[0],y,q[1],0,1,0,...pc);m.v(qi[0],y,qi[1],0,1,0,...pc);
+        m.v(a[0],y,a[1],0,1,0,...pc);m.v(qi[0],y,qi[1],0,1,0,...pc);m.v(ai[0],y,ai[1],0,1,0,...pc);
+        let nx=-(q[1]-a[1]),nz=(q[0]-a[0]);const l=Math.hypot(nx,nz)||1;nx/=l;nz/=l;const ic=[c[0]*0.9,c[1]*0.9,c[2]*0.9];
+        m.v(ai[0],y1,ai[1],nx,0,nz,...ic);m.v(qi[0],y1,qi[1],nx,0,nz,...ic);m.v(qi[0],y,qi[1],nx,0,nz,...ic);
+        m.v(ai[0],y1,ai[1],nx,0,nz,...ic);m.v(qi[0],y,qi[1],nx,0,nz,...ic);m.v(ai[0],y,ai[1],nx,0,nz,...ic);}
+      for(const [ox,oz,w,d,hh] of b.units)boxMesh(m,b.cx+ox-w/2,y1,b.cz+oz-d/2,b.cx+ox+w/2,y1+hh,b.cz+oz+d/2,[0.74,0.75,0.75]);
+    }
+  }
+  m.upload();
+}
+
+// ---------- 나무 ----------
+let T=[], TGRID=new Map(), treeDirty=true;
+const ICO=(()=>{const t=(1+Math.sqrt(5))/2;const v=[[-1,t,0],[1,t,0],[-1,-t,0],[1,-t,0],[0,-1,t],[0,1,t],[0,-1,-t],[0,1,-t],[t,0,-1],[t,0,1],[-t,0,-1],[-t,0,1]].map(p=>{const l=Math.hypot(...p);return p.map(x=>x/l)});
+  const f=[[0,11,5],[0,5,1],[0,1,7],[0,7,10],[0,10,11],[1,5,9],[5,11,4],[11,10,2],[10,7,6],[7,1,8],[3,9,4],[3,4,2],[3,2,6],[3,6,8],[3,8,9],[4,9,5],[2,4,11],[6,2,10],[8,6,7],[9,8,1]];
+  const out=[];for(const [a,b,c] of f){const A=v[a],Bv=v[b],C=v[c];const n=[(A[0]+Bv[0]+C[0])/3,(A[1]+Bv[1]+C[1])/3,(A[2]+Bv[2]+C[2])/3];const l=Math.hypot(...n);for(const p of[A,Bv,C])out.push([p,n.map(x=>x/l)])}return out})();
+function addTree(x,z,s,R,c){if(c.trees.length>=1500)return;
+  let blocked=false;forBuildingsNear(x,z,1,b=>{if(!blocked&&x>=b.bb[0]-1&&x<=b.bb[2]+1&&z>=b.bb[1]-1&&z<=b.bb[3]+1&&pip(x,z,b.pts))blocked=true});if(blocked)return;
+  const g=R();const t={x,z,s,alive:true,c:[0.22+g*0.12,0.40+g*0.14,0.20+g*0.06],ck:c};T.push(t);c.trees.push(t);c.dT=true;
+  const k=Math.floor(x/BG)+','+Math.floor(z/BG);if(!TGRID.has(k))TGRID.set(k,[]);TGRID.get(k).push(T.length-1)}
+function forTreesNear(x,z,r,fn){for(let gx=Math.floor((x-r)/BG);gx<=Math.floor((x+r)/BG);gx++)for(let gz=Math.floor((z-r)/BG);gz<=Math.floor((z+r)/BG);gz++){const l=TGRID.get(gx+','+gz);if(l)for(const i of l)fn(T[i])}}
+function killTree(t){if(!t.alive)return;t.alive=false;t.ck.dT=true;addScore(40);
+  for(let k=0;k<4;k++)spawn(t.x,groundAt(t.x,t.z)+t.s,t.z,(Math.random()-.5)*10,6+Math.random()*8,(Math.random()-.5)*10,0.8+Math.random(),t.c)}
+function buildTrees(){for(const c of CHUNKS.values())buildChunkTrees(c)}
+function buildChunkTrees(c){const m=c.mt;m.reset();c.dT=false;m.grow(c.trees.length*(ICO.length*2+36));
+  for(const t of c.trees){if(!t.alive)continue;const g=groundAt(t.x,t.z),s=t.s;
+    pushShape(m,CUBE,t.x,g+s*0.45,t.z,s*0.12,s*0.9,s*0.12,0,[0.38,0.29,0.21],0,1);
+    pushShape(m,ICO,t.x,g+s*1.15,t.z,s*0.62,s*0.7,s*0.62,t.x,t.c,0,1);
+    pushShape(m,ICO,t.x+s*0.18,g+s*1.55,t.z-s*0.1,s*0.42,s*0.45,s*0.42,t.z,[t.c[0]*1.1,t.c[1]*1.1,t.c[2]*1.08],0,1)}
+  m.upload()}
+
+// ---------- 잔해 파티클 ----------
+const MAXD=6000;
+const D={x:new Float32Array(MAXD),y:new Float32Array(MAXD),z:new Float32Array(MAXD),vx:new Float32Array(MAXD),vy:new Float32Array(MAXD),vz:new Float32Array(MAXD),s:new Float32Array(MAXD),r:new Float32Array(MAXD),c:new Float32Array(MAXD*3),life:new Float32Array(MAXD),glow:new Uint8Array(MAXD),rest:new Uint8Array(MAXD),used:new Uint8Array(MAXD)};
+let dHead=0, rubDirty=false;
+function spawn(x,y,z,vx,vy,vz,s,c,life=0,glow=0){
+  if(!opts.debris&&!glow&&Math.random()<0.6)return;
+  const i=dHead;dHead=(dHead+1)%MAXD;if(D.used[i]&&D.rest[i])rubDirty=true;
+  D.x[i]=x;D.y[i]=y;D.z[i]=z;D.vx[i]=vx;D.vy[i]=vy;D.vz[i]=vz;D.s[i]=s;D.r[i]=Math.random()*6;D.c[i*3]=c[0];D.c[i*3+1]=c[1];D.c[i*3+2]=c[2];D.life[i]=life;D.glow[i]=glow;D.rest[i]=0;D.used[i]=1;
+}
+const CUBE=(()=>{const f=[[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];const out=[];for(const n of f){const [a,b]=n[0]?[[0,1,0],[0,0,1]]:n[1]?[[1,0,0],[0,0,1]]:[[1,0,0],[0,1,0]];const c=(s,t)=>[n[0]*.5+a[0]*s*.5+b[0]*t*.5,n[1]*.5+a[1]*s*.5+b[1]*t*.5,n[2]*.5+a[2]*s*.5+b[2]*t*.5];const q=[c(-1,-1),c(1,-1),c(1,1),c(-1,1)];for(const k of[0,1,2,0,2,3])out.push([q[k],n])}return out})();
+const SPHERE=(()=>{const out=[];const la=7,lo=12;const P=(i,j)=>{const t=i/la*Math.PI,p=j/lo*Math.PI*2;return[Math.sin(t)*Math.cos(p),Math.cos(t),Math.sin(t)*Math.sin(p)]};for(let i=0;i<la;i++)for(let j=0;j<lo;j++){const a=P(i,j),b=P(i+1,j),c=P(i+1,j+1),d=P(i,j+1);for(const v of[a,b,c,a,c,d])out.push([v,v])}return out})();
+function pushShape(m,shape,x,y,z,sx,sy,sz,rot,c,glow,nk=0.8){
+  const cr=Math.cos(rot),sr=Math.sin(rot),k=glow?0:nk;m.grow(shape.length);
+  for(const[p,n]of shape){const px=p[0]*sx,py=p[1]*sy,pz=p[2]*sz;
+    m.v(x+px*cr-pz*sr,y+py,z+px*sr+pz*cr,(n[0]*cr-n[2]*sr)*k,n[1]*k,(n[0]*sr+n[2]*cr)*k,c[0],c[1],c[2])}
+}
+function updateDebris(dt){
+  const m=mDyn,mg=mGlow;m.reset();mg.reset();
+  for(let i=0;i<MAXD;i++){
+    if(!D.used[i]||D.rest[i])continue;
+    if(D.glow[i]){D.life[i]-=dt;if(D.life[i]<=0){D.used[i]=0;continue}}
+    D.vy[i]-=(D.glow[i]===2?-4:D.glow[i]===3?3.5:32)*dt;if(D.glow[i]===3){D.vx[i]+=Math.sin(D.life[i]*7+i)*dt*4;D.vz[i]+=Math.cos(D.life[i]*6+i)*dt*4}
+    D.x[i]+=D.vx[i]*dt;D.y[i]+=D.vy[i]*dt;D.z[i]+=D.vz[i]*dt;D.r[i]+=dt*3;
+    const g=surfaceAt(D.x[i],D.y[i],D.z[i]);
+    if(D.y[i]-D.s[i]*0.5<g){
+      if(D.glow[i]){D.used[i]=0;continue}
+      if(g<-300){if(D.y[i]<-200)D.used[i]=0;}
+      else{D.y[i]=g+D.s[i]*0.35;D.vy[i]*=-0.25;D.vx[i]*=0.5;D.vz[i]*=0.5;
+        if(Math.abs(D.vy[i])<2.5&&Math.hypot(D.vx[i],D.vz[i])<2){D.rest[i]=1;rubDirty=true;continue}}
+    }
+    const c=[D.c[i*3],D.c[i*3+1],D.c[i*3+2]];
+    if(D.glow[i]){const f=Math.max(0.2,D.life[i]);pushShape(mg,CUBE,D.x[i],D.y[i],D.z[i],D.s[i]*f,D.s[i]*f,D.s[i]*f,D.r[i],c,1)}
+    else pushShape(m,CUBE,D.x[i],D.y[i],D.z[i],D.s[i],D.s[i]*0.7,D.s[i],D.r[i],c,0);
+  }
+  for(const o of FALL){
+    if(o.kind==='ball'){pushShape(m,SPHERE,o.x,o.y,o.z,o.r,o.r,o.r,0,[0.22,0.23,0.25],0);pushShape(m,CUBE,o.x,o.y+o.r+150,o.z,0.6,300,0.6,0,[0.15,0.15,0.15],0);}
+    else if(o.kind==='roll'){pushShape(m,CUBE,o.x,o.y,o.z,o.r*0.6,o.r*0.6,o.r*2.6,o.rot,[0.96,0.96,0.94],0);pushShape(m,CUBE,o.x,o.y,o.z,o.r*0.62,o.r*0.62,o.r*0.4,o.rot,[0.2,0.4,0.85],0)}
+  }
+  if(beam){const g=beam.y;pushShape(mg,CUBE,beam.x,g+200,beam.z,1.6,400,1.6,0,[1,0.1,0.08],1);pushShape(mg,CUBE,beam.x,g+200,beam.z,4,400,4,0,[1,0.45,0.4],1);pushShape(mg,SPHERE,beam.x,g,beam.z,5,5,5,0,[1,0.55,0.15],1)}
+  if(shock){const n=110;const t=1-shock.r/shock.max;for(let k=0;k<n;k++){const a=k/n*Math.PI*2;const x=shock.x+Math.cos(a)*shock.r,z=shock.z+Math.sin(a)*shock.r;const g=groundAt(x,z);if(g<-300)continue;pushShape(mg,CUBE,x,g+2,z,4*t+1,3*t+0.5,4*t+1,a,[1,0.93,0.8],1)}}
+  if(MODE==='section')drawSecDyn(m,mg);else if(MODE==='fps')drawFpsHand(m,mg);else drawTools(m,mg);
+  m.upload();mg.upload();
+  if(rubDirty){rubDirty=false;const r=mRub;r.reset();for(let i=0;i<MAXD;i++){if(!D.used[i]||!D.rest[i])continue;
+      const g=surfaceAt(D.x[i],D.y[i],D.z[i]);if(D.y[i]-D.s[i]*0.5>g+1.5||D.y[i]<g-2){D.rest[i]=0;continue}
+      pushShape(r,CUBE,D.x[i],D.y[i],D.z[i],D.s[i],D.s[i]*0.7,D.s[i],D.r[i],[D.c[i*3],D.c[i*3+1],D.c[i*3+2]],0)}r.upload()}
+}
+function wakeRubble(x,z,r){for(let i=0;i<MAXD;i++){if(D.used[i]&&D.rest[i]&&Math.hypot(D.x[i]-x,D.z[i]-z)<r){D.rest[i]=0;D.vy[i]=2;rubDirty=true}}}
+
+// ---------- 점수 & 랭크 ----------
+let score=0;
+const RANKS=[[0,'F','인턴'],[3000,'E','사원'],[15000,'D','대리'],[50000,'C','과장'],[150000,'B','소장'],[450000,'A','대표 건축사'],[1500000,'S','ANNIHILATOR']];
+function addScore(v){score+=v;chargeUlt(v)}
+function updateHUD(){
+  $('#scoreV').textContent=fmt(score);
+  let k=0;for(let i=0;i<RANKS.length;i++)if(score>=RANKS[i][0])k=i;
+  $('#rankLetter').textContent=RANKS[k][1];$('#rankTitle').textContent=RANKS[k][2];
+  const nx=RANKS[k+1];$('#rankBar i').style.width=(nx?((score-RANKS[k][0])/(nx[0]-RANKS[k][0])*100):100)+'%';
+  $('#depth').textContent=depthText(maxDepth);
+  {const n=nbStats();const el=$('#nbBox');if(n.t){el.style.display='';el.textContent=`${districtName()} 지구 · 건축사무소 철거 ${n.d} / ${n.t}`;checkStage(n)}else el.style.display='none'}
+  if(MODE==='section')updateSecPanel();
+}
+function depthText(m){if(m>=12742000)return '지구 관통! 반대편 도착';if(m>=1000)return '지하 '+fmt(m/1000)+' km';return '지하 '+fmt(m)+' m'}
+
+// ---------- 데미지 ----------
+// (호환용) 예전 '높이 깎기' 피해 → 구조 단위 피해로 변환
+function damageBuilding(b,amt,x,z,force=1){
+  if(!b.alive||amt<=0)return;
+  const y=pip(x,z,b.pts)?b.base+b.h-1:b.base+Math.min(b.h*0.5,2+Math.random()*b.h*0.4);
+  structDamage(b,x,y,z,4+Math.min(8,amt*0.1),amt/22);
+}
+function killBuilding(b){
+  if(!b.alive||b.lifted)return;freeDet(b);STATS.kills++;
+  addScore(Math.max(b.h,0)*b.area*0.35+b.area*2+(b.hq?50000:0));
+  const n=Math.min(opts.debris?60:20,Math.floor(Math.sqrt(b.area)*1.2)+6);
+  for(let k=0;k<n;k++){const p=b.pts[Math.floor(Math.random()*b.pts.length)];const t=Math.random();
+    spawn(b.cx+(p[0]-b.cx)*t,b.base+Math.random()*Math.max(b.h,3),b.cz+(p[1]-b.cz)*t,(Math.random()-.5)*6,Math.random()*5,(Math.random()-.5)*6,1.5+Math.random()*3,Math.random()<0.5?b.col:[0.52,0.51,0.49])}
+  b.alive=false;b.h=0;markB(b);
+  firmsKilled(b);
+  if(b.hq)toast(b.hqName+' 사옥 철거 완료! +50,000');
+}
+function blast(x,z,r,power,force=1){
+  forBuildingsNear(x,z,r,b=>{if(!b.alive)return;const d=distToBuilding(b,x,z);if(d<r){
+    const inside=pip(x,z,b.pts);const y=inside?b.base+b.h:b.base+2;   // 위에서 떨어지면 지붕부터, 옆이면 아래부터
+    structDamage(b,x,y,z,Math.max(3,r*0.55),(power/25)*(1-d/r*0.7))}});
+  forTreesNear(x,z,r,t=>{if(t.alive&&Math.hypot(t.x-x,t.z-z)<r*0.9)killTree(t)});
+}
+
+
+// =====================================================================
+//  구조 단위 파괴 (동네 모드) — 건물이 처음 맞는 순간 층·기둥·외피 단위로 쪼개짐
+//  외피(창호 패널)가 떨어져 나가면 슬래브·기둥이 드러나고, 기둥이 빠진 층은 주저앉으며
+//  위층이 내려앉아 아래층을 다시 누르는 연쇄 붕괴가 일어남
+// =====================================================================
+const DETS=new Set();
+const REBAR=[0.55,0.24,0.14], CONC=[0.70,0.69,0.66], CONC_D=[0.52,0.51,0.49], RUBBLE=[0.55,0.52,0.48];
+const COL_HP=1.5, SUPPORT_MIN=0.45;
+// 사옥 전체를 쓰는 회사의 사옥 = 레이드 보스 (기둥 2배)
+function raidMult(b){return b.hq&&CUR&&!CUR.tenant&&parseFloor(CUR.addr)==null?2:1}
+
+function makeDet(b){
+  const F=clamp(Math.round(b.h0/3.4),1,40),fh=b.h0/F;
+  // 외곽 기둥 위치: 각 변을 약 5.5m 간격으로 분할
+  let per=b.pts.reduce((a,p,i)=>{const q=b.pts[(i+1)%b.pts.length];return a+Math.hypot(q[0]-p[0],q[1]-p[1])},0);
+  const sp=Math.max(5.5,per/56);
+  const nodes=[],edgeN=[];
+  for(let i=0;i<b.pts.length;i++){const a=b.pts[i],c=b.pts[(i+1)%b.pts.length];const len=Math.hypot(c[0]-a[0],c[1]-a[1]);const n=Math.max(1,Math.round(len/sp));
+    let nx=c[1]-a[1],nz=-(c[0]-a[0]);const l=Math.hypot(nx,nz)||1;nx/=l;nz/=l;
+    for(let s=0;s<n;s++){nodes.push([a[0]+(c[0]-a[0])*s/n,a[1]+(c[1]-a[1])*s/n]);edgeN.push([nx,nz])}}
+  const M=nodes.length;
+  const cols=nodes.map(([x,z])=>{const dx=b.cx-x,dz=b.cz-z,l=Math.hypot(dx,dz)||1;return[x+dx/l*0.55,z+dz/l*0.55]});
+  // 내부 기둥: 7.5m 격자 (외곽에서 2.5m 이상 안쪽)
+  const ic=[];const [x0,z0,x1,z1]=b.bb;
+  for(let x=x0+4;x<x1-2;x+=7.5)for(let z=z0+4;z<z1-2;z+=7.5){if(ic.length>=48)break;if(pip(x,z,b.pts)&&distToBuilding2(b,x,z)>2.5)ic.push([x,z])}
+  const C=M+ic.length;
+  const d={F,fh,M,nodes,edgeN,cols,ic,C,
+    panel:new Uint8Array(F*M).fill(1),
+    hp:new Float32Array(F*C).fill(COL_HP*raidMult(b)),hp0:COL_HP*raidMult(b),
+    fl:new Uint8Array(F).fill(1),
+    fy:new Float32Array(F),vy:new Float32Array(F),
+    mb:new MB(4096),dirty:true,weak:0,weakT:0,tint:0};
+  for(let f=0;f<F;f++)d.fy[f]=f*fh;
+  b.det=d;DETS.add(b);markB(b);
+  return d;
+}
+function distToBuilding2(b,x,z){let best=1e9;const p=b.pts;for(let i=0;i<p.length;i++){const a=p[i],c=p[(i+1)%p.length];const dx=c[0]-a[0],dz=c[1]-a[1];const l2=dx*dx+dz*dz||1;let t=((x-a[0])*dx+(z-a[1])*dz)/l2;t=clamp(t,0,1);best=Math.min(best,Math.hypot(a[0]+dx*t-x,a[1]+dz*t-z))}return best}
+function ensureDet(b){return b.det||makeDet(b)}
+function freeDet(b){if(!b.det)return;try{gl.deleteBuffer(b.det.mb.buf)}catch(e){}b.det=null;DETS.delete(b)}
+function colPos(d,j){return j<d.M?d.cols[j]:d.ic[j-d.M]}
+
+// 각 층이 놓일 높이 (무너진 층은 0.6m 잔해층이 됨)
+function detTargets(d){const t=new Float32Array(d.F);let y=0;for(let f=0;f<d.F;f++){t[f]=y;y+=d.fl[f]?d.fh:0.6}return t}
+function detTop(b){const d=b.det;let top=0;for(let f=d.F-1;f>=0;f--){if(d.fl[f]){top=d.fy[f]+d.fh;break}}return top}
+
+/** 점 (x,y,z) 반경 r 안의 외피 패널과 기둥에 피해. power≈1 이면 기둥 하나가 거의 부러짐 */
+function structDamage(b,x,y,z,r,power,opt){
+  if(!b.alive||b.lifted||power<=0)return;opt=opt||{};
+  const d=ensureDet(b);let changed=false,pan=0,cols=0;
+  for(let f=0;f<d.F;f++){if(!d.fl[f])continue;
+    const y0=b.base+d.fy[f],y1=y0+d.fh,dy=Math.max(0,y0-y,y-y1);if(dy>r)continue;
+    if(opt.floors&&!opt.floors.includes(f))continue;
+    // 외피 패널
+    for(let j=0;j<d.M;j++){if(!d.panel[f*d.M+j])continue;const a=d.nodes[j],c=d.nodes[(j+1)%d.M];
+      const px=(a[0]+c[0])/2,pz=(a[1]+c[1])/2,dist=Math.hypot(px-x,pz-z,dy);
+      if(dist<r&&Math.random()<0.55+power*0.5){d.panel[f*d.M+j]=0;pan++;changed=true;
+        const bay=Math.hypot(c[0]-a[0],c[1]-a[1]);const blk=clamp(Math.min(bay*0.55,d.fh*0.8),1.4,3.2);
+        spawn(px,y0+d.fh*0.5,pz,d.edgeN[j][0]*(2+Math.random()*5)*power,1+Math.random()*3,d.edgeN[j][1]*(2+Math.random()*5)*power,blk,Math.random()<0.5?b.col:[b.col[0]*0.85,b.col[1]*0.85,b.col[2]*0.88]);
+        if(opts.debris)spawn(px,y0+Math.random()*d.fh,pz,d.edgeN[j][0]*(3+Math.random()*6),2+Math.random()*4,d.edgeN[j][1]*(3+Math.random()*6),0.5+Math.random()*0.8,[0.55,0.68,0.78])}}
+    // 기둥
+    for(let j=0;j<d.C;j++){const i=f*d.C+j;if(d.hp[i]<=0)continue;const [cx,cz]=colPos(d,j);const dist=Math.hypot(cx-x,cz-z,dy);
+      const rr=j<d.M?r*0.85:r*0.6;   // 내부 기둥은 외피 뒤에 있어 덜 맞음
+      if(dist<rr){d.hp[i]-=power*(1-dist/rr*0.6);changed=true;if(d.hp[i]<=0){cols++;
+        for(let k=0;k<2;k++)spawn(cx,y0+Math.random()*d.fh,cz,(Math.random()-.5)*5,2+Math.random()*3,(Math.random()-.5)*5,0.6+Math.random()*0.8,CONC_D)}}}
+  }
+  if(!changed)return;
+  addScore(pan*60+cols*400);
+  d.dirty=true;detCheck(b);
+}
+// 외피만 벗겨내는 피해 (충격파 등)
+function facadeStrip(b,x,z,strength){
+  if(!b.alive)return;const d=ensureDet(b);let n=0;
+  for(let f=0;f<d.F;f++){if(!d.fl[f])continue;for(let j=0;j<d.M;j++){if(!d.panel[f*d.M+j])continue;const n2=d.edgeN[j];
+    const a=d.nodes[j];const facing=(a[0]-x)*n2[0]+(a[1]-z)*n2[1]<0;   // 폭심 쪽을 향한 면
+    if(Math.random()<strength*(facing?0.9:0.25)){d.panel[f*d.M+j]=0;n++;if(Math.random()<0.25)spawn(a[0],b.base+d.fy[f]+d.fh*0.5,a[1],n2[0]*6,3,n2[1]*6,0.8+Math.random(),[0.55,0.68,0.78])}}
+    for(let j=0;j<d.C;j++)if(Math.random()<strength*0.35)d.hp[f*d.C+j]-=strength*1.2*Math.random()}
+  addScore(n*40);d.dirty=true;detCheck(b);
+}
+function floorSupport(d,f){let a=0;for(let j=0;j<d.C;j++)if(d.hp[f*d.C+j]>0)a++;return a/d.C}
+function detCheck(b){
+  const d=b.det;if(!d)return;
+  for(let f=0;f<d.F;f++){if(!d.fl[f])continue;if(floorSupport(d,f)<SUPPORT_MIN){collapseFloor(b,f);return detCheck(b)}}
+  if(!d.fl.some(v=>v)){freeDet(b);killBuilding(b)}
+}
+function collapseFloor(b,f){
+  const d=b.det;d.fl[f]=0;d.dirty=true;
+  const y=b.base+d.fy[f];
+  // 슬래브 조각 · 기둥 토막 · 철근
+  const n=Math.min(opts.debris?16:6,Math.ceil(Math.sqrt(b.area)/3)+3);
+  for(let k=0;k<n;k++){const p=b.pts[Math.floor(Math.random()*b.pts.length)],t=Math.random();const x=b.cx+(p[0]-b.cx)*t,z=b.cz+(p[1]-b.cz)*t;
+    const r=Math.random();const c=r<0.55?CONC:r<0.75?b.col:r<0.9?[0.55,0.68,0.78]:REBAR;
+    spawn(x,y+Math.random()*d.fh,z,(x-b.cx)*0.25+(Math.random()-.5)*5,1+Math.random()*4,(z-b.cz)*0.25+(Math.random()-.5)*5,r<0.55?2.2+Math.random()*2.4:0.8+Math.random()*1.4,c)}
+  addScore(b.area*d.fh*0.35+300);
+  sfx(10+Math.min(30,Math.sqrt(b.area)));cam.shake=Math.max(cam.shake,Math.min(5,Math.sqrt(b.area)/15));
+  spillToNeighbors(b,f);
+}
+// 위에 남은 층이 많을수록 잔해가 멀리 튀어 바로 옆 건물 외벽·기둥을 때림 (지구 단위 연쇄 철거)
+let spillDepth=0;
+function spillToNeighbors(b,f){
+  if(spillDepth>2)return;const d=b.det;let above=0;for(let k=f;k<d.F;k++)if(d.fl[k])above++;
+  const reach=3+above*0.7;if(reach<4)return;
+  const y=b.base+d.fy[f]+d.fh*0.5;spillDepth++;
+  try{forBuildingsNear(b.cx,b.cz,Math.sqrt(b.area)/2+reach+10,o=>{if(o===b||!o.alive)return;
+    const P=facadePoint(o,b.cx,b.cz);if(!P)return;const gap=distToBuilding(b,P.x,P.z);if(gap>reach)return;
+    const yy=clamp(y,o.base+1,o.base+Math.max(1,o.h-1));
+    structDamage(o,P.x,yy,P.z,4.5+above*0.3,0.6+above*0.08*(1-gap/reach));
+    if(!o.domino){o.domino=1;if(o.firms)toast(`잔해가 ${o.firms[0].short} 건물까지 덮쳤어요! 도미노 철거`,1800)}})}
+  finally{spillDepth--}
+}
+// 매 프레임: 위층 낙하 · 충돌 · 순살(철근 빠짐) 진행
+function updateDet(dt){
+  for(const b of DETS){const d=b.det;if(!d||!b.alive)continue;
+    const t=detTargets(d);let moving=false;
+    for(let f=0;f<d.F;f++){if(!d.fl[f])continue;
+      if(d.fy[f]>t[f]+0.01){d.vy[f]-=30*dt;d.fy[f]=Math.max(t[f],d.fy[f]+d.vy[f]*dt);moving=true;
+        if(d.fy[f]<=t[f]+0.01){const v=-d.vy[f];d.vy[f]=0;d.fy[f]=t[f];detLand(b,f,v)}}}
+    if(d.weak){d.weakT+=dt;if(d.weakT>0.22){d.weakT=0;const alive=[];for(let f=0;f<d.F;f++)if(d.fl[f])alive.push(f);
+      if(alive.length){const f=alive[Math.floor(Math.random()*Math.min(alive.length,Math.max(2,alive.length/2)))];for(let j=0;j<d.C;j++)if(Math.random()<0.35)d.hp[f*d.C+j]-=0.3;
+        for(let j=0;j<d.M;j++)if(Math.random()<0.04)d.panel[f*d.M+j]=0;d.dirty=true;detCheck(b)}}}
+    if(moving){d.dirty=true;b.h=detTop(b);wakeRubble(b.cx,b.cz,Math.sqrt(b.area))}
+    if(d.dirty&&b.det){d.dirty=false;b.h=detTop(b);buildDetMesh(b)}
+  }
+}
+function detLand(b,f,v){
+  const d=b.det;if(v<4)return;
+  // 바로 아래 살아있는 층에 충격
+  let g=f-1;while(g>=0&&!d.fl[g])g--;if(g<0)return;
+  let mass=0;for(let k=f;k<d.F;k++)if(d.fl[k])mass++;
+  const p=Math.min(0.9,0.06*mass+v*0.015);
+  for(let j=0;j<d.C;j++)if(Math.random()<p)d.hp[g*d.C+j]-=COL_HP*(0.5+Math.random()*0.6);
+  for(let j=0;j<d.M;j++)if(Math.random()<p)d.panel[g*d.M+j]=0;
+  const y=b.base+d.fy[f];for(let k=0;k<6;k++)spawn(b.cx+(Math.random()-.5)*Math.sqrt(b.area),y,b.cz+(Math.random()-.5)*Math.sqrt(b.area),(Math.random()-.5)*10,3+Math.random()*4,(Math.random()-.5)*10,1+Math.random()*1.5,[0.75,0.73,0.70],0.6+Math.random()*0.5,1);
+  d.dirty=true;detCheck(b);
+}
+
+// ---------- 메시 ----------
+function quad(m,a,b,c,d,n,col,u0,u1,st){m.v(a[0],a[1],a[2],n[0],n[1],n[2],col[0],col[1],col[2],u0,st);m.v(b[0],b[1],b[2],n[0],n[1],n[2],col[0],col[1],col[2],u1,st);m.v(c[0],c[1],c[2],n[0],n[1],n[2],col[0],col[1],col[2],u1,st);
+  m.v(a[0],a[1],a[2],n[0],n[1],n[2],col[0],col[1],col[2],u0,st);m.v(c[0],c[1],c[2],n[0],n[1],n[2],col[0],col[1],col[2],u1,st);m.v(d[0],d[1],d[2],n[0],n[1],n[2],col[0],col[1],col[2],u0,st)}
+function prismCol(m,x,z,y0,y1,w,c){const h=w/2;m.grow(24);
+  quad(m,[x-h,y0,z+h],[x+h,y0,z+h],[x+h,y1,z+h],[x-h,y1,z+h],[0,0,1],c,-1,-1,0);quad(m,[x-h,y0,z-h],[x+h,y0,z-h],[x+h,y1,z-h],[x-h,y1,z-h],[0,0,-1],c,-1,-1,0);
+  quad(m,[x+h,y0,z-h],[x+h,y0,z+h],[x+h,y1,z+h],[x+h,y1,z-h],[1,0,0],c,-1,-1,0);quad(m,[x-h,y0,z-h],[x-h,y0,z+h],[x-h,y1,z+h],[x-h,y1,z-h],[-1,0,0],c,-1,-1,0)}
+function rebars(m,x,z,y,R){for(let k=0;k<4;k++){const ox=(k%2?0.18:-0.18)+(R()-.5)*0.1,oz=(k<2?0.18:-0.18)+(R()-.5)*0.1,hh=0.8+R()*1.0;pushShape(m,CUBE,x+ox+(R()-.5)*0.3,y+hh/2,z+oz+(R()-.5)*0.3,0.07,hh,0.07,0,REBAR,0)}}
+function buildDetMesh(b){
+  const d=b.det,m=d.mb;m.reset();const st=b.style,c=b.col,base=b.base,R=mulberry(b.id%9973+5);
+  const dark=d.weak?[c[0]*0.7,c[1]*0.66,c[2]*0.62]:c;
+  let topF=-1;for(let f=d.F-1;f>=0;f--)if(d.fl[f]){topF=f;break}
+  const collapsedAbove=topF>=0&&topF<d.F-1;   // 위층이 날아간 상태 → 철근이 삐죽
+  const t=detTargets(d);
+  for(let f=0;f<d.F;f++){
+    if(!d.fl[f]){ // 잔해층
+      const y=base+t[f]+0.6;m.grow(b.tris.length);for(let q=0;q<b.tris.length;q+=3)for(let k=0;k<3;k++){const P=b.pts[b.tris[q+k]];m.v(P[0],y,P[1],0,1,0,...RUBBLE)}
+      continue}
+    const y0=base+d.fy[f],y1=y0+d.fh,ys=y1-0.4;
+    let intact=true;for(let j=0;j<d.M;j++)if(!d.panel[f*d.M+j]){intact=false;break}
+    if(intact)for(let j=0;j<d.C;j++)if(d.hp[f*d.C+j]<d.hp0){intact=false;break}
+    // 외피 패널 (창호)
+    let u=f===0?0:0;m.grow(d.M*12);
+    for(let j=0;j<d.M;j++){const a=d.nodes[j],e=d.nodes[(j+1)%d.M],n=d.edgeN[j];const len=Math.hypot(e[0]-a[0],e[1]-a[1]);
+      if(d.panel[f*d.M+j]){const cb=f===0?[dark[0]*0.85,dark[1]*0.85,dark[2]*0.87]:dark;
+        quad(m,[a[0],y0,a[1]],[e[0],y0,e[1]],[e[0],ys,e[1]],[a[0],ys,a[1]],[n[0],0,n[1]],cb,u,u+len,st)}
+      // 슬래브 테두리(보) — 층마다 가로 띠
+      quad(m,[a[0],ys,a[1]],[e[0],ys,e[1]],[e[0],y1,e[1]],[a[0],y1,a[1]],[n[0],0,n[1]],f===topF&&!collapsedAbove?dark:CONC,-1,-1,0);
+      u+=len}
+    // 슬래브 윗면 / 아랫면
+    const top=f===topF&&!collapsedAbove?b.roof:CONC;m.grow(b.tris.length*2);
+    for(let q=0;q<b.tris.length;q+=3){for(let k=0;k<3;k++){const P=b.pts[b.tris[q+k]];m.v(P[0],y1,P[1],0,1,0,...top)}
+      if(!intact)for(let k=0;k<3;k++){const P=b.pts[b.tris[q+k]];m.v(P[0],ys,P[1],0,-1,0,...CONC_D)}}
+    if(f===0&&!intact)for(let q=0;q<b.tris.length;q+=3)for(let k=0;k<3;k++){const P=b.pts[b.tris[q+k]];m.v(P[0],y0+0.05,P[1],0,1,0,...CONC_D)}
+    // 기둥 (외피가 다 붙어 있으면 안 보이므로 생략)
+    if(!intact){for(let j=0;j<d.C;j++){const hp=d.hp[f*d.C+j],[x,z]=colPos(d,j);
+      if(hp>0){const s=1-hp/d.hp0;const cc=[CONC[0]+(0.85-CONC[0])*s,CONC[1]+(0.40-CONC[1])*s,CONC[2]+(0.25-CONC[2])*s];prismCol(m,x,z,y0,ys,0.7,cc)}
+      else{prismCol(m,x,z,y0,y0+0.5,0.7,CONC_D);rebars(m,x,z,y0+0.5,R);prismCol(m,x,z,ys-0.4,ys,0.7,CONC_D);}}}
+    // 꼭대기층 위로 철근
+    if(f===topF&&collapsedAbove){for(let j=0;j<d.C;j+=1)if(d.hp[f*d.C+j]>0){const [x,z]=colPos(d,j);rebars(m,x,z,y1,R)}}
+  }
+  m.upload();
+}
+function drawDets(){for(const b of DETS)if(b.alive&&b.det)b.det.mb.draw()}
+
+// ---------- 되돌리기용 ----------
+function detSnap(b){const d=b.det;return d?{panel:d.panel.slice(),hp:d.hp.slice(),fl:d.fl.slice(),fy:d.fy.slice(),weak:d.weak}:null}
+function detRestore(b,s){if(!s){freeDet(b);return}const d=ensureDet(b);d.panel.set(s.panel);d.hp.set(s.hp);d.fl.set(s.fl);d.fy.set(s.fy);d.vy.fill(0);d.weak=s.weak;d.dirty=true}
+
+// =====================================================================
+//  건축 현장 도구 (동네 모드) — 타워크레인 · 철거반 · 불도저 · 철근 빼기
+// =====================================================================
+let CRANES=[], CREWS=[], DOZERS=[], REBARFX=[], dozerPath=null;
+const YEL=[0.98,0.76,0.10], YEL_D=[0.80,0.58,0.06], STEEL=[0.30,0.31,0.33], TRACK=[0.13,0.13,0.14];
+const TOY=2.2;   // 사람·장비를 멀리서도 보이게 키우는 배율
+
+function nearestBuilding(x,z,r){let best=null,bd=1e9;forBuildingsNear(x,z,r,b=>{if(!b.alive)return;const d=distToBuilding(b,x,z);if(d<bd){bd=d;best=b}});return bd<=r?best:null}
+// 건물 외곽 위의 가장 가까운 점과 바깥쪽 방향
+function facadePoint(b,x,z){let best=null,bd=1e9;const p=b.pts;
+  for(let i=0;i<p.length;i++){const a=p[i],c=p[(i+1)%p.length];const dx=c[0]-a[0],dz=c[1]-a[1];const l2=dx*dx+dz*dz||1;let t=clamp(((x-a[0])*dx+(z-a[1])*dz)/l2,0,1);
+    const px=a[0]+dx*t,pz=a[1]+dz*t,d=Math.hypot(px-x,pz-z);if(d<bd){bd=d;const l=Math.sqrt(l2);best={x:px,z:pz,nx:dz/l,nz:-dx/l}}}
+  return best}
+
+// ---------- 1. 타워크레인 + 철거 쇠공 ----------
+function spawnCrane(h){
+  const b=h.b||nearestBuilding(h.x,h.z,40);if(!b){toast('크레인을 세울 건물이 없어요. 건물을 눌러주세요');return}
+  const fp=facadePoint(b,h.x,h.z);const hy=h.b?clamp(h.y,b.base+3,b.base+b.h-1):b.base+b.h*0.6;
+  const cx=fp.x+fp.nx*20,cz=fp.z+fp.nz*20,H=Math.max(b.h+16,hy+22);
+  CRANES.push({b,cx,cz,H,hx:fp.x,hz:fp.z,hy,nx:fp.nx,nz:fp.nz,t:0,swing:0,pen:0,phase:Math.PI,grow:0,done:false,last:1});
+  sfx(8);toast('타워크레인 설치 중…',1500);
+}
+function updateCranes(dt){
+  for(let i=CRANES.length-1;i>=0;i--){const c=CRANES[i];c.t+=dt;
+    if(!c.done){c.grow=Math.min(1,c.grow+dt*1.6);
+      if(c.grow>=1){c.phase+=dt*4.2;const s=Math.cos(c.phase);   // s=-1 → 건물 쪽 끝
+        if(c.last>-0.97&&s<=-0.97){ // 충돌
+          const x=c.hx-c.nx*c.pen,z=c.hz-c.nz*c.pen;
+          if(c.b.alive){structDamage(c.b,x,c.hy,z,6.5,2.1);structDamage(c.b,x,c.hy-3.4,z,4.5,1.2);boom3(x,c.hy,z,9);cam.shake=Math.max(cam.shake,2.5)}
+          c.pen+=2.2;c.swing++;if(c.swing>=5||!c.b.alive)c.done=true}
+        c.last=s}}
+    else{c.grow-=dt*1.4;if(c.grow<=0)CRANES.splice(i,1)}}
+}
+function drawCrane(m,c){
+  const g=clamp(c.grow,0,1),H=c.H*g,x=c.cx,z=c.cz,gy=groundAt(x,z);
+  pushShape(m,CUBE,x,gy+0.6,z,7,1.2,7,0,[0.55,0.55,0.53],0);                       // 기초
+  pushShape(m,CUBE,x,gy+H/2,z,2.2,H,2.2,0,YEL,0);                                    // 마스트
+  for(let y=6;y<H-2;y+=6)pushShape(m,CUBE,x,gy+y,z,2.5,0.35,2.5,0,YEL_D,0);         // 격자 느낌 띠
+  if(g<0.6)return;
+  const ang=Math.atan2(-c.nz,-c.nx);   // 건물 쪽 방향
+  const L=20+c.pen+6,top=gy+H;
+  pushShape(m,CUBE,x+Math.cos(ang)*L/2,top,z+Math.sin(ang)*L/2,L,1.4,1.4,ang,YEL,0);   // 지브
+  pushShape(m,CUBE,x-Math.cos(ang)*5,top,z-Math.sin(ang)*5,10,1.2,1.2,ang,YEL_D,0);    // 카운터 지브
+  pushShape(m,CUBE,x-Math.cos(ang)*9,top-1.5,z-Math.sin(ang)*9,2.5,2.5,2.5,ang,[0.6,0.6,0.58],0); // 웨이트
+  pushShape(m,CUBE,x,top+1.6,z,2.6,1.8,2.6,ang,[0.95,0.95,0.93],0);                  // 조종실
+  // 쇠공: 지브 끝에 매달려 건물 쪽으로 진자 운동
+  const s=Math.cos(c.phase),reach=(1+s)/2*14+1.0;
+  const bx=c.hx+c.nx*reach-c.nx*c.pen,bz=c.hz+c.nz*reach-c.nz*c.pen,by=c.hy+((1+s)/2)*4;
+  const px=c.hx+c.nx*8-c.nx*c.pen,pz=c.hz+c.nz*8-c.nz*c.pen;   // 트롤리
+  const cl=top-by;pushShape(m,CUBE,(px+bx)/2,by+cl/2,(pz+bz)/2,0.25,cl,0.25,0,STEEL,0);
+  pushShape(m,SPHERE,bx,by,bz,2.2,2.2,2.2,0,[0.18,0.18,0.2],0);
+}
+
+// ---------- 2. 철거반 (오함마 든 인부들) ----------
+function spawnCrew(h){
+  const b=h.b||nearestBuilding(h.x,h.z,40);if(!b){toast('철거할 건물을 눌러주세요');return}
+  const n=Math.min(14,6+Math.floor(Math.sqrt(b.area)/4));const ws=[];
+  for(let k=0;k<n;k++){const a=Math.random()*Math.PI*2,r=Math.sqrt(b.area)/2+35+Math.random()*15;
+    const sx=b.cx+Math.cos(a)*r,sz=b.cz+Math.sin(a)*r;
+    const tgt=b.pts[Math.floor(Math.random()*b.pts.length)],tn=b.pts[(b.pts.indexOf(tgt)+1)%b.pts.length],tt=Math.random();
+    const fx=tgt[0]+(tn[0]-tgt[0])*tt,fz=tgt[1]+(tn[1]-tgt[1])*tt;const dx=fx-b.cx,dz=fz-b.cz,l=Math.hypot(dx,dz)||1;
+    ws.push({x:sx,z:sz,tx:fx+dx/l*1.6,tz:fz+dz/l*1.6,ix:fx-dx/l*1.2,iz:fz-dz/l*1.2,state:'run',t:-Math.random()*0.6,hit:0,vest:Math.random()<0.5?[1,0.45,0.1]:[0.95,0.85,0.15],helm:Math.random()<0.3?[0.95,0.95,0.95]:[0.98,0.8,0.1]})}
+  CREWS.push({b,ws,t:0});toast(`철거반 ${n}명 투입!`,1500);sfx(6);
+}
+function updateCrews(dt){
+  for(let i=CREWS.length-1;i>=0;i--){const c=CREWS[i];c.t+=dt;const live=c.b.alive;let any=false;
+    for(const w of c.ws){w.t+=dt;if(w.t<0){any=true;continue}
+      if(w.state==='run'){const dx=w.tx-w.x,dz=w.tz-w.z,l=Math.hypot(dx,dz);if(l<0.6||!live){w.state=live?'hit':'leave';w.t=0}else{const sp=Math.min(l,9*dt);w.x+=dx/l*sp;w.z+=dz/l*sp;w.dir=Math.atan2(dz,dx)}}
+      else if(w.state==='hit'){
+        // 1층(시간이 지나면 2층)에서 가장 가까운 살아있는 기둥을 찾아가 오함마질
+        const d=live?ensureDet(c.b):null;if(!d){w.state='leave';w.t=0}
+        else{let bj=-1,bf=0,bd=1e9;const fls=c.t>10&&d.F>1?[0,1]:[0];
+          for(const f of fls){if(!d.fl[f])continue;for(let j=0;j<d.C;j++){if(d.hp[f*d.C+j]<=0)continue;const [x,z]=colPos(d,j);const dd=Math.hypot(x-w.x,z-w.z)+f*6;if(dd<bd){bd=dd;bj=j;bf=f}}}
+          if(bj<0){w.state='leave';w.t=0}
+          else{const [x,z]=colPos(d,bj);const l=Math.hypot(x-w.x,z-w.z);w.dir=Math.atan2(z-w.z,x-w.x);
+            if(l>1.6){const sp=Math.min(l-1.2,6*dt);w.x+=(x-w.x)/l*sp;w.z+=(z-w.z)/l*sp;w.t=0}
+            else if(w.t>0.6){w.t=0;w.hit++;const i=bf*d.C+bj;d.hp[i]-=0.42;addScore(80);
+              if(bj<d.M){d.panel[bf*d.M+bj]=0;d.panel[bf*d.M+(bj+d.M-1)%d.M]=0}
+              spawn(x,c.b.base+d.fy[bf]+1.2,z,(Math.random()-.5)*4,3,(Math.random()-.5)*4,0.4,[0.7,0.7,0.68]);if(d.hp[i]<=0)addScore(320);
+              d.dirty=true;detCheck(c.b);if(!c.b.alive||w.hit>80){w.state='leave';w.t=0}}}}}
+      else if(w.state==='leave'){const dx=w.x-c.b.cx,dz=w.z-c.b.cz,l=Math.hypot(dx,dz)||1;w.x+=dx/l*10*dt;w.z+=dz/l*10*dt;w.dir=Math.atan2(dz,dx);if(w.t>3){w.gone=true}}
+      if(!w.gone)any=true}
+    if(!any)CREWS.splice(i,1)}
+}
+function drawWorker(m,w){
+  if(w.gone||w.t<0&&w.state==='run')return;
+  const s=TOY,gy=groundAt(w.x,w.z),run=w.state!=='hit',ph=run?Math.sin(performance.now()/90+w.x)*0.25:0,rot=w.dir||0;
+  const fx=Math.cos(rot),fz=Math.sin(rot);
+  pushShape(m,CUBE,w.x,gy+0.45*s,w.z,0.28*s,0.9*s,0.32*s,rot,[0.2,0.22,0.3],0);           // 다리
+  pushShape(m,CUBE,w.x,gy+1.15*s+ph*0.1,w.z,0.32*s,0.6*s,0.46*s,rot,w.vest,0);             // 몸(조끼)
+  pushShape(m,CUBE,w.x,gy+1.6*s,w.z,0.24*s,0.26*s,0.24*s,rot,[0.95,0.78,0.62],0);           // 머리
+  pushShape(m,CUBE,w.x,gy+1.78*s,w.z,0.3*s,0.12*s,0.3*s,rot,w.helm,0);                     // 안전모
+  if(w.state==='hit'){const sw=Math.sin(w.t/0.45*Math.PI);const hy=gy+(1.9-sw*1.2)*s;      // 오함마
+    pushShape(m,CUBE,w.x+fx*0.35*s,hy-0.3*s,w.z+fz*0.35*s,0.06*s,0.75*s,0.06*s,rot,[0.55,0.38,0.2],0);
+    pushShape(m,CUBE,w.x+fx*0.35*s,hy+0.08*s,w.z+fz*0.35*s,0.34*s,0.16*s,0.16*s,rot,STEEL,0)}
+}
+
+// ---------- 3. 불도저 ----------
+function spawnDozer(a,b){
+  let dx=b.x-a.x,dz=b.z-a.z,l=Math.hypot(dx,dz);
+  if(l<8){const f=[cam.tx-eye[0],cam.tz-eye[2]];const fl=Math.hypot(...f)||1;dx=f[0]/fl;dz=f[1]/fl;l=80}else{dx/=l;dz/=l}
+  DOZERS.push({x:a.x-dx*10,z:a.z-dz*10,dx,dz,left:l+40,t:0,gone:0});toast('불도저 출동!',1200);sfx(12,1.5);
+}
+function updateDozers(dt){
+  for(let i=DOZERS.length-1;i>=0;i--){const d=DOZERS[i];d.t+=dt;
+    if(d.left<=0){d.gone+=dt;if(d.gone>0.8)DOZERS.splice(i,1);continue}
+    const sp=13*dt;d.x+=d.dx*sp;d.z+=d.dz*sp;d.left-=sp;
+    const bx=d.x+d.dx*3.2*TOY*0.7,bz=d.z+d.dz*3.2*TOY*0.7;   // 블레이드 위치
+    forBuildingsNear(bx,bz,6,b=>{if(!b.alive)return;const dist=distToBuilding(b,bx,bz);if(dist>2.5)return;
+      if(b.area<90&&b.h0<9){killBuilding(b);return}
+      structDamage(b,bx,b.base+1.8,bz,5.5,1.6,{floors:[0]});
+      if(Math.random()<0.3)spawn(bx,b.base+1,bz,d.dx*6+(Math.random()-.5)*4,3,d.dz*6+(Math.random()-.5)*4,0.8+Math.random(),CONC)});
+    forTreesNear(bx,bz,4,t=>{if(t.alive&&Math.hypot(t.x-bx,t.z-bz)<4)killTree(t)});
+    // 잔해를 밀어냄
+    for(let k=0;k<MAXD;k++){if(!D.used[k]||!D.rest[k])continue;if(Math.hypot(D.x[k]-bx,D.z[k]-bz)<3.5){D.rest[k]=0;D.vx[k]=d.dx*7+(Math.random()-.5)*3;D.vz[k]=d.dz*7+(Math.random()-.5)*3;D.vy[k]=2;rubDirty=true}}
+    if(Math.random()<0.25)spawn(d.x-d.dx*2,groundAt(d.x,d.z)+4.5*TOY*0.6,d.z-d.dz*2,(Math.random()-.5),3,(Math.random()-.5),0.6,[0.35,0.35,0.36],0.8,2);
+  }
+}
+function drawDozer(m,d){
+  const s=TOY*0.7,gy=groundAt(d.x,d.z),rot=Math.atan2(d.dz,d.dx),f=[d.dx,d.dz],r=[-d.dz,d.dx];
+  const P=(a,b,y)=>[d.x+f[0]*a+r[0]*b,gy+y,d.z+f[1]*a+r[1]*b];
+  let p=P(0,1.5*s,0.55*s);pushShape(m,CUBE,p[0],p[1],p[2],4.2*s,1.1*s,0.8*s,rot,TRACK,0);
+  p=P(0,-1.5*s,0.55*s);pushShape(m,CUBE,p[0],p[1],p[2],4.2*s,1.1*s,0.8*s,rot,TRACK,0);
+  p=P(0,0,1.5*s);pushShape(m,CUBE,p[0],p[1],p[2],3.6*s,1.2*s,2.6*s,rot,YEL,0);
+  p=P(-0.6*s,0,2.8*s);pushShape(m,CUBE,p[0],p[1],p[2],1.6*s,1.5*s,1.8*s,rot,YEL_D,0);
+  p=P(-0.6*s,0,3.65*s);pushShape(m,CUBE,p[0],p[1],p[2],1.7*s,0.15*s,1.9*s,rot,[0.2,0.2,0.2],0);
+  p=P(1.0*s,0.6*s,2.9*s);pushShape(m,CUBE,p[0],p[1],p[2],0.18*s,1.2*s,0.18*s,rot,[0.15,0.15,0.15],0);
+  p=P(2.7*s,0,1.0*s);pushShape(m,CUBE,p[0],p[1],p[2],0.35*s,1.6*s,4.0*s,rot,[0.42,0.42,0.42],0);
+}
+
+// ---------- 4. 철근 빼기 (순살 공법) ----------
+function spawnRebar(h){
+  const b=h.b||nearestBuilding(h.x,h.z,25);if(!b){toast('철근을 뺄 건물을 눌러주세요');return}
+  const d=ensureDet(b);
+  for(let i=0;i<d.hp.length;i++)d.hp[i]=Math.min(d.hp[i],d.hp0*(0.32+Math.random()*0.12));
+  d.weak=1;d.weakT=-1.6;d.dirty=true;
+  const bars=[];for(let j=0;j<d.C;j+=Math.max(1,Math.floor(d.C/18))){const [x,z]=colPos(d,j);bars.push({x,z,v:8+Math.random()*10,y:0,del:Math.random()*0.6})}
+  REBARFX.push({b,bars,t:0});
+  toast('철근 빼는 중… 순살 구조라 자기 무게도 못 버텨요',3000);sfx(15,1.6);
+}
+function updateRebar(dt){for(let i=REBARFX.length-1;i>=0;i--){const r=REBARFX[i];r.t+=dt;for(const b of r.bars){if(r.t>b.del)b.y+=b.v*dt}if(r.t>3)REBARFX.splice(i,1)}}
+function drawRebarFx(m,r){const top=r.b.base+(r.b.alive?r.b.h:0);for(const b of r.bars){if(r.t<b.del)continue;const len=6;pushShape(m,CUBE,b.x,top+b.y+len/2-2,b.z,0.18,len,0.18,0,REBAR,0)}}
+
+// ---------- 5. 심의 보류 도장 ----------
+let STAMPS=[];
+function spawnStamp(h){
+  const b=h.b||nearestBuilding(h.x,h.z,15);
+  const R=b?clamp(Math.sqrt(b.area)/2+2,7,26):12,x=b?b.cx:h.x,z=b?b.cz:h.z;
+  const top=b?b.base+b.h:groundAt(x,z);
+  STAMPS.push({b,x,z,R,y:top+220,vy:-160,state:'drop',t:0,stop:b?b.base+b.h0*0.35:groundAt(x,z)});
+  sfx(5);
+}
+function updateStamps(dt){
+  for(let i=STAMPS.length-1;i>=0;i--){const s=STAMPS[i];s.t+=dt;
+    if(s.state==='drop'){s.y+=s.vy*dt;const top=s.b&&s.b.alive?s.b.base+s.b.h:groundAt(s.x,s.z);
+      if(s.y<=top){s.y=top;s.state='press';s.t=0;cam.shake=Math.max(cam.shake,6);boom3(s.x,top,s.z,16);sfx(35);
+        floatText(s.x,top+3,s.z,'보 류','mark',3);if(!s.b){carve(s.x,s.z,s.R,3,true);forTreesNear(s.x,s.z,s.R,t=>{if(Math.hypot(t.x-s.x,t.z-s.z)<s.R)killTree(t)})}}}
+    else if(s.state==='press'){
+      if(s.b&&s.b.alive){const d=ensureDet(s.b);s.y-=12*dt;
+        // 도장 바닥보다 위에 있는 층은 차례로 찍혀 무너짐
+        for(let f=d.F-1;f>=0;f--){if(!d.fl[f])continue;if(s.b.base+d.fy[f]+d.fh*0.5>s.y){collapseFloor(s.b,f);d.dirty=true}break}
+        if(!d.fl.some(v=>v)){freeDet(s.b);killBuilding(s.b)}
+        if(s.y<=s.stop||!s.b.alive){s.state='lift';s.t=0;detCheck(s.b)}}
+      else if(s.t>0.5){s.state='lift';s.t=0}}
+    else{s.y+=60*dt;if(s.t>2)STAMPS.splice(i,1)}}
+}
+function drawStamp(m,s){
+  const red=[0.82,0.10,0.10],dk=[0.36,0.22,0.14];
+  pushShape(m,CUBE,s.x,s.y+1.2,s.z,s.R*2,2.4,s.R*2,0.3,red,0);
+  pushShape(m,CUBE,s.x,s.y+3.4,s.z,s.R*1.6,2,s.R*1.6,0.3,[0.95,0.93,0.88],0);
+  pushShape(m,CUBE,s.x,s.y+3.4+s.R*0.9,s.z,s.R*0.35,s.R*1.6,s.R*0.35,0.3,dk,0);
+  pushShape(m,SPHERE,s.x,s.y+4+s.R*1.8,s.z,s.R*0.45,s.R*0.4,s.R*0.45,0,dk,0);
+}
+// ---------- 공통 ----------
+function boom3(x,y,z,size){const n=Math.min(40,Math.floor(size*2.5));
+  for(let k=0;k<n;k++){const a=Math.random()*Math.PI*2,s=Math.random()*size*0.6;spawn(x,y,z,Math.cos(a)*s,2+Math.random()*size*0.6,Math.sin(a)*s,0.6+Math.random()*size*0.08,Math.random()<0.5?[0.8,0.78,0.74]:[0.62,0.6,0.57],0.5+Math.random()*0.5,1)}
+  sfx(size)}
+function updateTools(dt){updateCranes(dt);updateCrews(dt);updateDozers(dt);updateRebar(dt);updateStamps(dt);updateTools2(dt)}
+function drawTools(m,mg){
+  for(const c of CRANES)drawCrane(m,c);
+  for(const c of CREWS)for(const w of c.ws)drawWorker(m,w);
+  for(const d of DOZERS)drawDozer(m,d);
+  for(const r of REBARFX)drawRebarFx(m,r);
+  for(const s of STAMPS)drawStamp(m,s);
+  drawTools2(m,mg);
+  if(dozerPath&&dozerPath.b){const a=dozerPath.a,b=dozerPath.b,l=Math.hypot(b.x-a.x,b.z-a.z);const n=Math.max(1,Math.floor(l/4));
+    for(let k=0;k<=n;k+=1){const x=a.x+(b.x-a.x)*k/n,z=a.z+(b.z-a.z)*k/n;pushShape(mg,CUBE,x,groundAt(x,z)+0.6,z,1.6,0.3,1.6,0,[1,0.8,0.1],1)}}
+}
+function clearTools(){CRANES=[];CREWS=[];DOZERS=[];REBARFX=[];STAMPS=[];dozerPath=null;clearTools2()}
+
+// =====================================================================
+//  설계팀 · 시공팀 신규 도구
+//  시공: 굴착기 브레이커 · 레미콘 과타설 · 발파 해체   설계: ERASE · EXPLODE
+//  + 떠다니는 글씨(FLOATS) · CAD 명령줄 · 필살기 게이지 · 철거 일보 통계
+// =====================================================================
+let EXCAVS=[], POURS=[], BLASTS=[], FLOATS=[], selRect=null;
+let ULT=0, ultArmed=false;
+let STATS={t0:0,kills:0,erased:0,tools:{}};
+function statTool(id){STATS.tools[id]=(STATS.tools[id]||0)+1;if(!STATS.t0)STATS.t0=performance.now()}
+
+// ---------- 떠다니는 글씨 (보류 도장 · 카운트다운 · CAD 명령) ----------
+function floatText(x,y,z,text,cls,dur){FLOATS.push({x,y,z,text,cls:cls||'mark',t:0,dur:dur||3})}
+function updateFloats(dt){for(let i=FLOATS.length-1;i>=0;i--){FLOATS[i].t+=dt;if(FLOATS[i].t>FLOATS[i].dur)FLOATS.splice(i,1)}}
+function drawFloats(){const box=$('#marks');
+  while(box.children.length<FLOATS.length)box.appendChild(document.createElement('div'));
+  [...box.children].forEach((e,i)=>{const f=FLOATS[i];if(!f){e.style.display='none';return}const p=project(f.x,f.y,f.z);if(!p){e.style.display='none';return}
+    if(e.className!==f.cls)e.className=f.cls;if(e.textContent!==f.text)e.textContent=f.text;
+    e.style.display='';e.style.left=p[0]+'px';e.style.top=p[1]+'px';e.style.opacity=Math.min(1,(f.dur-f.t)*1.5);
+    e.style.transform=f.cls==='mark'?`translate(-50%,-50%) rotate(-12deg) scale(${1+Math.max(0,0.4-f.t)})`:`translate(-50%,-50%) scale(${1+Math.max(0,0.3-f.t)})`})}
+
+// ---------- CAD 명령줄 ----------
+function cmdLine(lines){const el=$('#cmdbar');el.innerHTML=lines.map(l=>`<div>${esc(l)}</div>`).join('');el.classList.add('show');clearTimeout(cmdLine._t);cmdLine._t=setTimeout(()=>el.classList.remove('show'),3200)}
+
+// ---------- 선 위에 상자 늘어놓기 (굴착기 팔, 펌프카 붐) ----------
+function drawSeg(m,a,b,w,c){const dx=b[0]-a[0],dy=b[1]-a[1],dz=b[2]-a[2],l=Math.hypot(dx,dy,dz);const n=Math.max(1,Math.ceil(l/(w*0.9)));
+  for(let k=0;k<=n;k++){const t=k/n;pushShape(m,CUBE,a[0]+dx*t,a[1]+dy*t,a[2]+dz*t,w,w,w,Math.atan2(dz,dx),c,0)}}
+
+// ---------- 시공 1. 굴착기 브레이커 ----------
+function spawnExcavator(h){
+  const b=h.b||nearestBuilding(h.x,h.z,40);if(!b){toast('굴착기로 쪼갤 건물을 눌러주세요');return}
+  const fp=facadePoint(b,h.x,h.z);const s=TOY*0.75;
+  EXCAVS.push({b,x:fp.x+fp.nx*45,z:fp.z+fp.nz*45,tx:fp.x+fp.nx*6.5*s/1.65,tz:fp.z+fp.nz*6.5*s/1.65,fx:fp.x,fz:fp.z,nx:fp.nx,nz:fp.nz,state:'drive',t:0,peck:0,lvl:0,ext:0});
+  toast('굴착기 브레이커 투입!',1300);sfx(10,1.2);
+}
+function updateExcavs(dt){
+  for(let i=EXCAVS.length-1;i>=0;i--){const e=EXCAVS[i];e.t+=dt;
+    if(e.state==='drive'){const dx=e.tx-e.x,dz=e.tz-e.z,l=Math.hypot(dx,dz);if(l<0.5){e.state='work';e.t=0}else{const sp=Math.min(l,11*dt);e.x+=dx/l*sp;e.z+=dz/l*sp}}
+    else if(e.state==='work'){
+      if(!e.b.alive){e.state='leave';e.t=0;continue}
+      const d=ensureDet(e.b);const maxLvl=Math.min(3,d.F-1);
+      e.ext=0.5+0.5*Math.sin(e.t*9);   // 브레이커 쪼는 동작
+      if(e.t>0.42){e.t=0;e.peck++;
+        const y=e.b.base+1.7+e.lvl*d.fh,ix=e.fx-e.nx*(0.6+e.peck*0.12),iz=e.fz-e.nz*(0.6+e.peck*0.12);
+        structDamage(e.b,ix,y,iz,3.4,1.05);boom3(e.fx,y,e.fz,4);cam.shake=Math.max(cam.shake,1.2);
+        if(e.peck%7===0)e.lvl=e.lvl>=maxLvl?0:e.lvl+1;
+        if(e.peck>60){e.state='leave';e.t=0}}}
+    else{e.x+=e.nx*10*dt;e.z+=e.nz*10*dt;if(e.t>3)EXCAVS.splice(i,1)}}
+}
+function drawExcav(m,e){
+  const s=TOY*0.75,gy=groundAt(e.x,e.z),rot=Math.atan2(-e.nz,-e.nx),f=[-e.nx,-e.nz],r=[e.nz,-e.nx];
+  const P=(a,b,y)=>[e.x+f[0]*a+r[0]*b,gy+y,e.z+f[1]*a+r[1]*b];
+  let p=P(0,1.3*s,0.5*s);pushShape(m,CUBE,p[0],p[1],p[2],3.6*s,1*s,0.8*s,rot,TRACK,0);
+  p=P(0,-1.3*s,0.5*s);pushShape(m,CUBE,p[0],p[1],p[2],3.6*s,1*s,0.8*s,rot,TRACK,0);
+  p=P(-0.3*s,0,1.6*s);pushShape(m,CUBE,p[0],p[1],p[2],3*s,1.3*s,2.4*s,rot,YEL,0);
+  p=P(0.4*s,0.7*s,2.8*s);pushShape(m,CUBE,p[0],p[1],p[2],1.3*s,1.3*s,1*s,rot,[0.2,0.24,0.28],0);
+  // 붐 → 암 → 브레이커
+  const lvlY=(e.state==='work'&&e.b.det?e.lvl*e.b.det.fh:0);
+  const root=P(0.9*s,-0.4*s,2.4*s),tip=[e.fx+e.nx*(1.2-e.ext*0.9),e.b.base+1.7+lvlY,e.fz+e.nz*(1.2-e.ext*0.9)];
+  const elbow=[(root[0]+tip[0])/2+e.nx*1.2*s,Math.max(root[1],tip[1])+2.6*s,(root[2]+tip[2])/2+e.nz*1.2*s];
+  drawSeg(m,root,elbow,0.55*s,YEL);drawSeg(m,elbow,[tip[0]+e.nx*1.4,tip[1]+1.3,tip[2]+e.nz*1.4],0.45*s,YEL_D);
+  drawSeg(m,[tip[0]+e.nx*1.4,tip[1]+1.3,tip[2]+e.nz*1.4],tip,0.35*s,STEEL);
+}
+
+// ---------- 시공 2. 레미콘 과타설 ----------
+function spawnPour(h){
+  const b=h.b||nearestBuilding(h.x,h.z,40);if(!b){toast('콘크리트를 부을 건물을 눌러주세요');return}
+  const fp=facadePoint(b,h.x,h.z);
+  POURS.push({b,x:fp.x+fp.nx*48,z:fp.z+fp.nz*48,tx:fp.x+fp.nx*9,tz:fp.z+fp.nz*9,nx:fp.nx,nz:fp.nz,state:'drive',t:0,load:0,acc:0,boom:0,floorsGone:0});
+  toast('레미콘 도착 — 옥상에 타설 시작',1500);sfx(10,1.4);
+}
+function updatePours(dt){
+  for(let i=POURS.length-1;i>=0;i--){const p=POURS[i];p.t+=dt;
+    if(p.state==='drive'){const dx=p.tx-p.x,dz=p.tz-p.z,l=Math.hypot(dx,dz);if(l<0.5){p.state='pump';p.t=0}else{const sp=Math.min(l,11*dt);p.x+=dx/l*sp;p.z+=dz/l*sp}}
+    else if(p.state==='pump'){p.boom=Math.min(1,p.boom+dt*0.8);if(!p.b.alive){p.state='leave';p.t=0;continue}
+      if(p.boom>=1){p.load+=dt*0.5;
+        const top=p.b.base+p.b.h;if(Math.random()<0.7)spawn(p.b.cx+(Math.random()-.5)*2,top+12,p.b.cz+(Math.random()-.5)*2,(Math.random()-.5)*2,-6,(Math.random()-.5)*2,0.7+Math.random()*0.6,[0.58,0.58,0.56]);
+        if(p.load>1.2){p.acc+=dt;if(!p.warned){p.warned=1;toast('과타설! 설계하중 초과 — 슬래브가 버티지 못해요',2500)}
+          if(p.acc>0.3){p.acc=0;const d=ensureDet(p.b);let top=-1;for(let f=d.F-1;f>=0;f--)if(d.fl[f]){top=f;break}
+            if(top>=0){for(let j=0;j<d.C;j++)d.hp[top*d.C+j]-=0.35*p.load;d.dirty=true;const before=d.fl.reduce((a,v)=>a+v,0);detCheck(p.b);
+              if(p.b.det&&p.b.det.fl.reduce((a,v)=>a+v,0)<before){p.floorsGone++;p.load=Math.max(1.2,p.load*0.8)}}
+            if(p.floorsGone>=Math.max(3,Math.ceil((d.F||4)*0.5))||!p.b.alive){p.state='leave';p.t=0}}}}}
+    else{p.boom=Math.max(0,p.boom-dt);p.x+=p.nx*9*dt;p.z+=p.nz*9*dt;if(p.t>4)POURS.splice(i,1)}}
+}
+function drawPour(m,p){
+  const s=TOY*0.75,gy=groundAt(p.x,p.z),rot=Math.atan2(-p.nz,-p.nx),f=[-p.nx,-p.nz];
+  const P=(a,y)=>[p.x+f[0]*a,gy+y,p.z+f[1]*a];
+  let q=P(0,1.2*s);pushShape(m,CUBE,q[0],q[1],q[2],5.6*s,0.8*s,2.2*s,rot,[0.25,0.25,0.27],0);
+  q=P(1.9*s,2.2*s);pushShape(m,CUBE,q[0],q[1],q[2],1.6*s,1.6*s,2.1*s,rot,[0.95,0.95,0.95],0);
+  q=P(-0.8*s,2.6*s);pushShape(m,SPHERE,q[0],q[1],q[2],2.2*s,1.2*s,1.2*s,rot+p.t*2,[0.98,0.55,0.12],0);
+  if(p.boom>0&&p.b.alive){const top=p.b.base+p.b.h,root=P(-0.4*s,3.6*s),end=[p.b.cx,top+12,p.b.cz];
+    const mid=[(root[0]+end[0])/2,Math.max(root[1],end[1])+8*p.boom,(root[2]+end[2])/2];
+    const k=p.boom;drawSeg(m,root,[root[0]+(mid[0]-root[0])*k,root[1]+(mid[1]-root[1])*k,root[2]+(mid[2]-root[2])*k],0.5*s,YEL);
+    if(k>=1){drawSeg(m,mid,end,0.45*s,YEL_D);
+      // 옥상에 쌓이는 콘크리트
+      const r=clamp(Math.sqrt(p.b.area)*0.25*Math.min(1,p.load),1,Math.sqrt(p.b.area)*0.45);pushShape(m,SPHERE,p.b.cx,top+0.3,p.b.cz,r,Math.min(3,p.load*1.5)+0.3,r,0,[0.6,0.6,0.58],0)}}
+}
+
+// ---------- 시공 3. 발파 해체 ----------
+function spawnBlast(h){
+  const b=h.b||nearestBuilding(h.x,h.z,25);if(!b){toast('발파할 건물을 눌러주세요');return}
+  const d=ensureDet(b);const fl=d.F<=3?[...Array(d.F).keys()]:[0,1];const ch=[];
+  for(const f of fl)for(let j=0;j<d.C;j++)if(d.hp[f*d.C+j]>0)ch.push({f,j});
+  BLASTS.push({b,ch,t:0,placed:0,state:'arm',count:3});
+  toast(`발파 해체 — 기둥 ${ch.length}개에 장약 설치 중`,1800);
+}
+function updateBlasts(dt){
+  for(let i=BLASTS.length-1;i>=0;i--){const x=BLASTS[i];x.t+=dt;const b=x.b;
+    if(!b.alive){BLASTS.splice(i,1);continue}
+    if(x.state==='arm'){x.placed=Math.min(x.ch.length,Math.floor(x.t*30));if(x.placed>=x.ch.length){x.state='count';x.t=0;floatText(b.cx,b.base+b.h+6,b.cz,'3','count',1)}}
+    else if(x.state==='count'){const c=3-Math.floor(x.t);if(c!==x.count&&c>0){x.count=c;floatText(b.cx,b.base+b.h+6,b.cz,String(c),'count',1);sfx(3)}
+      if(x.t>=3){const d=b.det;if(d){for(const {f,j} of x.ch)d.hp[f*d.C+j]=0;d.dirty=true;
+          x.ch.slice(0,24).forEach(({f,j})=>{const [cx,cz]=colPos(d,j);for(let k=0;k<3;k++)spawn(cx,b.base+d.fy[f]+1.5,cz,(Math.random()-.5)*14,4+Math.random()*6,(Math.random()-.5)*14,0.8+Math.random(),[1,0.7,0.25],0.5,1)});
+          for(let k=0;k<40;k++){const a=Math.random()*Math.PI*2,r=Math.sqrt(b.area)/2+2;spawn(b.cx+Math.cos(a)*r,b.base+1,b.cz+Math.sin(a)*r,Math.cos(a)*12,1+Math.random()*3,Math.sin(a)*12,2+Math.random()*2,[0.82,0.8,0.76],1.4+Math.random(),1)}
+          cam.shake=9;sfx(40,2);toast('발파! 제자리에 주저앉아요 (정밀 해체)',2200);detCheck(b)}
+        BLASTS.splice(i,1)}}}
+}
+function drawBlasts(m,mg){for(const x of BLASTS){const d=x.b.det;if(!d)continue;const on=Math.floor(performance.now()/180)%2;
+  for(let k=0;k<x.placed;k++){const {f,j}=x.ch[k];const [cx,cz]=colPos(d,j);pushShape(on?mg:m,CUBE,cx,x.b.base+d.fy[f]+1.4,cz,0.9,0.5,0.9,0,on?[1,0.15,0.1]:[0.6,0.1,0.08],on)}}}
+
+// ---------- 설계 1. ERASE (윈도우·크로싱 선택) ----------
+function eraseBuilding(b){if(!b.alive)return;GHOSTS.push({b,h:b.h,t:0.6});freeDet(b);addScore(b.area*b.h0*0.25+b.area);
+  b.alive=false;b.h=0;markB(b);STATS.kills++;STATS.erased++;firmsKilled(b);
+  for(let k=0;k<6;k++)spawn(b.cx+(Math.random()-.5)*Math.sqrt(b.area),b.base+Math.random()*b.h0,b.cz+(Math.random()-.5)*Math.sqrt(b.area),0,2,0,1.5,[0.35,0.6,1],0.6,1)}
+function runErase(r){
+  const x0=Math.min(r.x0,r.x1),x1=Math.max(r.x0,r.x1),y0=Math.min(r.y0,r.y1),y1=Math.max(r.y0,r.y1);
+  if(x1-x0<6||y1-y0<6){cmdLine(['명령: ERASE','객체 선택: 0개 찾음 — 드래그해서 범위를 지정하세요']);return}
+  const crossing=r.x1<r.x0;   // 오른쪽→왼쪽 = 크로싱(걸치기만 해도), 왼쪽→오른쪽 = 윈도우(완전히 포함)
+  const hits=[];
+  for(const b of B){if(!b.alive)continue;let inAll=true,inAny=false,vis=false;
+    for(const p of b.pts)for(const y of [b.base,b.base+b.h]){const q=project(p[0],y,p[1]);if(!q){inAll=false;continue}vis=true;
+      const inside=q[0]>=x0&&q[0]<=x1&&q[1]>=y0&&q[1]<=y1;if(inside)inAny=true;else inAll=false}
+    if(vis&&(crossing?inAny:inAll))hits.push(b)}
+  const MAXSEL=60;const sel=hits.slice(0,MAXSEL);sel.forEach(eraseBuilding);
+  if(sel.length){statTool('erase');sfx(6);const c=sel[0];floatText(c.cx,c.base+c.h0+5,c.cz,'ERASE','cad',1.6)}
+  cmdLine(['명령: ERASE',`객체 선택: ${crossing?'걸침':'윈도우'} — ${hits.length}개 찾음`+(hits.length>MAXSEL?` (한 번에 ${MAXSEL}개까지)`:''),`${sel.length}개 삭제됨 · Ctrl+Z 로 되돌리기`]);
+}
+function drawSelRect(){const el=$('#selrect');if(!selRect){el.style.display='none';return}
+  const r=selRect,x0=Math.min(r.x0,r.x1),y0=Math.min(r.y0,r.y1);el.style.display='';el.style.left=x0+'px';el.style.top=y0+'px';
+  el.style.width=Math.abs(r.x1-r.x0)+'px';el.style.height=Math.abs(r.y1-r.y0)+'px';el.className=r.x1<r.x0?'cross':'win'}
+
+// ---------- 설계 2. EXPLODE ----------
+function explodeBuilding(h){
+  const b=h.b||nearestBuilding(h.x,h.z,20);if(!b){toast('분해할 건물(블록)을 눌러주세요');return}
+  const d=ensureDet(b);let n=0;const S=Math.sqrt(b.area);
+  for(let f=0;f<d.F&&n<130;f++){if(!d.fl[f])continue;const y=b.base+d.fy[f]+d.fh*0.5;
+    for(let j=0;j<d.M&&n<130;j+=2){const a=d.nodes[j],e=d.nodes[(j+1)%d.M],nn=d.edgeN[j];const px=(a[0]+e[0])/2,pz=(a[1]+e[1])/2;
+      const g=Math.random()<0.5;spawn(px,y,pz,nn[0]*(8+Math.random()*14),6+Math.random()*12,nn[1]*(8+Math.random()*14),Math.min(3.2,1.6+Math.random()*1.6),g?[0.5,0.64,0.76]:b.col);n++}
+    if(n<130){spawn(b.cx+(Math.random()-.5)*S*0.5,y,b.cz+(Math.random()-.5)*S*0.5,(Math.random()-.5)*10,8+Math.random()*8,(Math.random()-.5)*10,2.4,CONC);n++}}
+  const nh=clamp(Math.round(Math.sqrt(b.area*b.h0)/14),6,22);for(let k=0;k<nh;k++){const a=k/nh*Math.PI*2+Math.random()*0.4,sp=14+Math.random()*16;spawnHeavy(b.cx,b.base+Math.random()*b.h0,b.cz,Math.cos(a)*sp,10+Math.random()*14,Math.sin(a)*sp,2.6+Math.random()*2.6,Math.random()<0.5?b.col:CONC)}
+  floatText(b.cx,b.base+b.h0+6,b.cz,'EXPLODE','cad',1.8);cmdLine(['명령: EXPLODE','객체 선택: 1개 찾음','블록 1개가 분해되었습니다']);
+  addScore(b.area*b.h0*0.3);freeDet(b);b.alive=false;b.h=0;markB(b);STATS.kills++;firmsKilled(b);
+  cam.shake=Math.max(cam.shake,5);sfx(28);
+}
+
+
+// =====================================================================
+//  설계팀 도구 강화 — MOVE(잡아서 던지기) · EXTRUDE(무한 증축 → 쓰러짐)
+//  EXPLODE(무거운 블록이 주변을 때림) · ERASE(선택 미리보기 · 사라짐 효과)
+// =====================================================================
+let HELD=null, THROWN=[], EXTR=[], HEAVY=[], GHOSTS=[], SELPREV=[], selPrevT=0;
+
+// ---------- 회전 상자 그리기 ----------
+function obbOf(b){let best=0,ang=0;for(let i=0;i<b.pts.length;i++){const a=b.pts[i],c=b.pts[(i+1)%b.pts.length];const l=Math.hypot(c[0]-a[0],c[1]-a[1]);if(l>best){best=l;ang=Math.atan2(c[1]-a[1],c[0]-a[0])}}
+  const c=Math.cos(ang),s=Math.sin(ang);let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9;
+  for(const p of b.pts){const x=(p[0]-b.cx)*c+(p[1]-b.cz)*s,z=-(p[0]-b.cx)*s+(p[1]-b.cz)*c;x0=Math.min(x0,x);x1=Math.max(x1,x);z0=Math.min(z0,z);z1=Math.max(z1,z)}
+  return{ox:(x0+x1)/2*c-(z0+z1)/2*s,oz:(x0+x1)/2*s+(z0+z1)/2*c,W:Math.max(2,x1-x0),D:Math.max(2,z1-z0),ang}}
+// 중심 C, 단위축 A(가로)·U(세로)·N(깊이), 반길이 a·u·n
+function drawOBB(m,C,A,U,N,a,u,n,col,style,roof){
+  const P=(sa,su,sn)=>[C[0]+A[0]*a*sa+U[0]*u*su+N[0]*n*sn,C[1]+A[1]*a*sa+U[1]*u*su+N[1]*n*sn,C[2]+A[2]*a*sa+U[2]*u*su+N[2]*n*sn];
+  const face=(p0,p1,p2,p3,nm,c,u0,u1,st)=>{m.grow(6);m.v(...p0,...nm,...c,u0,st);m.v(...p1,...nm,...c,u1,st);m.v(...p2,...nm,...c,u1,st);m.v(...p0,...nm,...c,u0,st);m.v(...p2,...nm,...c,u1,st);m.v(...p3,...nm,...c,u0,st)};
+  const neg=v=>[-v[0],-v[1],-v[2]],cb=[col[0]*0.85,col[1]*0.85,col[2]*0.87],st=style==null?-1:style;
+  face(P(-1,-1,1),P(1,-1,1),P(1,1,1),P(-1,1,1),N,col,0,2*a,st);face(P(1,-1,-1),P(-1,-1,-1),P(-1,1,-1),P(1,1,-1),neg(N),col,0,2*a,st);
+  face(P(1,-1,1),P(1,-1,-1),P(1,1,-1),P(1,1,1),A,cb,0,2*n,st);face(P(-1,-1,-1),P(-1,-1,1),P(-1,1,1),P(-1,1,-1),neg(A),cb,0,2*n,st);
+  face(P(-1,1,1),P(1,1,1),P(1,1,-1),P(-1,1,-1),U,roof||col,-1,-1,0);face(P(-1,-1,-1),P(1,-1,-1),P(1,-1,1),P(-1,-1,1),neg(U),cb,-1,-1,0);
+}
+function detach(b){freeDet(b);b.lifted=true;markB(b);b.ob=b.ob||obbOf(b)}
+function finishBuilding(b,pts){b.alive=false;b.lifted=false;b.h=0;markB(b);STATS.kills++;addScore(pts);firmsKilled(b)}
+function chunkRain(x,y,z,n,s,col,spd){for(let k=0;k<n;k++)spawn(x+(Math.random()-.5)*s,y+Math.random()*s*0.5,z+(Math.random()-.5)*s,(Math.random()-.5)*spd,2+Math.random()*spd*0.6,(Math.random()-.5)*spd,1.2+Math.random()*2.2,Math.random()<0.4?CONC:col)}
+
+// ---------- MOVE: 건물을 잡아 들어 올려 던지기 ----------
+function rayGround(mx,my,y){const {o,d}=rayFrom(mx,my);if(Math.abs(d[1])<1e-4)return null;const t=(y-o[1])/d[1];if(t<0)return null;return[o[0]+d[0]*t,o[2]+d[2]*t]}
+function startGrab(b,mx,my){
+  if(b.area>9000){toast('너무 큰 건물은 못 들어요 (부지 9,000㎡ 이하)');return false}
+  snapshot();detach(b);const g=rayGround(mx,my,0);
+  HELD={b,x:b.cx+b.ob.ox,z:b.cz+b.ob.oz,y:b.base,tx:g?g[0]:b.cx,tz:g?g[1]:b.cz,vx:0,vz:0,lift:0,t:0};
+  cmdLine(['명령: MOVE','객체 선택: 1개 찾음','이동할 위치를 지정하세요 — 놓으면 던져져요']);sfx(8);return true}
+function moveGrab(mx,my){if(!HELD)return;const g=rayGround(mx,my,0);if(g){HELD.tx=g[0];HELD.tz=g[1]}}
+function releaseGrab(){if(!HELD)return;const h=HELD;HELD=null;
+  const sp=Math.hypot(h.vx,h.vz),k=sp>140?140/sp:1;
+  THROWN.push({b:h.b,x:h.x,y:h.y,z:h.z,vx:h.vx*k*1.3,vz:h.vz*k*1.3,vy:6,tum:0,spin:2+sp*0.02});
+  floatText(h.x,h.y+h.b.h0+4,h.z,'MOVE','cad',1.2);statTool('move')}
+function updateGrab(dt){
+  if(HELD){const h=HELD;h.t+=dt;h.lift=Math.min(1,h.lift+dt*1.8);const ty=groundAt(h.tx,h.tz)+12+h.b.h0*0.25;
+    const k=Math.min(1,dt*7),nx=h.x+(h.tx-h.x)*k,nz=h.z+(h.tz-h.z)*k;
+    h.vx=h.vx*0.7+((nx-h.x)/dt)*0.3;h.vz=h.vz*0.7+((nz-h.z)/dt)*0.3;h.x=nx;h.z=nz;h.y=h.b.base+(ty-h.b.base)*h.lift;
+    if(Math.random()<0.15)spawn(h.x,h.y,h.z,(Math.random()-.5)*2,-2,(Math.random()-.5)*2,0.6+Math.random(),CONC)}
+  for(let i=THROWN.length-1;i>=0;i--){const t=THROWN[i];t.vy-=32*dt;t.x+=t.vx*dt;t.y+=t.vy*dt;t.z+=t.vz*dt;t.tum+=t.spin*dt;
+    let hit=t.y<=groundAt(t.x,t.z);
+    if(!hit)forBuildingsNear(t.x,t.z,4,o=>{if(hit||!o.alive||o.lifted)return;if(t.y<o.base+o.h&&pip(t.x,t.z,o.pts))hit=true});
+    if(hit){THROWN.splice(i,1);impactThrown(t)}}
+}
+function impactThrown(t){
+  const b=t.b,ob=b.ob,R=Math.max(ob.W,ob.D)/2+6,sp=Math.hypot(t.vx,t.vy,t.vz),mass=Math.sqrt(b.area*b.h0)/20;
+  const pw=clamp(0.6+mass*sp/60,0.8,3.5);let n=0;
+  forBuildingsNear(t.x,t.z,R+10,o=>{if(!o.alive||o.lifted||o===b)return;const d=distToBuilding(o,t.x,t.z);if(d>R)return;n++;
+    structDamage(o,t.x,clamp(t.y,o.base+1,o.base+o.h-1),t.z,R*0.8,pw*(1-d/R*0.5))});
+  const v=carve(t.x,t.z,R*0.6,2+mass*0.5);addScore(v*0.5);
+  chunkRain(t.x,Math.max(groundAt(t.x,t.z),t.y),t.z,Math.min(50,18+mass*3),Math.max(ob.W,ob.D)*0.6,b.col,10);
+  boom3(t.x,Math.max(0,t.y),t.z,12+mass*2);cam.shake=Math.max(cam.shake,Math.min(10,3+mass*0.8));
+  finishBuilding(b,b.area*b.h0*0.4+2000);toast(`던진 건물이 ${n?n+'채를 덮쳤어요':'떨어졌어요'}!`,1600);
+}
+
+// ---------- EXTRUDE: 끝없이 증축 → 자중 초과로 쓰러지며 주변을 덮침 ----------
+function spawnExtrude(h){
+  const b=h.b||nearestBuilding(h.x,h.z,20);if(!b){toast('증축할 건물을 눌러주세요');return}
+  if(b.lifted)return;detach(b);
+  const top=Math.min(300,Math.max(b.h0*2.4,b.h0+70));
+  // 가장 많이 덮칠 수 있는 방향으로 쓰러짐
+  let best=0,dir=[1,0];for(let k=0;k<12;k++){const a=k/12*Math.PI*2,dx=Math.cos(a),dz=Math.sin(a);let s=0;
+    for(let d=10;d<top;d+=12)forBuildingsNear(b.cx+dx*d,b.cz+dz*d,6,o=>{if(o.alive&&o!==b)s+=o.h0});if(s>best){best=s;dir=[dx,dz]}}
+  EXTR.push({b,h:b.h,top,dir,th:0,w:0,phase:'grow',lastF:Math.floor(b.h/3.4)});
+  cmdLine(['명령: EXTRUDE','돌출 높이 지정: '+Math.round(top)+'m','용적률 검토: 초과 ⚠']);sfx(10);statTool('extrude');
+}
+function updateExtrude(dt){
+  for(let i=EXTR.length-1;i>=0;i--){const e=EXTR[i],b=e.b;
+    if(e.phase==='grow'){e.h=Math.min(e.top,e.h+(14+e.h*0.25)*dt);const f=Math.floor(e.h/3.4);
+      if(f>e.lastF){e.lastF=f;addScore(150);if(f%5===0)floatText(b.cx,b.base+e.h+3,b.cz,`+${f}층`,'cad',0.8);sfx(2)}
+      if(e.h>=e.top){e.phase='sway';e.t=0;toast('용적률 초과! 자중을 못 버티고 기울어요…',2200)}}
+    else if(e.phase==='sway'){e.t+=dt;e.th=Math.sin(e.t*9)*0.015*e.t;cam.shake=Math.max(cam.shake,1);if(e.t>1.2){e.phase='fall';e.th=0.04;e.w=0.05}}
+    else{const H=e.h;e.w+=(3*32/(2*H))*Math.sin(e.th)*dt;e.th+=e.w*dt;
+      // 쓰러지는 동안 지나가는 건물 윗부분을 긁음
+      const L=H*Math.sin(e.th),tipY=b.base+H*Math.cos(e.th);
+      forBuildingsNear(b.cx+e.dir[0]*L,b.cz+e.dir[1]*L,8,o=>{if(o.alive&&!o.lifted&&o!==b&&o.base+o.h>tipY)structDamage(o,b.cx+e.dir[0]*L,o.base+o.h-1,b.cz+e.dir[1]*L,6,0.6)});
+      if(e.th>=Math.PI/2*0.97){EXTR.splice(i,1);impactExtrude(e)}}}
+}
+function impactExtrude(e){
+  const b=e.b,ob=b.ob,W=Math.max(ob.W,ob.D),pw=clamp(1+e.h/90,1.2,3);let n=0,hitB=new Set();
+  for(let d=4;d<e.h;d+=5){const x=b.cx+e.dir[0]*d,z=b.cz+e.dir[1]*d;
+    forBuildingsNear(x,z,W/2+4,o=>{if(!o.alive||o.lifted||o===b)return;if(distToBuilding(o,x,z)>W/2+2)return;if(!hitB.has(o)){hitB.add(o);n++}
+      structDamage(o,x,o.base+Math.min(o.h-1,4),z,W*0.45+2,pw)});
+    if(d%10<5){carve(x,z,W*0.35,1.5);chunkRain(x,groundAt(x,z)+2,z,4,W*0.6,b.col,8)}}
+  forTreesNear(b.cx+e.dir[0]*e.h/2,b.cz+e.dir[1]*e.h/2,e.h/2,t=>{if(t.alive)killTree(t)});
+  boom3(b.cx+e.dir[0]*e.h*0.6,2,b.cz+e.dir[1]*e.h*0.6,30);cam.shake=12;sfx(45,2.4);
+  finishBuilding(b,e.h*b.area*0.3+5000);toast(`EXTRUDE 자중 붕괴! ${n}채를 덮쳤어요`,2200);
+}
+
+// ---------- EXPLODE: 무거운 블록 조각이 날아가 주변을 때림 ----------
+function spawnHeavy(x,y,z,vx,vy,vz,s,col){HEAVY.push({x,y,z,vx,vy,vz,s,col,rot:Math.random()*6,sp:(Math.random()-.5)*6})}
+function updateHeavy(dt){for(let i=HEAVY.length-1;i>=0;i--){const h=HEAVY[i];h.vy-=32*dt;h.x+=h.vx*dt;h.y+=h.vy*dt;h.z+=h.vz*dt;h.rot+=h.sp*dt;
+  let hit=h.y-h.s/2<=groundAt(h.x,h.z),tgt=null;
+  if(!hit)forBuildingsNear(h.x,h.z,2,o=>{if(!tgt&&o.alive&&!o.lifted&&h.y<o.base+o.h&&pip(h.x,h.z,o.pts)){tgt=o;hit=true}});
+  if(hit){HEAVY.splice(i,1);if(tgt)structDamage(tgt,h.x,h.y,h.z,h.s+2.5,0.9);else{const near=nearestBuilding(h.x,h.z,h.s);if(near)structDamage(near,h.x,near.base+1.5,h.z,h.s+1.5,0.6)}
+    chunkRain(h.x,Math.max(h.y,groundAt(h.x,h.z)),h.z,4,h.s,h.col,5);sfx(6)}}}
+
+// ---------- ERASE 미리보기 · 사라짐 ----------
+function eraseHits(r){const x0=Math.min(r.x0,r.x1),x1=Math.max(r.x0,r.x1),y0=Math.min(r.y0,r.y1),y1=Math.max(r.y0,r.y1);if(x1-x0<6||y1-y0<6)return[];
+  const crossing=r.x1<r.x0,hits=[];
+  for(const b of B){if(!b.alive||b.lifted)continue;if(Math.hypot(b.cx-cam.tx,b.cz-cam.tz)>cam.dist*1.6)continue;let inAll=true,inAny=false,vis=false;
+    for(const p of b.pts)for(const y of [b.base,b.base+b.h]){const q=project(p[0],y,p[1]);if(!q){inAll=false;continue}vis=true;
+      const inside=q[0]>=x0&&q[0]<=x1&&q[1]>=y0&&q[1]<=y1;if(inside)inAny=true;else inAll=false}
+    if(vis&&(crossing?inAny:inAll))hits.push(b)}
+  return hits}
+function outline(mg,b,h,col){const p=b.pts,y0=b.base+0.3,y1=b.base+h+0.3;
+  for(let i=0;i<p.length;i++){const a=p[i],c=p[(i+1)%p.length],l=Math.hypot(c[0]-a[0],c[1]-a[1]),ang=Math.atan2(c[1]-a[1],c[0]-a[0]);
+    for(const y of [y0,y1])pushShape(mg,CUBE,(a[0]+c[0])/2,y,(a[1]+c[1])/2,l,0.35,0.35,-ang,col,1);
+    pushShape(mg,CUBE,a[0],(y0+y1)/2,a[1],0.35,y1-y0,0.35,0,col,1)}}
+
+function updateDesign(dt){updateGrab(dt);updateExtrude(dt);updateHeavy(dt);for(let i=GHOSTS.length-1;i>=0;i--){GHOSTS[i].t-=dt;if(GHOSTS[i].t<=0)GHOSTS.splice(i,1)}
+  if(selRect&&performance.now()-selPrevT>90){selPrevT=performance.now();SELPREV=eraseHits(selRect).slice(0,60)}if(!selRect)SELPREV=[]}
+function drawDesign(m,mg){
+  const draw=(b,x,y,z,tum,dirx,dirz)=>{const ob=b.ob,ca=Math.cos(ob.ang),sa=Math.sin(ob.ang);let A=[ca,0,sa],N=[-sa,0,ca],U=[0,1,0];
+    let rot=v=>v;if(tum){const ax=[dirz,0,-dirx],c=Math.cos(tum),s=Math.sin(tum);rot=v=>{const d=v[0]*ax[0]+v[2]*ax[2];const cr=[ax[1]*v[2]-ax[2]*v[1],ax[2]*v[0]-ax[0]*v[2],ax[0]*v[1]-ax[1]*v[0]];
+        return[v[0]*c+cr[0]*s+ax[0]*d*(1-c),v[1]*c+cr[1]*s,v[2]*c+cr[2]*s+ax[2]*d*(1-c)]};A=rot(A);N=rot(N);U=rot(U)}
+    return{A,U,N,rot}};
+  if(HELD){const h=HELD,b=h.b,f=draw(b,0,0,0);drawOBB(m,[h.x,h.y+b.h0/2,h.z],f.A,f.U,f.N,b.ob.W/2,b.h0/2,b.ob.D/2,b.col,b.style,b.roof);
+    const gy=groundAt(h.x,h.z)+0.4;pushShape(mg,CUBE,h.x,gy,h.z,b.ob.W*1.05,0.15,b.ob.D*1.05,-b.ob.ang,[0.25,0.55,1],1)}
+  for(const t of THROWN){const b=t.b,sp=Math.hypot(t.vx,t.vz)||1,f=draw(b,0,0,0,t.tum,t.vx/sp,t.vz/sp);drawOBB(m,[t.x+f.U[0]*b.h0/2,t.y+f.U[1]*b.h0/2,t.z+f.U[2]*b.h0/2],f.A,f.U,f.N,b.ob.W/2,b.h0/2,b.ob.D/2,b.col,b.style,b.roof)}
+  for(const e of EXTR){const b=e.b,f=draw(b,0,0,0,e.th,e.dir[0],e.dir[1]);const H=e.h;
+    // 쓰러지는 축(밑변 모서리)을 기준으로 회전
+    const ca=Math.cos(b.ob.ang),sa=Math.sin(b.ob.ang),ext=Math.abs(e.dir[0]*ca+e.dir[1]*sa)*b.ob.W/2+Math.abs(-e.dir[0]*sa+e.dir[1]*ca)*b.ob.D/2;
+    const piv=[b.cx+b.ob.ox+e.dir[0]*ext,b.base,b.cz+b.ob.oz+e.dir[1]*ext],back=f.rot([-e.dir[0]*ext,0,-e.dir[1]*ext]);
+    drawOBB(m,[piv[0]+back[0]+f.U[0]*H/2,piv[1]+back[1]+f.U[1]*H/2,piv[2]+back[2]+f.U[2]*H/2],f.A,f.U,f.N,b.ob.W/2,H/2,b.ob.D/2,b.col,b.style,b.roof)}
+  for(const h of HEAVY)pushShape(m,CUBE,h.x,h.y,h.z,h.s,h.s*0.8,h.s,h.rot,h.col,0);
+  for(const b of SELPREV)outline(mg,b,b.h,[0.3,0.6,1]);
+  for(const g of GHOSTS)outline(mg,g.b,g.h*(g.t/0.6),[0.55,0.8,1]);
+}
+function clearDesign(){if(HELD)HELD.b.lifted=false;HELD=null;for(const t of THROWN)t.b.lifted=false;for(const e of EXTR)e.b.lifted=false;THROWN=[];EXTR=[];HEAVY=[];GHOSTS=[];SELPREV=[]}
+
+// ---------- 필살기 게이지 ----------
+function chargeUlt(v){if(v>0&&!ultArmed){ULT=Math.min(1,ULT+v/150000);}}
+function updateUltUI(){const el=$('#ult');if(!el)return;el.style.setProperty('--p',(ULT*100).toFixed(1)+'%');el.classList.toggle('ready',ULT>=1);el.classList.toggle('armed',ultArmed)}
+function armUlt(){if(ULT<1){toast(`필살기 게이지 ${Math.floor(ULT*100)}% — 더 부수면 차올라요`);return}ultArmed=!ultArmed;
+  $('#hint').textContent=ultArmed?'클릭: 클라이언트 전화 — "그냥 전부 다시 해와요"':'';if(ultArmed)toast('필살기 준비! 부술 곳을 클릭하세요',1800)}
+
+function updateTools2(dt){updateExcavs(dt);updatePours(dt);updateBlasts(dt);updateFloats(dt);updateDesign(dt)}
+function drawTools2(m,mg){drawDesign(m,mg);for(const e of EXCAVS)drawExcav(m,e);for(const p of POURS)drawPour(m,p);drawBlasts(m,mg)}
+function clearTools2(){clearDesign();EXCAVS=[];POURS=[];BLASTS=[];FLOATS=[];selRect=null;$('#marks').innerHTML=''}
+
+// ---------- 낙하물 & 효과 ----------
+let FALL=[], beam=null, shock=null, quake=null;
+function boom(x,z,size){
+  const n=Math.min(80,Math.floor(size*3));
+  for(let k=0;k<n;k++){const a=Math.random()*Math.PI*2,s=Math.random()*size*0.8;
+    spawn(x+Math.cos(a)*s*0.3,groundAt(x,z)+2,z+Math.sin(a)*s*0.3,Math.cos(a)*s,10+Math.random()*size,Math.sin(a)*s,1.5+Math.random()*size*0.12,Math.random()<0.5?[1,0.62,0.2]:[1,0.85,0.4],0.5+Math.random()*0.6,1)}
+  sfx(size);
+}
+
+// ---------- 무기 ----------
+let weapon=0;
+const WEAPONS=[
+  // 시공팀
+  {id:'crew',team:'시공',name:'철거반',fire(h){spawnCrew(h)}},
+  {id:'excav',team:'시공',name:'굴착기',fire(h){spawnExcavator(h)}},
+  {id:'crane',team:'시공',name:'타워크레인',fire(h){spawnCrane(h)}},
+  {id:'pour',team:'시공',name:'레미콘',fire(h){spawnPour(h)}},
+  {id:'blast',team:'시공',name:'발파 해체',fire(h){spawnBlast(h)}},
+  {id:'rebar',team:'시공',name:'철근 빼기',fire(h){spawnRebar(h)}},
+  // 설계팀
+  {id:'erase',team:'설계',name:'ERASE',hold:'rect'},
+  {id:'move',team:'설계',name:'MOVE',hold:'grab'},
+  {id:'extrude',team:'설계',name:'EXTRUDE',fire(h){spawnExtrude(h)}},
+  {id:'explode',team:'설계',name:'EXPLODE',fire(h){explodeBuilding(h)}},
+  {id:'stamp',team:'설계',name:'심의 보류',fire(h){spawnStamp(h)}},
+];
+const ULTIMATE={id:'nuke',name:'전부 다시',fire({x,z}){
+    const f=$('#flash');f.style.transition='none';f.style.opacity=1;requestAnimationFrame(()=>{f.style.transition='opacity 1.6s';f.style.opacity=0});
+    const v=carve(x,z,80,40);addScore(v*0.6);
+    forBuildingsNear(x,z,100,b=>{if(b.alive&&distToBuilding(b,x,z)<70)killBuilding(b)});
+    forTreesNear(x,z,90,t=>{if(Math.hypot(t.x-x,t.z-z)<90)killTree(t)});
+    shock={x,z,r:20,max:420,id:Math.random()};boom(x,z,60);boom(x,z,45);
+    for(let k=0;k<90;k++){spawn(x+(Math.random()-.5)*30,groundAt(x,z)+5,z+(Math.random()-.5)*30,(Math.random()-.5)*26,25+Math.random()*50,(Math.random()-.5)*26,3+Math.random()*5,[1,0.5+Math.random()*0.3,0.15],1.2+Math.random()*1.2,2)}
+    cam.shake=14;toast('클라이언트: "그냥 전부 다시 해와요"')}};
+const HINTS=['클릭: 철거반 투입 — 인부들이 1층 기둥을 오함마로','클릭: 굴착기 브레이커 — 외벽부터 쪼아 들어가요','클릭: 타워크레인 쇠공 — 클릭한 높이를 강타','클릭: 레미콘 과타설 — 옥상에 콘크리트를 부어 과하중 붕괴','클릭: 발파 해체 — 1·2층 기둥에 장약, 3초 뒤 제자리 붕괴','클릭: 철근 빼기 — 순살 구조가 스스로 무너짐','드래그: ERASE — 왼→오 윈도우(완전 포함) / 오→왼 걸침 선택 (파랗게 미리 표시)','건물을 잡고 끌어서 놓기: MOVE — 들어 올려 던지면 떨어진 곳을 덮쳐요','클릭: EXTRUDE — 무한 증축 → 용적률 초과로 쓰러지며 옆 건물들을 덮침','클릭: EXPLODE — 블록 분해, 무거운 조각이 주변을 때림','클릭: 심의 보류 도장 — 위층부터 찍어 누름'];
+const SHINTS=['클릭: 오함마로 부재 하나씩','클릭: 브레이커로 주변 부재 쪼기','클릭: 크레인 쇠공을 옆에서 휘두르기','클릭: 과타설 — 위층부터 차례로 내려앉음','클릭: 발파 — 1·2층 기둥 동시 폭파','클릭: 철근 빼기 (기둥이 서서히 약해짐)','클릭: ERASE — 누른 부재와 주변 삭제','클릭: MOVE — 무거운 덩어리를 떨어뜨리기','클릭: EXTRUDE — 위층 하중 초과','클릭: EXPLODE — 건물 전체 분해','클릭: 심의 보류 도장'];
+function selectWeapon(i){weapon=i;pickHQ=false;document.querySelectorAll('.tool[data-w]').forEach(b=>b.classList.toggle('on',+b.dataset.w===i));
+  const touch=matchMedia('(pointer:coarse)').matches;
+  if(MODE==='section'){$('#hint').textContent=SHINTS[i]+' · 드래그: 회전 · 휠: 확대';return}
+  $('#hint').textContent=HINTS[i]+(touch?' · 한 손가락 드래그: 회전 · 두 손가락: 확대':' · WASD 이동 · 드래그 회전 · 휠 확대')}
+
+// ---------- 레이 피킹 ----------
+function pick(mx,my){
+  const {o,d}=rayFrom(mx,my);
+  let t0=0,t1=8000;
+  const C=[cam.tx,0,cam.tz];for(let a=0;a<3;a++){const lo=a===1?FLOOR_Y-5:C[a]-1800,hi=a===1?400:C[a]+1800;if(Math.abs(d[a])<1e-6){if(o[a]<lo||o[a]>hi)return null;continue}
+    let ta=(lo-o[a])/d[a],tb=(hi-o[a])/d[a];if(ta>tb)[ta,tb]=[tb,ta];t0=Math.max(t0,ta);t1=Math.min(t1,tb)}
+  if(t0>t1)return null;
+  for(let t=t0;t<=t1;t+=1.5){
+    const x=o[0]+d[0]*t,y=o[1]+d[1]*t,z=o[2]+d[2]*t;
+    let hitB=null;
+    forBuildingsNear(x,z,1,b=>{if(!hitB&&b.alive&&!b.lifted&&y<=b.base+b.h+1&&y>=b.base-2&&x>=b.bb[0]&&x<=b.bb[2]&&z>=b.bb[1]&&z<=b.bb[3]&&pip(x,z,b.pts))hitB=b});
+    if(hitB)return{x,y,z,b:hitB};
+    if(y<=groundAt(x,z))return{x,y:groundAt(x,z),z};
+  }
+  return null;
+}
+
+// ---------- 되돌리기 / 전부 복구 ----------
+const UNDO=[];let BASE=null;
+function takeState(){const chunks=new Map();for(const c of CHUNKS.values())if(c.Hg)chunks.set(c.k,{H:c.Hg.slice(),VD:c.VD.slice()});return{chunks,h:B.map(b=>b.h),a:B.map(b=>b.alive),det:B.map(detSnap),t:T.map(t=>t.alive),score,maxDepth}}
+function snapshot(){UNDO.push(takeState());if(UNDO.length>15)UNDO.shift();$('#btnUndo').disabled=false;$('#btnReset').disabled=false}
+function restore(s){for(const [k,v] of s.chunks){const c=CHUNKS.get(k);if(c&&c.Hg){c.Hg.set(v.H);c.VD.set(v.VD)}}clearTools();
+  B.forEach((b,i)=>{b.lifted=false;if(i>=s.h.length)return;b.h=s.h[i];b.alive=s.a[i];if(s.det)detRestore(b,s.a[i]?s.det[i]:null)});T.forEach((t,i)=>{if(i<s.t.length)t.alive=s.t[i]});score=s.score;maxDepth=s.maxDepth;
+  D.used.fill(0);D.rest.fill(0);FALL=[];beam=null;firing=false;humStop();shock=null;quake=null;cam.shake=0;
+  groundDirty=true;bldDirty=true;rubDirty=true;treeDirty=true;updateHUD()}
+$('#btnUndo').onclick=()=>{if(MODE==='section'){const v=SUNDO.pop();if(v)secRestore(v);$('#btnUndo').disabled=!SUNDO.length;return}const s=UNDO.pop();if(s)restore(s);$('#btnUndo').disabled=!UNDO.length};
+$('#btnReset').onclick=()=>{if(MODE==='section'){secRestore(SEC.base);SUNDO=[];$('#btnUndo').disabled=true;toast('단면 건물을 전부 복구했어요');return}if(!BASE)return;restore(BASE);UNDO.length=0;$('#btnUndo').disabled=true;$('#btnReset').disabled=true;toast('전부 복구했어요')};
+
+// ---------- 입력 ----------
+const ptrs=new Map();let drag=null,pinch=null,firing=false,pickHQ=false;
+canvas.addEventListener('contextmenu',e=>e.preventDefault());
+canvas.addEventListener('pointerdown',e=>{
+  if(MODE==='fps'){audioInit();ptrs.set(e.pointerId,1);fpsPointerDown(e);return}
+  canvas.setPointerCapture(e.pointerId);ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});audioInit();
+  if(ptrs.size===2){firing=false;stopBeam();const [a,b]=[...ptrs.values()];pinch={d:Math.hypot(a.x-b.x,a.y-b.y),cx:(a.x+b.x)/2,cy:(a.y+b.y)/2,dist:cam.dist,theta:cam.theta,phi:cam.phi};drag=null;return}
+  drag={x:e.clientX,y:e.clientY,sx:e.clientX,sy:e.clientY,btn:e.button,moved:false,shift:e.shiftKey};
+  const hold=WEAPONS[weapon].hold;
+  if(hold==='grab'&&MODE==='city'&&e.button===0&&!pickHQ&&!ultArmed){const h=pick(e.clientX,e.clientY);if(h&&h.b&&startGrab(h.b,e.clientX,e.clientY)){drag.moved=true;drag.grab=true}}
+  else if(hold==='rect'&&MODE==='city'&&e.button===0&&!pickHQ&&!ultArmed){selRect={x0:e.clientX,y0:e.clientY,x1:e.clientX,y1:e.clientY};drag.moved=true;drag.rect=true}
+  else if(hold==='path'&&MODE==='city'&&e.button===0&&!pickHQ){const h=pick(e.clientX,e.clientY);if(h){dozerPath={a:h,b:null};drag.moved=true;drag.path=true}}
+  else if(hold==='beam'&&e.button===0&&!pickHQ&&!ultArmed){firing=true;if(MODE==='section')secPushUndo();else snapshot();drag.moved=true;aimBeam(e.clientX,e.clientY)}
+});
+canvas.addEventListener('pointermove',e=>{
+  if(MODE==='fps'){fpsPointerMove(e);return}
+  if(!ptrs.has(e.pointerId))return;ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(pinch&&ptrs.size===2){const [a,b]=[...ptrs.values()];const d=Math.hypot(a.x-b.x,a.y-b.y);cam.dist=clamp(pinch.dist*pinch.d/d,MODE==='section'?15:120,2600);
+    const cx=(a.x+b.x)/2,cy=(a.y+b.y)/2;cam.theta=pinch.theta-(cx-pinch.cx)*0.006;cam.phi=clamp(pinch.phi-(cy-pinch.cy)*0.005,0.12,1.42);return}
+  if(!drag)return;
+  if(firing){aimBeam(e.clientX,e.clientY);return}
+  if(drag.path&&dozerPath){const h=pick(e.clientX,e.clientY);if(h)dozerPath.b=h;return}
+  if(drag.rect&&selRect){selRect.x1=e.clientX;selRect.y1=e.clientY;return}
+  if(drag.grab){moveGrab(e.clientX,e.clientY);return}
+  const dx=e.clientX-drag.x,dy=e.clientY-drag.y;drag.x=e.clientX;drag.y=e.clientY;
+  if(Math.hypot(e.clientX-drag.sx,e.clientY-drag.sy)>6)drag.moved=true;
+  if(!drag.moved)return;
+  if(drag.btn===2||drag.btn===1||drag.shift){const s=cam.dist/900;const ct=Math.cos(cam.theta),st=Math.sin(cam.theta);
+    cam.tx=cam.tx-ct*dx*s-st*dy*s;cam.tz=cam.tz+st*dx*s-ct*dy*s;}
+  else{cam.theta-=dx*0.006;cam.phi=clamp(cam.phi-dy*0.005,0.12,1.42)}
+});
+function endPtr(e){
+  if(MODE==='fps'){ptrs.delete(e.pointerId);fpsPointerUp();return}
+  if(!ptrs.has(e.pointerId))return;ptrs.delete(e.pointerId);
+  if(pinch){if(ptrs.size<2)pinch=null;drag=null;return}
+  if(firing){firing=false;stopBeam();drag=null;return}
+  if(drag&&drag.grab){releaseGrab();drag=null;return}
+  if(drag&&drag.rect&&selRect){snapshot();runErase(selRect);selRect=null;drag=null;return}
+  if(drag&&drag.path&&dozerPath){snapshot();spawnDozer(dozerPath.a,dozerPath.b||dozerPath.a);dozerPath=null;drag=null;return}
+  if(MODE==='section'){if(drag&&!drag.moved&&drag.btn===0&&(ultArmed||WEAPONS[weapon].hold!=='beam')){const h=secPick(e.clientX,e.clientY);if(h){secPushUndo();if(ultArmed){secFire(-1,h);ULT=0;ultArmed=false;selectWeapon(weapon)}else secFire(weapon,h)}}drag=null;return}
+  if(drag&&!drag.moved&&drag.btn===0){const h=pick(e.clientX,e.clientY);
+    if(pickHQ){pickHQ=false;selectWeapon(weapon);if(h&&h.b){setHQ(h.b,true);toast('사옥으로 지정했어요 (이 브라우저에 저장)')}else toast('건물을 눌러주세요')}
+    else if(h&&ultArmed){snapshot();ULTIMATE.fire(h);ULT=0;ultArmed=false;statTool('nuke');selectWeapon(weapon)}
+    else if(h&&!WEAPONS[weapon].hold){snapshot();WEAPONS[weapon].fire(h);statTool(WEAPONS[weapon].id)}}
+  drag=null;
+}
+canvas.addEventListener('pointerup',endPtr);canvas.addEventListener('pointercancel',endPtr);
+canvas.addEventListener('wheel',e=>{e.preventDefault();if(MODE==='fps')return;cam.dist=clamp(cam.dist*Math.exp(e.deltaY*0.0012),MODE==='section'?15:120,2600)},{passive:false});
+function aimBeam(mx,my){if(MODE==='section'){const h=secPick(mx,my);sBeam=h?{x:h.x,y:h.y,z:h.z,hit:h,mx,my}:null;return}const h=pick(mx,my);if(h){beam={x:h.x,z:h.z,y:groundAt(h.x,h.z)}}}
+function stopBeam(){beam=null;sBeam=null;humStop()}
+const KEYS=new Set();addEventListener('keyup',e=>KEYS.delete(e.key.toLowerCase()));addEventListener('blur',()=>KEYS.clear());
+addEventListener('keydown',e=>{if(e.target.tagName==='INPUT')return;if(!e.ctrlKey&&!e.metaKey)KEYS.add(e.key.toLowerCase());
+  if(MODE==='fps'){if(e.key>='1'&&e.key<='3')fpsTool(+e.key-1);if(e.key.toLowerCase()==='x')exitFps('quit');return}
+  if(e.key.toLowerCase()==='c'&&!e.ctrlKey&&!e.metaKey)enterSection();if(e.key.toLowerCase()==='f'&&MODE==='section')enterFps();if(e.key>='1'&&e.key<='9')selectWeapon(+e.key-1);if(e.key==='0')selectWeapon(9);if(e.key==='-')selectWeapon(10);if(e.key.toLowerCase()==='q')armUlt();if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();$('#btnUndo').click()}});
+document.querySelectorAll('.tool[data-w]').forEach(b=>b.onclick=()=>selectWeapon(+b.dataset.w));
+
+// ---------- 사운드 ----------
+let AC=null,noiseBuf=null,hum=null;
+function audioInit(){if(AC||!opts.sound)return;try{AC=new (window.AudioContext||window.webkitAudioContext)();noiseBuf=AC.createBuffer(1,AC.sampleRate*2,AC.sampleRate);const d=noiseBuf.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1}catch(e){AC=null}}
+function sfx(size,dur){if(!AC||!opts.sound)return;try{const s=AC.createBufferSource();s.buffer=noiseBuf;const f=AC.createBiquadFilter();f.type='lowpass';f.frequency.value=Math.max(120,1400-size*18);const g=AC.createGain();const t=AC.currentTime,len=dur||Math.min(2.2,0.25+size*0.03);
+  g.gain.setValueAtTime(Math.min(0.9,0.15+size*0.02),t);g.gain.exponentialRampToValueAtTime(0.001,t+len);s.connect(f);f.connect(g);g.connect(AC.destination);s.start(t);s.stop(t+len)}catch(e){}}
+function humStart(){if(!AC||!opts.sound||hum)return;try{const o=AC.createOscillator();o.type='sawtooth';o.frequency.value=92;const g=AC.createGain();g.gain.value=0.05;o.connect(g);g.connect(AC.destination);o.start();hum={o,g}}catch(e){}}
+function humStop(){if(hum){try{hum.o.stop()}catch(e){}hum=null}}
+
+// ---------- 라벨 ----------
+let LBL=[];
+function makeLabels(){const box=$('#labels');box.innerHTML='';LBL=[];
+  const named=B.filter(b=>b.name&&!b.hq).sort((a,b)=>b.area*b.h0-a.area*a.h0).slice(0,14);
+  for(const b of [...B.filter(b=>b.hq),...named]){const el=document.createElement('div');el.className='lbl'+(b.hq?' hq':'');el.textContent=b.hq?b.hqName:b.name;box.appendChild(el);LBL.push({b,el})}
+  if(!B.some(b=>b.hq)&&CUR){const el=document.createElement('div');el.className='lbl hq';el.textContent=CUR.name+' (위치)';box.appendChild(el);LBL.push({b:{alive:true,cx:0,cz:0,base:0,h:6,hq:true},el})}
+  makePins();
+}
+function updateLabels(){
+  drawFloats();drawSelRect();updateUltUI();
+  if(MODE==='fps'){for(const L of SLBL)L.el.style.display='none';return}
+  if(MODE==='section'){updateSecLabels();return}
+  const occ=new Set();
+  for(const L of LBL){const b=L.b;if(!b.alive||(L.pin?!opts.pins||b.hq:!opts.labels)){L.el.style.display='none';continue}
+    const p=project(b.cx,b.base+b.h+(L.pin?2:4),b.cz);if(!p||p[0]<-50||p[0]>innerWidth+50||p[1]<0||p[1]>innerHeight){L.el.style.display='none';continue}
+    const key=Math.floor(p[0]/96)+','+Math.floor(p[1]/22);
+    if(L.pin&&occ.has(key)){L.el.style.display='none';continue}occ.add(key);
+    L.el.style.display='';L.el.style.left=p[0]+'px';L.el.style.top=p[1]+'px';}
+}
+
+// ---------- 데이터 로딩 ----------
+let CUR=null, LAT0=0, LNG0=0;
+const OVERPASS=['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter','https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
+function proj(lat,lng){return[(lng-LNG0)*Math.cos(LAT0*Math.PI/180)*111320,-(lat-LAT0)*110540]}
+function unproj(x,z){return[LAT0-z/110540,LNG0+x/(Math.cos(LAT0*Math.PI/180)*111320)]}
+async function fetchT(url,o={},ms=25000){const c=new AbortController();const t=setTimeout(()=>c.abort(),ms);try{const r=await fetch(url,{...o,signal:c.signal});if(!r.ok)throw new Error('HTTP '+r.status);return await r.json()}finally{clearTimeout(t)}}
+async function geocode(q){
+  try{const r=await fetchT('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=kr&accept-language=ko&q='+encodeURIComponent(q),{},12000);if(r&&r[0])return{lat:+r[0].lat,lng:+r[0].lon,label:r[0].display_name}}catch(e){}
+  try{const r=await fetchT('https://photon.komoot.io/api/?limit=1&lat=36.5&lon=127.8&q='+encodeURIComponent(q),{},12000);const f=r&&r.features&&r.features[0];
+    if(f&&f.properties&&(f.properties.countrycode||'').toUpperCase()==='KR')return{lat:f.geometry.coordinates[1],lng:f.geometry.coordinates[0],label:f.properties.name||q}}catch(e){}
+  return null;
+}
+const ROADSTYLE=new Proxy({},{get:(o,k)=>ROADSTYLE0[String(k).replace(/_link$/,'')]});
+const ROADSTYLE0={motorway:[16,0.17,1],trunk:[15,0.17,1],primary:[13,0.19,1],secondary:[11,0.2,1],tertiary:[9,0.21,0],residential:[6.5,0.23,0],unclassified:[6.5,0.23,0],service:[4.5,0.25,0],living_street:[5,0.25,0],pedestrian:[5,0.55,0],footway:[2.4,0.56,0],path:[2,0.52,0],steps:[2.4,0.52,0],cycleway:[2.4,0.45,0],track:[3,0.45,0]};
+function landKind(t){
+  if(t.natural==='water'||t.landuse==='reservoir'||t.landuse==='basin')return'water';
+  if(t.natural==='wood'||t.landuse==='forest'||t.natural==='scrub')return'forest';
+  if(t.leisure==='pitch'||t.leisure==='sports_centre'&&false)return'pitch';
+  if(t.leisure==='park'||t.leisure==='garden'||t.landuse==='recreation_ground'||t.landuse==='village_green')return'park';
+  if(t.landuse==='grass'||t.landuse==='meadow'||t.natural==='grassland'||t.landuse==='cemetery'||t.leisure==='golf_course')return'green';
+  if(t.natural==='sand'||t.natural==='beach'||t.leisure==='playground')return'sand';
+  if(t.amenity==='parking')return'parking';
+  return null;
+}
+function parseOSM(json){
+  const bs=[],rs=[],lus=[],treeNodes=[],archPois=[];
+  for(const e of json.elements||[]){
+    const t=e.tags||{};
+    const isArch=t.name&&(t.office==='architect'||/건축사|건축사무소|architect/i.test(t.name));
+    if(isArch){let la=e.lat,lo=e.lon;if(e.geometry&&e.geometry.length){la=e.geometry.reduce((a,g)=>a+g.lat,0)/e.geometry.length;lo=e.geometry.reduce((a,g)=>a+g.lon,0)/e.geometry.length}if(la!=null)archPois.push({id:e.type[0]+e.id,name:t.name,lat:la,lng:lo,addr:[t['addr:street'],t['addr:housenumber']].filter(Boolean).join(' ')})}
+    if(e.type==='node'){if(t.natural==='tree')treeNodes.push(proj(e.lat,e.lon));continue}
+    if(e.type!=='way'||!e.geometry)continue;
+    const pts=e.geometry.map(g=>proj(g.lat,g.lon));
+    if(t.building&&t.building!=='no'){const b=makeBuilding(e.id,pts,t);if(b)bs.push(b)}
+    else if(t.highway){const st=ROADSTYLE[t.highway];if(!st)continue;const g=st[1];rs.push({id:e.id,pts,w:st[0],c:g>0.4?[g+0.08,g+0.06,g+0.02]:[g,g+0.01,g+0.02],lift:g>0.4?0.12:0.2,line:!!st[2]})}
+    else{const k=landKind(t);if(!k)continue;let p=cleanRing(pts);if(p.length<3)continue;
+      let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9;for(const q of p){x0=Math.min(x0,q[0]);x1=Math.max(x1,q[0]);z0=Math.min(z0,q[1]);z1=Math.max(z1,q[1])}
+      lus.push({id:e.id,kind:k,pts:p,bb:[x0,z0,x1,z1],area:Math.abs(polyArea(p))})}
+  }
+  rs.sort((a,b)=>a.lift-b.lift);
+  lus.sort((a,b)=>b.area-a.area); // 큰 것 먼저 칠하고 작은 것이 덮음
+  return{bs,rs,lus,treeNodes,archPois};
+}
+function plantTreesTile(c,data,newLu){
+  const R=mulberry((c.i*131+c.j*977+7)|0);const inT=(x,z)=>x>=c.ox&&x<c.ox+TILE&&z>=c.oz&&z<c.oz+TILE;
+  for(const [x,z] of data.treeNodes){const k=Math.round(x)+','+Math.round(z);if(SEEN.t.has(k)||!inT(x,z))continue;SEEN.t.add(k);addTree(x,z,4+R()*3,R,c)}
+  for(const lu of LANDUSE){if(!/park|forest|green/.test(lu.kind))continue;const [x0,z0,x1,z1]=lu.bb;
+    const ax0=Math.max(x0,c.ox),ax1=Math.min(x1,c.ox+TILE),az0=Math.max(z0,c.oz),az1=Math.min(z1,c.oz+TILE);if(ax1<=ax0||az1<=az0)continue;
+    const area=(ax1-ax0)*(az1-az0)*Math.min(1,lu.area/((x1-x0)*(z1-z0)||1));
+    const dens=lu.kind==='forest'?1/55:lu.kind==='park'?1/140:1/320;const n=Math.min(500,Math.floor(area*dens));let tries=0,k=0;
+    while(k<n&&tries<n*6){tries++;const x=ax0+R()*(ax1-ax0),z=az0+R()*(az1-az0);if(!pip(x,z,lu.pts))continue;addTree(x,z,3.5+R()*4,R,c);k++}}
+  for(const s of c.roads){if(s.w<9)continue;const {ax,az,bx,bz}=s;const len=Math.hypot(bx-ax,bz-az);if(len<1)continue;
+    const nx=-(bz-az)/len,nz=(bx-ax)/len,off=s.w/2+2.2;for(let d=6;d<len;d+=11){const t=d/len,x=ax+(bx-ax)*t,z=az+(bz-az)*t;
+      if(R()<0.8&&inT(x+nx*off,z+nz*off))addTree(x+nx*off,z+nz*off,3+R()*1.5,R,c);if(R()<0.8&&inT(x-nx*off,z-nz*off))addTree(x-nx*off,z-nz*off,3+R()*1.5,R,c)}}
+}
+function fakeCity(seed,ox,oz){
+  const R=mulberry(seed);const bs=[],rs=[],lus=[];let id=seed*1000+1;const step=80;
+  for(let g=0;g<TILE;g+=step){rs.push({pts:[[ox+g,oz],[ox+g,oz+TILE]],w:10,c:[0.2,0.21,0.22],lift:0.2,line:true});rs.push({pts:[[ox,oz+g],[ox+TILE,oz+g]],w:10,c:[0.2,0.21,0.22],lift:0.2,line:true})}
+  for(let gx=0;gx<TILE;gx+=step)for(let gz=0;gz<TILE;gz+=step){const bx=ox+gx,bz=oz+gz;
+    if(R()<0.12){const x=bx+8,z=bz+8,w=step-16;lus.push({kind:'park',pts:[[x,z],[x+w,z],[x+w,z+w],[x,z+w]],bb:[x,z,x+w,z+w],area:w*w});continue}
+    const n=1+Math.floor(R()*3);for(let k=0;k<n;k++){const w=14+R()*26,d=14+R()*26;const x=bx+10+R()*(step-20-w),z=bz+10+R()*(step-20-d);
+      const b=makeBuilding(id++,[[x,z],[x+w,z],[x+w,z+d],[x,z+d]],{height:String(8+R()*R()*90),building:R()<0.3?'apartments':'yes'});if(b)bs.push(b)}}
+  return{bs,rs,lus,treeNodes:[]};
+}
+function setHQ(b,save){for(const o of B){if(o.hq){o.hq=false;o.col=o.col0||o.col}}
+  b.hq=true;b.hqName=CUR.name;b.col0=b.col;b.col=[0.98,0.92,0.66];bldDirty=true;markB(b);
+  if(save){const [la,ln]=unproj(b.cx,b.cz);lsSet('smasharch_hq_'+CUR.id,[la,ln])}
+  makeLabels();if(BASE){BASE=takeState()}}
+function chooseHQ(){
+  const saved=lsGet('smasharch_hq_'+CUR.id);let px=0,pz=0;if(saved){[px,pz]=proj(saved[0],saved[1])}
+  let best=null,bd=1e9;for(const b of B){const d=pip(px,pz,b.pts)?-1:Math.hypot(b.cx-px,b.cz-pz);if(d<bd){bd=d;best=b}}
+  if(best&&bd<60)setHQ(best,false);
+}
+function setLoading(on,msg){$('#loading').classList.toggle('on',on);if(msg)$('#loadingMsg').textContent=msg}
+async function loadFirm(f){
+  if(MODE==='section')exitSection();
+  closeModals();setLoading(true,`${f.name} 위치 찾는 중…`);
+  f.id=f.key||f.name;
+  let lat=f.lat,lng=f.lng,approx=!!f.approx;
+  if(lat==null){
+    const cache=lsGet('smasharch_geo3_'+f.id);
+    if(cache){lat=cache.lat;lng=cache.lng;approx=cache.approx}
+    else{const qs=f.q||addrQueries(f.addr||f.name);for(let i=0;i<qs.length;i++){const r=await geocode(qs[i]);if(r){lat=r.lat;lng=r.lng;approx=!!f.approxLast&&i===qs.length-1;break}}
+      if(lat!=null)lsSet('smasharch_geo3_'+f.id,{lat,lng,approx})}
+  }
+  CUR=f;$('#firmName').textContent=f.name;$('#firmAddr').textContent=(f.addr||'')+(f.tenant?' · 입주 건물':'');
+  for(const b of [...DETS])freeDet(b);clearTools();STATS={t0:0,kills:0,erased:0,tools:{}};ULT=0;ultArmed=false;
+  BASE=null;resetWorld();LAT0=lat!=null?lat:37.5665;LNG0=lat!=null?lng:126.978;
+  cam.tx=0;cam.tz=0;
+  setLoading(true,'OpenStreetMap에서 사옥 주변 불러오는 중…');
+  WORLD.fake=lat==null;let n=await loadTile(0,0);
+  let fake=WORLD.fake;
+  if(!fake&&n<3){resetWorld();WORLD.fake=true;fake=true;await loadTile(0,0);toast(lat==null?'주소 위치를 찾지 못해 가상 단지로 시작해요. 다른 회사 → 좌표 입력으로 다시 시도해보세요.':'지도 데이터를 불러오지 못해 가상 단지로 시작해요.',4500);$('#firmAddr').textContent=(f.addr||'')+' · 가상 단지'}
+  chooseHQ();buildNeighborhood();stage={done:false,t0:0};
+  D.used.fill(0);D.rest.fill(0);FALL=[];beam=null;shock=null;quake=null;score=0;UNDO.length=0;$('#btnUndo').disabled=true;$('#btnReset').disabled=true;
+  bldDirty=true;rubDirty=true;treeDirty=true;groundDirty=true;makeLabels();
+  BASE=takeState();updateHUD();
+  // 하늘에서 사옥으로 날아 들어오기
+  cam.theta=0.75;cam.phi=0.62;cam.dist=2400;camFly={t:0,from:{dist:2400,phi:0.62,theta:0.75},to:{dist:Math.min(1600,560*Math.max(1,1.15*innerHeight/innerWidth)),phi:0.95,theta:1.25}};
+  setLoading(false);
+  if(!lsGet('smasharch_tut_v1'))setTimeout(()=>showTut(0),400);
+  if(!fake&&!B.some(b=>b.hq))toast('사옥 건물을 못 찾았어요. 설정 → "사옥 건물 직접 지정"으로 골라주세요.',4500);
+  else if(!fake&&!f.tenant&&parseFloor(f.addr)==null&&B.some(b=>b.hq))toast('레이드 보스 · 사옥 전체를 쓰는 회사예요. 사옥 기둥이 2배 단단해요',3500);
+  else if(!fake&&f.tenant&&!approx)toast(f.name+'은(는) 이 건물 일부 층에 입주한 사무소예요.',3500);
+  else if(!fake&&approx&&!lsGet('smasharch_hq_'+f.id))toast('정확한 번지를 못 찾아 도로 기준으로 표시했어요. 설정에서 사옥을 직접 지정할 수 있어요.',4500);
+  try{const u=new URL(location.href);u.search='';if(f.key)u.searchParams.set('firm',f.key);else{u.searchParams.set('lat',lat.toFixed(5));u.searchParams.set('lng',lng.toFixed(5));u.searchParams.set('name',f.name)}history.replaceState(null,'',u)}catch(e){}
+}
+
+// ---------- 회사 검색 / 모달 ----------
+function closeModals(){document.querySelectorAll('.modal').forEach(m=>m.classList.remove('open'))}
+document.querySelectorAll('[data-close]').forEach(b=>b.onclick=closeModals);
+document.querySelectorAll('.modal').forEach(m=>m.addEventListener('pointerdown',e=>{if(e.target===m)closeModals()}));
+$('#btnFirm').onclick=()=>{$('#mFirm').classList.add('open');setTimeout(()=>$('#customQ').focus(),50)};
+$('#btnSet').onclick=()=>$('#mSet').classList.add('open');
+function firmButton(name,addr,onclick){const b=document.createElement('button');b.className='firm';b.innerHTML='<b></b><span></span>';b.querySelector('b').textContent=name;b.querySelector('span').textContent=addr;b.onclick=onclick;return b}
+FIRMS.forEach(presetFromData);
+const fl=$('#firmList');for(const f of FIRMS)fl.appendChild(firmButton(f.name,f.addr,()=>loadFirm(f)));
+$('#firmCount').textContent=FIRMDATA.length?fmt(FIRMDATA.length)+'곳 (좌표 확정 '+fmt(FIRM_GEO_COUNT)+')'+(window.FIRMDATA_SRC==='snapshot'?' · 저장된 목록':''):'목록을 불러오지 못했어요 (주소 검색은 가능)';
+const norm=s=>s.toLowerCase().replace(/\(주\)|㈜|주식회사|\(유\)|\(합\)|유한회사|합자회사|[\s·.,\-()]/g,'');
+const FIDX=FIRMDATA.map(([n,a])=>norm(n)+'|'+norm(a));
+function firmFromData(i){const [n,a,la,ln,st,kid,sido,sgg]=FIRMDATA[i];const f={key:'d'+kid,dkey:'d'+kid,sido,sgg,name:n,addr:a,q:addrQueries(a),approxLast:true,tenant:/\d+\s*층|\d+\s*호|지층|지하/.test(a)};
+  if(st!==2&&la!=null){f.lat=la;f.lng=ln;f.approx=st===1}return f}
+const GEO_TAG=['','  · 위치 확인 필요(이름검색)','  · 좌표 준비 중(주소 검색으로 찾기)'];
+function runSearch(){const q=$('#customQ').value.trim();const box=$('#searchRes');box.innerHTML='';
+  if(!q){box.style.display='none';return}
+  const m=q.match(/^\s*(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)\s*$/);
+  box.style.display='';
+  if(m){box.appendChild(firmButton('좌표로 이동',`${m[1]}, ${m[2]}`,()=>loadFirm({name:'좌표 '+(+m[1]).toFixed(4)+', '+(+m[2]).toFixed(4),addr:'',lat:+m[1],lng:+m[2]})));return}
+  const nq=norm(q);const hits=[];for(let i=0;i<FIDX.length&&hits.length<40;i++)if(FIDX[i].includes(nq))hits.push(i);
+  for(const i of hits)box.appendChild(firmButton(FIRMDATA[i][0],FIRMDATA[i][1]+GEO_TAG[FIRMDATA[i][4]],()=>loadFirm(firmFromData(i))));
+  box.appendChild(firmButton('“'+q+'” 주소로 직접 찾기','목록에 없으면 주소나 건물 이름으로 검색',()=>loadFirm({name:q,addr:q,q:addrQueries(q)})));
+}
+$('#customQ').addEventListener('input',runSearch);
+$('#customQ').addEventListener('keydown',e=>{if(e.key==='Enter'){const f=$('#searchRes .firm');if(f)f.click()}});
+$('#btnShare').onclick=async()=>{const url=location.href;try{if(navigator.share&&matchMedia('(pointer:coarse)').matches){await navigator.share({title:'SMASH ARCH',text:`${CUR?CUR.name:''} 사옥을 ${fmt(score)}점어치 부쉈어요`,url});return}await navigator.clipboard.writeText(url);toast('링크를 복사했어요')}catch(e){toast('복사 실패 — 주소창의 링크를 공유해주세요')}};
+$('#btnPickHQ').onclick=()=>{closeModals();pickHQ=true;$('#hint').textContent='사옥 건물을 눌러주세요';toast('사옥으로 쓸 건물을 눌러주세요')};
+for(const k of ['Sound','Labels','Debris','Shadows','Pins']){const el=$('#opt'+k);const key=k.toLowerCase();el.checked=opts[key];el.onchange=()=>{opts[key]=el.checked;lsSet('smasharch_opts',opts);if(key==='sound'&&!el.checked)humStop()}}
+
+
+// =====================================================================
+//  단면 모드 — 사옥(입주 건물)을 단면으로 잘라 "우리 층"을 부수는 모드
+// =====================================================================
+let MODE='city', SEC=null, SUNDO=[], SFALL=[], sQuake=null, sBeam=null, cityCam=null, secDirty=false, LVPcur=LVP;
+const mSec=new MB(1<<15);
+const FLOOR_H=3.4, GF_H=4.6, BASE_H=3.6, SLAB_T=0.3;
+const POCHE=[0.13,0.13,0.15], C_SLAB=[0.78,0.78,0.76], C_COL=[0.64,0.64,0.62], C_CORE=[0.58,0.58,0.57], C_GLASS=[0.42,0.55,0.66], C_OURS=[1.0,0.83,0.26];
+
+// 주소에서 입주 층 추출: "5층"→5, "302호"→3, "지하1층/지층"→-1, 없으면 null(건물 전체 사용)
+function parseFloor(addr){
+  if(!addr)return null;
+  let m=addr.match(/지하\s*(\d+)\s*층/);if(m)return -(+m[1]);
+  if(/지층|지하\s*\d*\s*호|,\s*지하/.test(addr))return -1;
+  m=addr.match(/(\d+)\s*층/);if(m&&+m[1]>=1&&+m[1]<=80)return +m[1];
+  m=addr.match(/(?:^|[\s,])(\d{3,4})\s*호/);if(m){const f=Math.floor(+m[1]/100);if(f>=1&&f<=80)return f}
+  return null;
+}
+function floorName(k){return k<0?'B'+(-k):(k+1)+'F'}
+// 바닥 모양을 가장 긴 변 기준으로 회전한 사각형(OBB)으로 단순화
+function footprintOBB(pts){
+  let best=0,ang=0;
+  for(let i=0;i<pts.length;i++){const a=pts[i],b=pts[(i+1)%pts.length];const l=Math.hypot(b[0]-a[0],b[1]-a[1]);if(l>best){best=l;ang=Math.atan2(b[1]-a[1],b[0]-a[0])}}
+  const c=Math.cos(ang),s=Math.sin(ang);let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9;
+  for(const p of pts){const x=p[0]*c+p[1]*s,z=-p[0]*s+p[1]*c;x0=Math.min(x0,x);x1=Math.max(x1,x);z0=Math.min(z0,z);z1=Math.max(z1,z)}
+  let W=x1-x0,Dp=z1-z0;if(Dp>W)[W,Dp]=[Dp,W];return{W,D:Dp};
+}
+function lin(a,b,n){const o=[];for(let i=0;i<n;i++)o.push(a+(b-a)*(n===1?0.5:i/(n-1)));return o}
+
+const ITEMS={
+  model:{pts:3000,msg:'공모전 모형 파손! 3주 야근 날아감'},
+  plotter:{pts:1500,msg:'플로터 사망… 마감 전날이 아니라 다행'},
+  rolls:{pts:800,msg:'A0 출력본 50장 증발 — 출력실 원망 중'},
+  sample:{pts:600,msg:'마감재 샘플 박살 — 시공사에 다시 요청'},
+  ramen:{pts:500,msg:'야근 컵라면 탑 붕괴'},
+  nas:{pts:2000,msg:'NAS 날아감… 백업은 있겠죠?'},
+  pinup:{pts:700,msg:'크리틱 핀업 보드 증발'},
+  coffee:{pts:1000,msg:'커피머신 파손 — 팀 사기 -50%'},
+  boss:{pts:2500,msg:'소장실 개방! 결재 서류 소멸'}
+};
+// 건축사무소 한 층 꾸미기 (full=true: 특수 집기까지)
+function addOffice(add,k,W,D,R,full){
+  const Y=SLAB_T;const wood=[0.80,0.66,0.48],dark=[0.18,0.19,0.21],white=[0.97,0.97,0.96];
+  for(let x=-W/2+3;x<W/2-7;x+=3.6){add(k,'prop',[x,Y,D*0.05,x+1.6,Y+0.75,D*0.05+0.8],1,1,full?wood:[0.86,0.86,0.84]);
+    if(full)add(k,'prop',[x+0.5,Y+0.75,D*0.05+0.15,x+1.1,Y+1.15,D*0.05+0.25],1,0.5,dark)}
+  if(!full)return;
+  // 모형 테이블 + 모형
+  const tx=-1.6;add(k,'prop',[tx,Y,D*0.24,tx+3.2,Y+0.9,D*0.24+1.4],1,1,[0.92,0.92,0.9],{name:'model'});
+  for(let i=0;i<4;i++){const bx=tx+0.3+i*0.7,hh=0.3+R()*0.9;add(k,'prop',[bx,Y+0.9,D*0.24+0.3,bx+0.5,Y+0.9+hh,D*0.24+0.85],1,1.5,white,{name:'model'})}
+  // 플로터 · 도면 롤 · NAS
+  add(k,'prop',[-W/2+1.2,Y,D*0.26,-W/2+2.8,Y+1.1,D*0.26+0.7],1,1,dark,{name:'plotter'});
+  for(let i=0;i<5;i++){const zz=D*0.26+(i%3)*0.28,yy=Y+Math.floor(i/3)*0.26;add(k,'prop',[-W/2+3.3,yy,zz,-W/2+4.5,yy+0.25,zz+0.25],1,0.3,white,{name:'rolls'})}
+  add(k,'prop',[-W/2+5.2,Y,D*0.36,-W/2+5.8,Y+1.0,D*0.36+0.6],1,1,[0.12,0.13,0.15],{name:'nas'});
+  // 마감재 샘플판
+  const sc=[[0.72,0.55,0.38],[0.62,0.62,0.6],[0.78,0.78,0.8]];
+  for(let i=0;i<3;i++){const x=-W/2+6.6+i*0.8;add(k,'prop',[x,Y,D*0.40,x+0.6,Y+0.95,D*0.40+0.06],1,0.3,sc[i],{name:'sample'})}
+  // 핀업 보드
+  add(k,'prop',[2.2,Y+0.3,D*0.42,4.8,Y+1.9,D*0.42+0.08],1,1,[0.93,0.90,0.82],{name:'pinup'});
+  // 컵라면 탑 (첫 책상 위)
+  for(let i=0;i<6;i++){const x=-W/2+3.9;add(k,'prop',[x,Y+0.75+i*0.13,D*0.05+0.4,x+0.14,Y+0.87+i*0.13,D*0.05+0.54],1,0.1,i%2?[0.85,0.15,0.12]:[0.95,0.95,0.92],{name:'ramen'})}
+  // 커피머신
+  add(k,'prop',[W/2-8.4,Y,D*0.02,W/2-7.2,Y+0.9,D*0.02+0.6],1,0.5,[0.6,0.6,0.62]);
+  add(k,'prop',[W/2-8.2,Y+0.9,D*0.02+0.1,W/2-7.6,Y+1.4,D*0.02+0.5],1,0.5,[0.2,0.2,0.22],{name:'coffee'});
+  // 소장실 (오른쪽 앞 모서리, 유리 칸막이)
+  const bx0=W/2-5.4,bz0=D/2-4.4;
+  add(k,'prop',[bx0,Y,bz0,bx0+0.08,Y+2.6,D/2-0.4],1,0.5,[0.62,0.75,0.82],{name:'boss'});
+  add(k,'prop',[bx0,Y,bz0,W/2-0.5,Y+2.6,bz0+0.08],1,0.5,[0.62,0.75,0.82],{name:'boss'});
+  add(k,'prop',[bx0+1.4,Y,bz0+1.6,bx0+3.6,Y+0.78,bz0+2.6],1,1,[0.35,0.24,0.16],{name:'boss'});
+}
+function buildSectionModel(b,firm,others){
+  others=others||[];
+  const fl=parseFloor(firm.addr);
+  let {W,D}=footprintOBB(b.pts);W=clamp(W,14,80);D=clamp(D,11,46);
+  let N=Math.round((b.h0-1.2)/FLOOR_H);if(fl>0)N=Math.max(N,fl+1);for(const o of others)if(o.fl>0)N=Math.max(N,o.fl);N=clamp(N,2,45);
+  const nb=fl<0?Math.max(1,-fl):(N>=6?2:1);
+  const R=mulberry(b.id%100000+7);
+  const piloti=b.style===1&&N>=4&&R()<0.6;   // 아파트·다세대형은 1층 필로티 확률
+  const ourK=fl==null?null:(fl>0?fl-1:fl);
+  const wallCol=(b.col0||b.col).slice();
+  const st=[],els=[];let y=0;for(let k=-1;k>=-nb;k--)y-=BASE_H;
+  for(let k=-nb;k<N;k++){const h=k<0?BASE_H:k===0?GF_H:FLOOR_H;st.push({k,h,y0:y,y,vy:0,state:'ok'});y+=h}
+  const S=k=>st[k+nb];
+  const nx=Math.max(2,Math.round(W/8)+1),nz=Math.max(2,Math.round(D/7.5)+1);
+  const xs=lin(-W/2+0.5,W/2-0.5,nx),zs=lin(-D/2+0.5,D/2-0.5,nz);
+  const cw=Math.min(9,W*0.28),cd=Math.min(6.5,D*0.36),czc=-D/2+cd/2+0.8;
+  const inCore=(x,z)=>Math.abs(x)<cw/2+0.6&&Math.abs(z-czc)<cd/2+0.6;
+  const add=(k,kind,box,hp,w,col,extra)=>{const e=Object.assign({k,kind,box,hp,hp0:hp,w,col,alive:true},extra||{});els.push(e);return e};
+  for(const s of st){const k=s.k,h=s.h,ours=ourK==null?k>=0:k===ourK;
+    // 바닥 슬래브 (최하층 기초는 파괴 불가)
+    add(k,'slab',[-W/2,0,-D/2,W/2,SLAB_T,D/2],k===-nb?1e9:2,5,ours&&ourK!=null?C_OURS:C_SLAB);
+    // 기둥
+    for(const x of xs)for(const z of zs){if(inCore(x,z))continue;add(k,'col',[x-0.38,SLAB_T,z-0.38,x+0.38,h,z+0.38],k<0?3:2,3,C_COL)}
+    // 코어 (계단·엘리베이터)
+    add(k,'core',[-cw/2,SLAB_T,czc-cd/2,cw/2,h,czc+cd/2],5,6,C_CORE);
+    // 외벽: 뒤·옆면만 (앞면은 단면으로 잘림)
+    const wall=(x0,z0,x1,z1)=>{
+      if(k<0){add(k,'wall',[x0,SLAB_T,z0,x1,h,z1],3,1,[0.55,0.54,0.52]);return}
+      if(k===0&&piloti)return;
+      add(k,'wall',[x0,SLAB_T,z0,x1,h,z1],1,1,wallCol,{glass:k===0?0.85:0.55});
+    };
+    for(let i=0;i<xs.length-1;i++)wall(xs[i],-D/2,xs[i+1],-D/2+0.3);
+    for(let i=0;i<zs.length-1;i++){wall(-W/2,zs[i],-W/2+0.3,zs[i+1]);wall(W/2-0.3,zs[i],W/2,zs[i+1])}
+    // 실내 소품
+    if(k>=0&&!(k===0&&piloti)){
+      // 사옥 전체를 쓰는 회사는 몇 개 층에만 특수 집기 배치 (너무 무거워지지 않게)
+      const full=ourK!=null?k===ourK:(k>=1&&(N<=8||k%Math.ceil(N/6)===1));
+      addOffice(add,k,W,D,R,ours&&full);
+    }
+  }
+  // 지붕 슬래브 + 파라펫
+  const top=st[st.length-1];add(top.k,'roof',[-W/2,top.h,-D/2,W/2,top.h+SLAB_T,D/2],2,5,[0.70,0.71,0.70]);
+  const P=Math.max(W,D)/2+28;
+  const focusK=ourK!=null?ourK:Math.min(N-1,1);
+  return{b,firm,others,focusK,shown:{},W,D,N,nb,st,els,S,ourK,piloti,P,depth:-y0Bottom(st)+2,tenant:fl!=null,total:els.reduce((a,e)=>a+(e.hp0<1e8?e.w:0),0)};
+}
+function y0Bottom(st){return st[0].y0}
+
+// ---------- 진입 / 종료 ----------
+function enterSection(bArg,firmArg){
+  if(MODE==='section'){exitSection();if(!bArg)return}
+  let b=bArg||B.find(x=>x.hq);const firm=firmArg||CUR;
+  if(!b){toast('사옥 건물이 지정되지 않았어요. 설정 → "사옥 건물 직접 지정"을 먼저 해주세요.',3500);return}
+  const others=(b.firms||[]).filter(f=>'d'+f.i!==firm.key).map(f=>({name:f.short,fl:parseFloor(f.addr)}));
+  SEC=buildSectionModel(b,firm,others);
+  MODE='section';SUNDO=[];SFALL=[];sQuake=null;sBeam=null;clearTools();
+  cityCam={...cam};
+  const H=SEC.st[SEC.st.length-1].y0+SEC.st[SEC.st.length-1].h;
+  cam.tx=0;cam.tz=0;cam.ty=H*0.42;cam.theta=0.38;cam.phi=1.22;cam.dist=Math.max(H*1.7,SEC.W*1.35,70);SEC.overCam={...cam};SEC.inside=false;
+  const Rr=Math.max(SEC.P,H)+15;
+  LVPcur=mul(ortho(-Rr,Rr,-Rr,Rr,10,2600),lookAt([SUN[0]*1300,SUN[1]*1300+H*0.5,SUN[2]*1300],[0,H*0.4,0],[0,1,0]));
+  D.used.fill(0);D.rest.fill(0);rubDirty=true;secDirty=true;
+  SEC.base=secSnap();
+  $('#btnSection').classList.add('on');$('#btnSection').lastChild.textContent='동네로';
+  document.body.classList.add('sec');  $('#secPanel').innerHTML='<div id="secInfo"></div><div id="secHint" class="k"></div><button id="btnFloor" class="btn-s" style="margin-top:5px"></button>';$('#btnFloor').onclick=enterFps;$('#btnFloor').textContent=(SEC.ourK!=null?'우리 층':floorName(SEC.focusK))+'에 직접 들어가서 부수기 (F)';
+  $('#secPanel').style.display='';$('#btnUndo').disabled=true;$('#btnReset').disabled=false;
+  makeSecLabels();selectWeapon(weapon);
+  const oc=SEC.others.length;
+  toast(SEC.tenant?`${SEC.firm.name}은(는) ${floorName(SEC.ourK)}에 입주해 있어요${oc?` (같은 건물에 다른 사무소 ${oc}곳)`:''}. 그 층만 정확히 날려보세요!`:`${SEC.firm.name} 건물 전체가 사옥이에요. 기둥과 코어를 노려 완전 붕괴시켜 보세요!`,4200);
+}
+function exitSection(){
+  if(MODE!=='section')return;
+  const c=secCollapse();
+  if(c>=0.6&&SEC.b.alive){killBuilding(SEC.b);toast('단면 모드에서 무너뜨린 사옥이 동네에서도 철거됐어요')}
+  MODE='section-exit';Object.assign(cam,cityCam);cam.ty=0;LVPcur=LVP;
+  D.used.fill(0);D.rest.fill(0);rubDirty=true;SFALL=[];sQuake=null;sBeam=null;
+  MODE='city';SEC=null;
+  $('#btnSection').classList.remove('on');$('#btnSection').lastChild.textContent='단면';
+  document.body.classList.remove('sec');  $('#secPanel').style.display='none';$('#btnUndo').disabled=!UNDO.length;$('#btnReset').disabled=!UNDO.length;
+  makeLabels();selectWeapon(weapon);
+}
+
+// ---------- 구조 판정 ----------
+function secTargets(){ // 각 층이 놓일 높이 (아래층이 무너지면 내려앉음)
+  const t=[];let y=SEC.st[0].y0;
+  for(const s of SEC.st){t.push(y);y+=s.state==='crushed'?0.9:s.h}
+  return t;
+}
+function storyHealth(s){let tot=0,alive=0,core=false,coreHp=0;
+  for(const e of SEC.els){if(e.k!==s.k)continue;if(e.kind==='col'){tot++;if(e.alive)alive++}if(e.kind==='core'&&e.alive){core=true;coreHp=e.hp/e.hp0}}
+  return{r:tot?alive/tot:1,core,coreHp}}
+function toggleInside(){if(!SEC)return;SEC.inside=!SEC.inside;
+  if(SEC.inside){const s=SEC.S(SEC.focusK);SEC.overCam={...cam};cam.tx=0;cam.ty=s.y+0.9;cam.tz=SEC.D*0.12;cam.theta=0.22;cam.phi=1.42;cam.dist=Math.max(SEC.W*0.42,11)}
+  else Object.assign(cam,SEC.overCam);
+  $('#btnFloor').textContent=SEC.inside?'단면 전체 보기':((SEC.ourK!=null?'우리 층':floorName(SEC.focusK))+' 안으로 들어가기')}
+function secCheck(){
+  for(const s of SEC.st){
+    if(s.state==='ok'&&!s.warned&&s.k>-SEC.nb){const h=storyHealth(s);if(!h.core&&h.r<0.55&&h.r>=0.34){s.warned=1;toast(`⚠ ${floorName(s.k)} 붕괴 임박 — 기둥 ${Math.round(h.r*100)}% 남음`,2500)}}
+    if(s.state!=='ok'||s.k===-SEC.nb&&false)continue;
+    let tot=0,alive=0,core=false;
+    for(const e of SEC.els){if(e.k!==s.k)continue;if(e.kind==='col'){tot++;if(e.alive)alive++}if(e.kind==='core'&&e.alive)core=true}
+    if(!core&&tot&&alive/tot<0.34)crushStory(s);
+  }
+}
+function crushStory(s){
+  s.state='crushed';
+  for(const e of SEC.els)if(e.k===s.k&&e.alive&&e.kind!=='slab')secDestroy(e,true);
+  secBoom(0,s.y+s.h*0.5,SEC.D*0.3,Math.min(40,SEC.W*0.6));cam.shake=Math.max(cam.shake,5);
+  wakeAllRubble();secDirty=true;
+}
+function wakeAllRubble(){for(let i=0;i<MAXD;i++)if(D.used[i]&&D.rest[i]){D.rest[i]=0;D.vy[i]=0.5}rubDirty=true}
+function secUpdate(dt){
+  if(!SEC)return;
+  const t=secTargets();let moving=false;
+  for(let i=0;i<SEC.st.length;i++){const s=SEC.st[i];
+    if(s.y>t[i]+0.005){s.vy-=30*dt;s.y=Math.max(t[i],s.y+s.vy*dt);moving=true;
+      if(s.y<=t[i]+0.005){const v=-s.vy;s.vy=0;s.y=t[i];secLand(i,v)}}
+    else if(s.y<t[i]){s.y=t[i]}
+  }
+  if(moving){secDirty=true;wakeAllRubble()}
+  if(SEC.rebar){SEC.rebarT=(SEC.rebarT||0)+dt;if(SEC.rebarT>0.2){SEC.rebarT=0;const c=SEC.els.filter(e=>e.alive&&(e.kind==='col'||e.kind==='core')&&e.k>=0);if(c.length)secDamage(c[Math.floor(Math.random()*Math.min(c.length,c.length*0.5+3))],0.5)}}
+  // 레드펜
+  if(sBeam&&firing){humStart();const h=sBeam.hit;if(h&&h.el&&h.el.alive){secDamage(h.el,3.5*dt);addScore(60*dt)}
+    if(Math.random()<0.5)spawn(sBeam.x,sBeam.y,sBeam.z,(Math.random()-.5)*8,4+Math.random()*6,2+Math.random()*6,0.3+Math.random()*0.4,[1,0.4,0.1],0.3,1)}
+  // 쇠공·도면 (앞쪽에서 날아옴)
+  for(let i=SFALL.length-1;i>=0;i--){const o=SFALL[i];o.t-=dt;if(o.t>0)continue;o.z+=o.vz*dt;o.rot=(o.rot||0)+dt*5;
+    if(o.z<=o.tz){SFALL.splice(i,1);o.hit(o)}}
+  // 지진: 아래층(특히 필로티)일수록 큰 피해
+  if(sQuake){sQuake.t+=dt;cam.shake=Math.max(cam.shake,3.5*(1-sQuake.t/sQuake.dur));sQuake.acc+=dt;
+    if(sQuake.acc>0.12){sQuake.acc=0;
+      const cand=SEC.els.filter(e=>e.alive&&(e.kind==='col'||e.kind==='wall'||e.kind==='core')&&SEC.S(e.k).state==='ok');
+      for(let n=0;n<3&&cand.length;n++){const e=cand[Math.floor(Math.random()*cand.length)];
+        const lvl=e.k+SEC.nb,w=(1/(1+lvl*0.35))*(e.k===0&&SEC.piloti?3:1)*(e.kind==='core'?0.25:1);
+        if(Math.random()<w*0.7)secDamage(e,0.8)}}
+    if(sQuake.t>sQuake.dur)sQuake=null}
+}
+function secLand(i,v){
+  // 위층 덩어리가 무너진 층 위로 떨어질 때 → 그 아래층 기둥에 충격 (연쇄 붕괴)
+  const below=SEC.st[i-1];if(!below||below.state!=='crushed'||v<5)return;
+  if(SEC.st[i].state==='crushed')return;
+  const mass=SEC.st.slice(i).filter(s=>s.state==='ok').length;
+  const under=SEC.st[i-2];if(!under||under.state!=='ok')return;
+  const p=Math.min(0.95,0.1*mass+v*0.012);
+  for(const e of SEC.els)if(e.k===under.k&&e.alive&&(e.kind==='col'||e.kind==='core')&&Math.random()<p*(e.kind==='core'?0.6:1))secDestroy(e);
+  secBoom(0,under.y+under.h,SEC.D*0.3,20);cam.shake=Math.max(cam.shake,6);sfx(25);
+  secCheck();
+}
+
+// ---------- 피해 ----------
+function elWorld(e){const s=SEC.S(e.k),b=e.box;return[b[0],b[1]+s.y,b[2],b[3],b[4]+s.y,b[5]]}
+function secDamage(e,d){if(!e.alive||e.hp0>=1e8)return;e.hp-=d;if(e.hp<=0)secDestroy(e);secDirty=true;secCheck()}
+function secDestroy(e,quiet){
+  if(!e.alive)return;e.alive=false;secDirty=true;
+  addScore(e.w*400);
+  const it=e.name&&ITEMS[e.name];if(it){addScore(it.pts);if(!SEC.shown[e.name]){SEC.shown[e.name]=1;toast(it.msg+' +'+fmt(it.pts))}
+    const [a0,b0,c0,a1,b1,c1]=elWorld(e),cx=(a0+a1)/2,cy=b1,cz=(c0+c1)/2;
+    if(e.name==='plotter'||e.name==='rolls'){   // 롤지·청사진이 사방으로 터져 날림
+      for(let k=0;k<26;k++)spawn(cx,cy,cz,(Math.random()-.5)*9,5+Math.random()*7,(Math.random()-.5)*9,0.25+Math.random()*0.3,Math.random()<0.6?[0.97,0.97,0.95]:[0.35,0.5,0.85],2.5+Math.random()*1.5,3)}
+    if(e.name==='model'){                         // 칼라보드·스티로폼이 눈보라처럼
+      const cs=[[0.98,0.98,0.97],[0.98,0.98,0.97],[0.9,0.25,0.2],[0.25,0.45,0.85],[0.98,0.8,0.2]];
+      for(let k=0;k<30;k++)spawn(cx,cy,cz,(Math.random()-.5)*6,3+Math.random()*5,(Math.random()-.5)*6,0.12+Math.random()*0.18,cs[k%cs.length],3+Math.random()*1.5,3)}}
+  const [x0,y0,z0,x1,y1,z1]=elWorld(e);const vol=(x1-x0)*(y1-y0)*(z1-z0);
+  const n=Math.min(quiet?3:10,Math.ceil(vol/3)+1);
+  for(let i=0;i<n;i++){const x=x0+Math.random()*(x1-x0),y=y0+Math.random()*(y1-y0),z=z0+Math.random()*(z1-z0);
+    const c=e.glass&&Math.random()<0.5?C_GLASS:e.col;
+    spawn(x,y,z,(Math.random()-.5)*6,Math.random()*4,1+Math.random()*5,0.25+Math.random()*Math.min(0.9,(x1-x0+z1-z0)*0.2),c)}
+  if(e.kind==='slab'){for(const p of SEC.els)if(p.k===e.k&&p.kind==='prop'&&p.alive)secDestroy(p,true)}
+}
+function boxDist(b,x,y,z){const dx=Math.max(b[0]-x,0,x-b[3]),dy=Math.max(b[1]-y,0,y-b[4]),dz=Math.max(b[2]-z,0,z-b[5]);return Math.hypot(dx,dy,dz)}
+function secBlast(x,y,z,r,dmg){for(const e of SEC.els){if(!e.alive)continue;const d=boxDist(elWorld(e),x,y,z);if(d<r)secDamage(e,dmg*(1-d/r*0.7))}}
+function secBoom(x,y,z,size){const n=Math.min(50,Math.floor(size*2));
+  for(let k=0;k<n;k++){const a=Math.random()*Math.PI*2,s=Math.random()*size*0.5;spawn(x+Math.cos(a)*s*0.2,y,z+Math.sin(a)*s*0.2,Math.cos(a)*s,4+Math.random()*size*0.4,Math.sin(a)*s+2,0.5+Math.random()*size*0.05,Math.random()<0.5?[1,0.62,0.2]:[1,0.85,0.4],0.4+Math.random()*0.5,1)}
+  sfx(size)}
+
+// ---------- 무기 (단면 모드) ----------
+function secStamp(x){
+  const alive=SEC.st.filter(s=>s.state==='ok'&&s.k>=0);const n=Math.max(1,Math.ceil(alive.length*0.4));
+  const tops=alive.slice(-n);tops.reverse().forEach((s,i)=>setTimeout(()=>{if(SEC&&s.state==='ok'){crushStory(s);secCheck()}},i*260));
+  floatText(0,SEC.st[SEC.st.length-1].y0+SEC.st[SEC.st.length-1].h+4,0,'보 류','mark',3);cam.shake=8;sfx(35);
+  toast(`심의 보류! 위에서 ${n}개 층이 찍혀 내려앉아요`,2500);
+}
+function secFire(wi,h){
+  const {x,y,z}=h;const id=wi<0?'nuke':WEAPONS[wi].id;const w={crane:0,crew:1,rolls:3,quake:4,nuke:5}[id];SEC.hits=(SEC.hits||0)+1;
+  if(id==='stamp'){secStamp(x);return}
+  if(id==='move'){secBlast(x,y,z,6,4);secBoom(x,y,z,14);cam.shake=Math.max(cam.shake,5);return}
+  if(id==='extrude'){const alive=SEC.st.filter(s=>s.state==='ok'&&s.k>=0);const n=Math.max(1,Math.ceil(alive.length*0.5));alive.slice(-n).reverse().forEach((s,i)=>setTimeout(()=>{if(SEC&&s.state==='ok'){crushStory(s);secCheck()}},300+i*400));cmdLine(['명령: EXTRUDE','용적률 초과 — 위층 하중을 못 버텨요']);return}
+  if(id==='excav'){secBlast(x,y,z,2.6,2.2);secBoom(x,y,z,6);cam.shake=Math.max(cam.shake,2);return}
+  if(id==='pour'){const alive=SEC.st.filter(s=>s.state==='ok'&&s.k>=0);const n=Math.max(1,Math.ceil(alive.length*0.4));alive.slice(-n).reverse().forEach((s,i)=>setTimeout(()=>{if(SEC&&s.state==='ok'){crushStory(s);secCheck()}},600+i*700));toast('과타설! 위층부터 하중을 못 버텨요',2500);return}
+  if(id==='blast'){floatText(0,6,SEC.D/2,'3','count',1);setTimeout(()=>{if(!SEC)return;for(const e of SEC.els)if(e.alive&&(e.kind==='col'||e.kind==='core')&&(e.k===0||e.k===1))secDestroy(e);secBoom(0,3,SEC.D/2,30);cam.shake=9;sfx(40,2);secCheck()},1500);toast('발파 장약 설치 — 1·2층 기둥',1500);return}
+  if(id==='erase'){let n=0;for(const e of SEC.els){if(!e.alive||e.hp0>=1e8)continue;if(boxDist(elWorld(e),x,y,z)<2.5){e.alive=false;n++;addScore(e.w*300)}}secDirty=true;secCheck();floatText(x,y+1,z,'ERASE','cad',1.4);cmdLine(['명령: ERASE',`${n}개 삭제됨`]);return}
+  if(id==='explode'){for(const e of SEC.els)if(e.alive&&e.hp0<1e8){const b=elWorld(e);spawn((b[0]+b[3])/2,(b[1]+b[4])/2,(b[2]+b[5])/2,(Math.random()-.5)*16,6+Math.random()*10,4+Math.random()*12,0.6+Math.random()*1.2,e.col);e.alive=false;addScore(e.w*300)}
+    for(const s of SEC.st)if(s.k>-SEC.nb)s.state='crushed';secDirty=true;floatText(0,10,SEC.D/2,'EXPLODE','cad',1.8);cmdLine(['명령: EXPLODE','블록 1개가 분해되었습니다']);cam.shake=8;return}
+  if(id==='dozer'){let n=0;for(const e of SEC.els){if(!e.alive||e.k!==0)continue;const b=elWorld(e);if(Math.abs((b[0]+b[3])/2-x)<3.5){secDestroy(e);n++}}secBoom(x,1.5,SEC.D/2,12);cam.shake=Math.max(cam.shake,3);secCheck();return}
+  if(id==='rebar'){for(const e of SEC.els)if(e.alive&&(e.kind==='col'||e.kind==='core'))e.hp=Math.min(e.hp,e.hp0*0.4);SEC.rebar=1;toast('철근 빼는 중… 순살 구조라 자기 무게도 못 버텨요',3000);secDirty=true;return}
+  if(w===0){SFALL.push({kind:'ball',x,y,z:z+70,tz:z,vz:-85,r:2.4,t:0,hit(o){secBlast(o.x,o.y,o.tz,5.5,3.2);secBoom(o.x,o.y,o.tz,10);cam.shake=Math.max(cam.shake,3)}})}
+  else if(w===1){if(h.el){secDamage(h.el,1);secBoom(x,y,z,3)}}
+  else if(w===3){for(let i=0;i<9;i++){const px=x+(Math.random()-.5)*12,py=Math.max(0.5,y+(Math.random()-.5)*10);
+    SFALL.push({kind:'roll',x:px,y:py,z:z+80+i*12,tz:z,vz:-90,r:1.1,t:i*0.06,rot:0,hit(o){secBlast(o.x,o.y,o.tz,3.2,2.2);secBoom(o.x,o.y,o.tz,6)}})}}
+  else if(w===4){sQuake={t:0,dur:2.6,acc:0};sfx(30,2.6);toast(SEC.piloti?'내진 검토 중… 필로티가 위험해 보여요':'내진 검토 중… 구조계산서 다시 보세요')}
+  else if(w===5){const f=$('#flash');f.style.transition='none';f.style.opacity=1;requestAnimationFrame(()=>{f.style.transition='opacity 1.6s';f.style.opacity=0});
+    for(const e of SEC.els){if(!e.alive)continue;const lv=e.k+SEC.nb;if((e.kind==='col'||e.kind==='core')&&e.k>=0&&e.k<=1)secDestroy(e);else if(Math.random()<0.5/(1+lv*0.1))secDamage(e,2)}
+    secBoom(0,4,SEC.D*0.3,40);cam.shake=12;toast('클라이언트: "그냥 전부 다시 해와요"');secCheck()}
+}
+
+// ---------- 피킹 ----------
+function rayBox(o,d,b){let t0=0,t1=1e9;for(let a=0;a<3;a++){const lo=b[a],hi=b[a+3];if(Math.abs(d[a])<1e-9){if(o[a]<lo||o[a]>hi)return null;continue}
+  let ta=(lo-o[a])/d[a],tb=(hi-o[a])/d[a];if(ta>tb)[ta,tb]=[tb,ta];t0=Math.max(t0,ta);t1=Math.min(t1,tb);if(t0>t1)return null}return t0}
+function secPick(mx,my){
+  const {o,d}=rayFrom(mx,my);let best=1e9,hit=null;
+  for(const e of SEC.els){if(!e.alive)continue;const t=rayBox(o,d,elWorld(e));if(t!=null&&t<best){best=t;hit=e}}
+  if(hit)return{x:o[0]+d[0]*best,y:o[1]+d[1]*best,z:o[2]+d[2]*best,el:hit};
+  if(d[1]<0){const t=-o[1]/d[1];const x=o[0]+d[0]*t,z=o[2]+d[2]*t;if(Math.abs(x)<SEC.P&&Math.abs(z)<SEC.P)return{x,y:0,z,el:null}}
+  return null;
+}
+
+// ---------- 지면/잔해 ----------
+function surfaceAt(x,y,z){
+  if(MODE==='fps'&&FP)return(Math.abs(x)<FP.W/2+0.2&&Math.abs(z)<FP.D/2+0.2)?0:-400;
+  if(MODE!=='section'||!SEC)return groundAt(x,z);
+  if(Math.abs(x)>SEC.P||Math.abs(z)>SEC.P)return -400;
+  if(Math.abs(x)<=SEC.W/2&&Math.abs(z)<=SEC.D/2){
+    let top=SEC.st[0].y+SLAB_T;
+    for(const s of SEC.st){const slab=SEC.els.find(e=>e.k===s.k&&e.kind==='slab');const st=s.y+SLAB_T+(s.state==='crushed'?0.6:0);
+      if((slab&&slab.alive||s.state==='crushed')&&st<=y+0.4&&st>top)top=st}
+    return top;
+  }
+  if(z>SEC.D/2)return -400;
+  return 0;
+}
+
+// ---------- 메시 ----------
+function secBox(m,x0,y0,z0,x1,y1,z1,top,side,front){
+  m.grow(36);const q=(a,b,c,d,n,col)=>{m.v(...a,...n,...col);m.v(...b,...n,...col);m.v(...c,...n,...col);m.v(...a,...n,...col);m.v(...c,...n,...col);m.v(...d,...n,...col)};
+  q([x0,y1,z0],[x1,y1,z0],[x1,y1,z1],[x0,y1,z1],[0,1,0],top);q([x0,y0,z0],[x1,y0,z0],[x1,y0,z1],[x0,y0,z1],[0,-1,0],side);
+  q([x0,y0,z1],[x1,y0,z1],[x1,y1,z1],[x0,y1,z1],[0,0,1],front);q([x0,y0,z0],[x1,y0,z0],[x1,y1,z0],[x0,y1,z0],[0,0,-1],side);
+  q([x1,y0,z0],[x1,y0,z1],[x1,y1,z1],[x1,y1,z0],[1,0,0],side);q([x0,y0,z0],[x0,y0,z1],[x0,y1,z1],[x0,y1,z0],[-1,0,0],side);
+}
+function buildSection(){
+  const m=mSec;m.reset();const {W,D,P}=SEC;const pit=SEC.st[0].y0-1.2;
+  // 대지 (흙 단면 포함) — 건물 자리는 비워둠
+  const g=[0.56,0.62,0.50],soil=[0.42,0.34,0.26],cut=[0.30,0.24,0.18];
+  // 앞쪽(z>D/2)은 단면으로 잘라내서 흙 단면이 보이게 함
+  secBox(m,-P,pit,-P,P,0,-D/2,g,soil,cut);
+  secBox(m,-P,pit,-D/2,-W/2,0,D/2,g,soil,cut);secBox(m,W/2,pit,-D/2,P,0,D/2,g,soil,cut);
+  secBox(m,-W/2,pit-0.5,-D/2,W/2,pit,D/2,soil,soil,cut);
+  const HL={};for(const s of SEC.st)HL[s.k]=storyHealth(s);
+  for(const e of SEC.els){if(!e.alive)continue;const b=elWorld(e),c=e.col;
+    if(e.kind==='slab'||e.kind==='roof'){const ours=SEC.ourK!=null&&e.k===SEC.ourK;secBox(m,b[0],b[1],b[2],b[3],b[4],b[5],c,[c[0]*0.85,c[1]*0.85,c[2]*0.85],ours?[0.95,0.65,0.1]:POCHE)}
+    else if(e.kind==='wall'&&e.glass){const sp=b[1]+1.1;const cs=[c[0]*0.95,c[1]*0.95,c[2]*0.95];
+      secBox(m,b[0],b[1],b[2],b[3],sp,b[5],cs,cs,POCHE);secBox(m,b[0],sp,b[2],b[3],b[4],b[5],C_GLASS,C_GLASS,C_GLASS)}
+    else if(e.kind==='col'||e.kind==='core'){const h=HL[e.k];let st=h.core?0:clamp((0.75-h.r)/0.41,0,1);if(e.kind==='core')st=1-h.coreHp;if(e.hp<e.hp0)st=Math.max(st,0.6);
+      const hot=[0.93,0.36,0.16],cc=[c[0]+(hot[0]-c[0])*st,c[1]+(hot[1]-c[1])*st,c[2]+(hot[2]-c[2])*st];secBox(m,b[0],b[1],b[2],b[3],b[4],b[5],cc,cc,e.kind==='core'?POCHE:cc)}
+    else secBox(m,b[0],b[1],b[2],b[3],b[4],b[5],c,c,c);
+  }
+  // 무너진 층 잔해 더미
+  for(const s of SEC.st)if(s.state==='crushed'){const R=mulberry(s.k+99);for(let i=0;i<18;i++){const x=-W/2+R()*W,z=-D/2+R()*D,w=1+R()*3,hh=0.3+R()*0.7;const c=R()<0.5?[0.58,0.56,0.53]:[0.5,0.47,0.43];secBox(m,x,s.y+SLAB_T,z,Math.min(W/2,x+w),s.y+SLAB_T+hh,Math.min(D/2,z+w*0.8),c,c,c)}}
+  m.upload();
+}
+function drawSecDyn(m,mg){
+  for(const o of SFALL){if(o.t>0)continue;
+    if(o.kind==='ball'){pushShape(m,SPHERE,o.x,o.y,o.z,o.r,o.r,o.r,0,[0.22,0.23,0.25],0);pushShape(m,CUBE,o.x,o.y+40,o.z+30,0.2,80,0.2,0,[0.15,0.15,0.15],0)}
+    else{pushShape(m,CUBE,o.x,o.y,o.z,o.r*2.6,o.r*0.6,o.r*0.6,o.rot,[0.96,0.96,0.94],0)}}
+  if(sBeam&&firing){const L=90;pushShape(mg,CUBE,sBeam.x,sBeam.y,sBeam.z+L/2,0.18,0.18,L,0,[1,0.12,0.08],1);pushShape(mg,CUBE,sBeam.x,sBeam.y,sBeam.z+L/2,0.5,0.5,L,0,[1,0.5,0.45],1);pushShape(mg,SPHERE,sBeam.x,sBeam.y,sBeam.z,0.6,0.6,0.6,0,[1,0.6,0.2],1)}
+}
+
+// ---------- 점수 / 목표 ----------
+function secStats(){
+  let oursT=0,oursD=0,othT=0,othD=0;
+  for(const e of SEC.els){if(e.hp0>=1e8)continue;const s=SEC.S(e.k);const dropped=s.y<s.y0-0.5;const dead=!e.alive||dropped;
+    const ours=SEC.ourK==null?true:e.k===SEC.ourK;
+    if(ours){oursT+=e.w;if(dead)oursD+=e.w}else{othT+=e.w;if(dead)othD+=e.w}}
+  return{ours:oursT?oursD/oursT:0,other:othT?othD/othT:0};
+}
+function secCollapse(){let t=0,d=0;for(const e of SEC.els){if(e.hp0>=1e8)continue;const s=SEC.S(e.k);t+=e.w;if(!e.alive||s.y<s.y0-0.5)d+=e.w}return t?d/t:0}
+function secGrade(o,x){const p=o*100-x*200;return o<0.2&&x<0.05?'-':p>=90?'S':p>=75?'A':p>=55?'B':p>=35?'C':p>=10?'D':'F'}
+function updateSecPanel(){
+  if(!SEC)return;const p=$('#secInfo');if(!p)return;
+  {const tk=SEC.ourK!=null?SEC.ourK:null;let txt;
+   if(tk!=null){const h=storyHealth(SEC.S(tk));txt=`구조 여유 · ${floorName(tk)} 기둥 ${Math.round(h.r*100)}% · 코어 ${h.core?'있음':'파괴'} — 기둥 34% 미만 + 코어 파괴 시 그 층이 주저앉아요`}
+   else{let w=null;for(const s of SEC.st){if(s.state!=='ok'||s.k<=-SEC.nb)continue;const h=storyHealth(s);const v=h.core?1+h.coreHp:h.r;if(!w||v<w.v)w={s,v,h}}
+     txt=w?`가장 약한 층 · ${floorName(w.s.k)} 기둥 ${Math.round(w.h.r*100)}% · 코어 ${w.h.core?'있음':'파괴'}`:''}
+   const hn=$('#secHint');if(hn&&hn.textContent!==txt)hn.textContent=txt}
+  if(SEC.tenant){const s=secStats();const g=secGrade(s.ours,s.other);
+    if(s.other>=0.03&&!SEC.complain){SEC.complain=1;toast('⚠ 다른 층 입주사 민원 접수! 정밀 철거 감점',2500)}
+    p.innerHTML=`<div class="k">목표 · ${floorName(SEC.ourK)}(우리 층)만 정밀 철거</div><div class="v">우리 층 ${Math.round(s.ours*100)}% · 다른 층 피해 ${Math.round(s.other*100)}% <span class="grade">${g}</span></div>`}
+  else{const c=secCollapse(),h=SEC.hits||0;
+    // 적은 타격으로 무너뜨릴수록 높은 등급 (구조 급소 공략)
+    const g=c<0.9?(c>=0.6?'B':c>=0.35?'C':c>0.05?'D':'-'):h<=6?'특등급':h<=12?'1등급':h<=20?'2등급':'3등급';
+    p.innerHTML=`<div class="k">목표 · 사옥 완전 붕괴 (적은 타격일수록 고득점)</div><div class="v">붕괴율 ${Math.round(c*100)}% · 타격 ${h}회 <span class="grade">${g}</span></div>`;
+    if(c>=0.9&&!SEC.cleared){SEC.cleared=1;const bonus=g==='특등급'?80000:g==='1등급'?40000:15000;addScore(bonus);toast(`구조 ${g} 해체! 타격 ${h}회 · +${fmt(bonus)}`,3500)}}
+}
+
+// ---------- 층 라벨 ----------
+let SLBL=[];
+function makeSecLabels(){const box=$('#labels');box.innerHTML='';SLBL=[];
+  const step=SEC.st.length>16?5:1;
+  for(const s of SEC.st){const ours=SEC.ourK!=null&&s.k===SEC.ourK;
+    if(!ours&&s.k!==0&&s.k!==-1&&s.k!==SEC.N-1&&((s.k+1)%step))continue;
+    const el=document.createElement('div');el.className='lbl'+(ours?' hq':'');el.textContent=ours?`${SEC.firm.name} · ${floorName(s.k)}`:floorName(s.k);
+    box.appendChild(el);SLBL.push({s,el,ours})}
+  const byF={};for(const o of SEC.others){if(o.fl==null)continue;const k=o.fl>0?o.fl-1:o.fl;if(k===SEC.ourK||!SEC.S(k))continue;(byF[k]=byF[k]||[]).push(o.name)}
+  for(const k in byF){const n=byF[k];const el=document.createElement('div');el.className='lbl other';el.textContent=`${n[0]}${n.length>1?' 외 '+(n.length-1):''} · ${floorName(+k)}`;box.appendChild(el);SLBL.push({s:SEC.S(+k),el,ours:true,other:true})}
+  if(SEC.ourK==null){const el=document.createElement('div');el.className='lbl hq';el.textContent=SEC.firm.name+' · 사옥 전체';box.appendChild(el);SLBL.push({s:SEC.st[SEC.st.length-1],el,top:true})}
+}
+function updateSecLabels(){
+  for(const L of SLBL){const s=L.s;const x=L.ours||L.top?SEC.W/2+1:-SEC.W/2-1.5;const y=L.top?s.y+s.h+3:s.y+s.h*0.6;
+    const p=project(x,y,SEC.D/2);if(!p||!opts.labels||s.state==='crushed'&&!L.ours){L.el.style.display='none';continue}
+    L.el.style.display='';L.el.style.left=p[0]+'px';L.el.style.top=p[1]+'px';L.el.style.transform=L.ours||L.top?'translate(0,-50%)':'translate(-100%,-50%)'}
+}
+
+// ---------- 되돌리기 ----------
+function secSnap(){return{e:SEC.els.map(e=>[e.hp,e.alive]),s:SEC.st.map(s=>[s.y,s.state]),score}}
+function secRestore(v){SEC.els.forEach((e,i)=>{e.hp=v.e[i][0];e.alive=v.e[i][1]});SEC.st.forEach((s,i)=>{s.y=v.s[i][0];s.state=v.s[i][1];s.vy=0});score=v.score;
+  D.used.fill(0);D.rest.fill(0);rubDirty=true;SFALL=[];sQuake=null;sBeam=null;cam.shake=0;secDirty=true;updateHUD()}
+function secPushUndo(){SUNDO.push(secSnap());if(SUNDO.length>20)SUNDO.shift();$('#btnUndo').disabled=false}
+
+
+// =====================================================================
+//  동네 건축사무소 (좌표 데이터) + 철거 콤보
+// =====================================================================
+let NB=[], NBB=[], combo={n:0,t:0};
+function shortName(n){return n.replace(/\(주\)|㈜|주식회사|\(유\)|유한회사|\(합\)|합자회사/g,'').replace(/종합\s*건축사\s*사무소|건축사\s*사무소|건축사사무소/g,'').replace(/\s+/g,' ').trim()||n}
+function buildNeighborhood(){
+  NB=[];NBB=[];for(const b of B)b.firms=null;
+  if(typeof FIRMDATA==='undefined')return;
+  const dLat=2400/110540,dLng=2400/(111320*Math.cos(LAT0*Math.PI/180));
+  for(let i=0;i<FIRMDATA.length;i++){const r=FIRMDATA[i];if(r[4]===2||r[2]==null)continue;
+    if(Math.abs(r[2]-LAT0)>dLat||Math.abs(r[3]-LNG0)>dLng)continue;
+    const [x,z]=proj(r[2],r[3]);const c=chunkAt(x,z);if(!c||c.state!=='ready')continue;
+    let bb=null,bd=1e9;forBuildingsNear(x,z,25,b=>{const d=pip(x,z,b.pts)?0:distToBuilding(b,x,z);if(d<bd){bd=d;bb=b}});
+    if(bd>25)bb=null;
+    const f={i,name:r[0],short:shortName(r[0]),addr:r[1],x,z,b:bb,approx:r[4]===1};
+    NB.push(f);if(bb){if(!bb.firms){bb.firms=[];NBB.push(bb)}bb.firms.push(f)}
+  }
+  // 공공데이터에 없는 지역(송파구 등)은 OpenStreetMap에 등록된 건축사무소로 보충
+  for(const a of OSMARCH.values()){const [x,z]=proj(a.lat,a.lng);const c=chunkAt(x,z);if(!c||c.state!=='ready')continue;
+    const sn=shortName(a.name);if(NB.some(f=>Math.hypot(f.x-x,f.z-z)<40&&(f.short===sn||Math.hypot(f.x-x,f.z-z)<8)))continue;
+    let bb=null,bd=1e9;forBuildingsNear(x,z,25,b=>{const d=pip(x,z,b.pts)?0:distToBuilding(b,x,z);if(d<bd){bd=d;bb=b}});if(bd>25)bb=null;
+    const f={i:null,osm:true,name:a.name,short:sn,addr:a.addr||'OpenStreetMap 등록',x,z,b:bb,firm:{key:'o'+a.id,name:a.name,addr:a.addr||'',lat:a.lat,lng:a.lng}};
+    NB.push(f);if(bb){if(!bb.firms){bb.firms=[];NBB.push(bb)}bb.firms.push(f)}}
+}
+function makePins(){
+  const box=$('#labels');
+  for(const b of NBB){
+    const fs=b.firms;const el=document.createElement('div');el.className='lbl pin';
+    el.textContent=fs[0].short+(fs.length>1?` 외 ${fs.length-1}`:'');
+    el.title=fs.map(f=>f.name).join('\n')+'\n\n클릭: 이 건물 단면 보기';
+    el.addEventListener('pointerdown',e=>e.stopPropagation());
+    el.addEventListener('click',e=>{e.stopPropagation();const f=fs[0];enterSection(b,f.firm||firmFromData(f.i))});
+    box.appendChild(el);LBL.push({b,el,pin:true});
+  }
+}
+function firmsKilled(b){
+  conqRecord(b);
+  if(!b.firms||!b.firms.length)return;
+  const now=performance.now();combo.n=now-combo.t<3500?combo.n+1:1;combo.t=now;
+  const k=b.firms.length,bonus=5000*k*combo.n;addScore(bonus);
+  toast(`${b.firms[0].short}${k>1?` 외 ${k-1}곳`:''} 철거! +${fmt(bonus)}${combo.n>1?` · 콤보 x${combo.n}`:''}`,2200);
+}
+function districtName(){const a=(CUR&&CUR.addr)||'';let m=a.match(/\(([가-힣0-9]+(?:동|가|읍|면|리))[,)]/);if(m)return m[1].replace(/\d+(?=동$)/,'');
+  m=a.match(/([가-힣]+(?:구|시|군))\s/g);return m?m[m.length-1].trim():'이 동네'}
+let stage={done:false,t0:0};
+function checkStage(n){if(!n.t)return;if(n.d>0&&!stage.t0)stage.t0=performance.now();
+  if(n.d===n.t&&!stage.done){stage.done=true;const sec=stage.t0?Math.round((performance.now()-stage.t0)/1000):0;const bonus=30000*n.t;addScore(bonus);
+    toast(`${districtName()} 건축사무소 지구 ${n.t}곳 철거 완료! ${Math.floor(sec/60)}분 ${sec%60}초 · +${fmt(bonus)}`,5000)}
+  if(n.d<n.t)stage.done=false}
+function nbStats(){let t=0,d=0;for(const b of NBB){t+=b.firms.length;if(!b.alive)d+=b.firms.length}return{t,d}}
+
+// =====================================================================
+//  랭킹 (Google Apps Script 웹앱) · 공유
+// =====================================================================
+const RANK_URL_DEFAULT=(window.SMASH_CONFIG&&window.SMASH_CONFIG.API_URL)||'';   // config.js 의 API_URL
+function rankUrl(){return String(lsGet('smasharch_rank_url')||RANK_URL_DEFAULT||'').trim()}
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function renderRank(d){
+  const f=(d.firms||[]).map((r,i)=>`<li><b>${i+1}</b><span>${esc(shortName(r.name))}</span><em>${fmt(r.total)}점 · ${r.count}회</em></li>`).join('')||'<li class="empty">아직 기록이 없어요</li>';
+  const p=(d.players||[]).map((r,i)=>`<li><b>${i+1}</b><span>${esc(r.nick)} <small>${esc(shortName(r.firm))}</small></span><em>${fmt(r.score)}점</em></li>`).join('')||'<li class="empty">아직 기록이 없어요</li>';
+  $('#rankBody').innerHTML=`<div class="rk-h">이번 주 가장 많이 부서진 사무소</div><ol class="rk">${f}</ol><div class="rk-h">개인 최고 점수</div><ol class="rk">${p}</ol>`;
+}
+async function openRank(){
+  $('#mRank').classList.add('open');
+  $('#rankNick').value=lsGet('smasharch_nick')||'';
+  $('#rankMine').textContent=CUR?`${CUR.name} · 현재 ${fmt(score)}점`:'';
+  const u=rankUrl();
+  if(!u){$('#rankBody').innerHTML='<p class="small">게임 서버가 아직 연결되지 않았어요. config.js 의 API_URL(또는 설정 → "게임 서버 주소")에 Apps Script 웹앱 주소를 넣어주세요.</p>';return}
+  $('#rankBody').innerHTML='<p class="small">불러오는 중…</p>';
+  try{const r=await fetchT(u+(u.includes('?')?'&':'?')+'action=top',{},15000);renderRank(r)}
+  catch(e){$('#rankBody').innerHTML='<p class="small">랭킹을 불러오지 못했어요. 서버 주소와 배포 설정(액세스: 모든 사용자)을 확인해주세요.</p>'}
+}
+async function submitRank(){
+  const u=rankUrl();if(!u){toast('랭킹 서버 주소를 먼저 설정해주세요');return}
+  if(!CUR||score<1){toast('먼저 뭔가를 부숴주세요');return}
+  const nick=$('#rankNick').value.trim().slice(0,20)||'익명';lsSet('smasharch_nick',nick);
+  const body=JSON.stringify({nick,firmKey:CUR.key||CUR.name,firmName:CUR.name,score:Math.floor(score)});
+  $('#rankSubmit').disabled=true;
+  try{const r=await fetchT(u,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body},15000);
+    if(r&&r.ok){toast('랭킹에 등록했어요');if(r.top)renderRank(r.top)}else toast('등록 실패: '+((r&&r.error)||'알 수 없는 오류'))}
+  catch(e){toast('등록 실패 — 서버 주소를 확인해주세요')}
+  finally{setTimeout(()=>$('#rankSubmit').disabled=false,3000)}
+}
+
+// =====================================================================
+//  1인칭 모드 — 우리 층 사무실에 직접 들어가서 3분 안에 초토화
+//  구조 안정도가 0이 되면 층이 무너지기 시작 → 비상계단으로 탈출
+// =====================================================================
+let FP=null;
+const mFps=new MB(1<<15);
+const FTOOLS=[
+  {id:'hammer',name:'오함마',cd:0.5,dmg:1.1,range:2.4,area:0.7},
+  {id:'pry',name:'빠루',cd:0.24,dmg:0.55,range:2.1,area:0.3,soft:3},
+  {id:'breaker',name:'브레이커',hold:true,dps:2.6,range:1.9,area:0.5,struct:2},
+];
+const FMAT={ceil:{hp:0.4,pts:30,c:[0.80,0.80,0.78]},glass:{hp:0.5,pts:120,c:[0.55,0.70,0.80]},gyp:{hp:1.4,pts:150,c:[0.92,0.91,0.88]},
+  desk:{hp:1.2,pts:120,c:[0.80,0.66,0.48]},mon:{hp:0.4,pts:90,c:[0.12,0.13,0.15]},chair:{hp:0.6,pts:60,c:[0.22,0.24,0.28]},
+  duct:{hp:1.4,pts:200,c:[0.78,0.79,0.80]},pipe:{hp:0.6,pts:150,c:[0.80,0.15,0.12]},light:{hp:0.3,pts:60,c:[1,1,0.94]},
+  item:{hp:1,pts:0,c:[0.9,0.9,0.9]},col:{hp:6,pts:900,c:[0.70,0.69,0.66]},core:{hp:16,pts:3000,c:[0.62,0.62,0.60]},shelf:{hp:1.2,pts:140,c:[0.55,0.45,0.35]}};
+const SOFT={ceil:1,glass:1,gyp:1,light:1,duct:1,pipe:1};
+
+function buildFpsRoom(){
+  const k=SEC.focusK,s=SEC.S(k),W=SEC.W,D=SEC.D,H=s.h,ceil=Math.min(2.7,H-0.65),R=mulberry(SEC.b.id%9973+11);
+  const els=[];const add=(kind,box,o)=>{const m=FMAT[kind];const e=Object.assign({kind,box,hp:m.hp,hp0:m.hp,pts:m.pts,col:m.c,alive:true},o||{});els.push(e);return e};
+  // 구조체: 단면 모델의 기둥·코어 위치를 그대로 사용
+  let core=null;
+  for(const e of SEC.els){if(e.k!==k||!e.alive)continue;const b=e.box;
+    if(e.kind==='col')add('col',[b[0],0,b[2],b[3],H,b[5]]);
+    if(e.kind==='core')core=add('core',[b[0],0,b[2],b[3],H,b[5]])}
+  // 외피: 사방 창호 (허리벽 위 유리)
+  const step=3.0;
+  for(let x=-W/2;x<W/2-0.1;x+=step){const x1=Math.min(W/2,x+step);for(const z of [D/2-0.12,-D/2+0.12]){
+    if(core&&z<0&&x1>core.box[0]&&x<core.box[3]&&core.box[2]<-D/2+1.2)continue;
+    add('gyp',[x,0,z-0.1,x1,0.9,z+0.1],{col:[0.75,0.74,0.72]});add('glass',[x+0.05,0.9,z-0.04,x1-0.05,ceil,z+0.04],{glassP:1})}}
+  for(let z=-D/2;z<D/2-0.1;z+=step){const z1=Math.min(D/2,z+step);for(const x of [W/2-0.12,-W/2+0.12]){
+    add('gyp',[x-0.1,0,z,x+0.1,0.9,z1],{col:[0.75,0.74,0.72]});add('glass',[x-0.04,0.9,z+0.05,x+0.04,ceil,z1-0.05],{glassP:1})}}
+  // 천장 텍스 (2.4m 모듈) · 조명
+  const T=2.4;for(let x=-W/2;x<W/2-0.05;x+=T)for(let z=-D/2;z<D/2-0.05;z+=T){const x1=Math.min(W/2,x+T),z1=Math.min(D/2,z+T);
+    const lit=((Math.round(x/T)+Math.round(z/T))%3===0);add(lit?'light':'ceil',[x+0.02,ceil,z+0.02,x1-0.02,ceil+0.04,z1-0.02],{glow:1})}
+  // 천장 속: 덕트 · 스프링클러 배관
+  for(let z=-D/2+3;z<D/2-2;z+=7){add('duct',[-W/2+0.6,ceil+0.15,z,W/2-0.6,ceil+0.55,z+0.9])}
+  for(let x=-W/2+2;x<W/2-1;x+=6){add('pipe',[x,ceil+0.08,-D/2+0.6,x+0.08,ceil+0.14,D/2-0.6],{name:'sprinkler'})}
+  // 회의실 (유리 칸막이) · 경량 칸막이
+  const mz=-D/2+(core?core.box[5]-core.box[2]+2:4);
+  const mx0=W/2-Math.min(10,W*0.35);
+  for(let x=mx0;x<W/2-0.3;x+=1.5)add('glass',[x,0,mz-0.04,Math.min(W/2-0.3,x+1.45),ceil,mz+0.04],{name:'meeting'});
+  for(let z=-D/2+0.3;z<mz;z+=1.5)add('gyp',[mx0-0.06,0,z,mx0+0.06,ceil,Math.min(mz,z+1.45)]);
+  if(W>24)for(let z=-D/2+0.3;z<mz-1.2;z+=1.5)add('gyp',[-W/2+8-0.06,0,z,-W/2+8+0.06,ceil,Math.min(mz-1.2,z+1.45)]);
+  // 책상 줄 (모니터 · 의자)
+  const avoid=(x0,z0,x1,z1)=>els.some(e=>(e.kind==='col'||e.kind==='core')&&x1>e.box[0]-0.3&&x0<e.box[3]+0.3&&z1>e.box[2]-0.3&&z0<e.box[5]+0.3);
+  for(let z=mz+2.2;z<D/2-2;z+=3.4)for(let x=-W/2+1.5;x<W/2-2.5;x+=1.7){
+    if(avoid(x,z,x+1.5,z+0.8)||R()<0.08)continue;
+    add('desk',[x,0.70,z,x+1.5,0.75,z+0.8]);add('desk',[x+0.05,0,z+0.05,x+0.12,0.70,z+0.75],{col:[0.3,0.3,0.32]});add('desk',[x+1.38,0,z+0.05,x+1.45,0.70,z+0.75],{col:[0.3,0.3,0.32]});
+    add('mon',[x+0.35,0.75,z+0.1,x+0.95,1.15,z+0.15]);if(R()<0.6)add('mon',[x+0.95,0.75,z+0.12,x+1.35,1.1,z+0.16]);
+    add('chair',[x+0.5,0,z+0.95,x+1.0,0.95,z+1.45]);
+    if(R()<0.1)for(let i=0;i<3;i++)add('item',[x+1.25,0.75+i*0.12,z+0.5,x+1.38,0.86+i*0.12,z+0.63],{name:'ramen',col:i%2?[0.85,0.15,0.12]:[0.95,0.95,0.92],hp:0.2,hp0:0.2})}
+  // 건축사무소 특수 집기
+  const sx=-W/2+1.2,sz=mz+0.6;
+  add('item',[sx,0,sz,sx+1.6,1.15,sz+0.75],{name:'plotter',col:[0.2,0.2,0.22]});
+  for(let i=0;i<6;i++)add('item',[sx+1.9,0.02+Math.floor(i/3)*0.26,sz+(i%3)*0.27,sx+3.1,0.27+Math.floor(i/3)*0.26,sz+0.25+(i%3)*0.27],{name:'rolls',col:[0.97,0.97,0.95],hp:0.3,hp0:0.3});
+  add('item',[sx+3.6,0,sz,sx+4.2,1.0,sz+0.6],{name:'nas',col:[0.1,0.11,0.13]});
+  const tx=0,tz=D/2-3.2;add('desk',[tx-1.6,0,tz,tx+1.6,0.9,tz+1.4],{col:[0.92,0.92,0.9]});
+  for(let i=0;i<5;i++){const bx=tx-1.4+i*0.62,hh=0.3+R()*0.9;add('item',[bx,0.9,tz+0.3,bx+0.48,0.9+hh,tz+0.9],{name:'model',col:[0.98,0.98,0.97]})}
+  for(let i=0;i<3;i++)add('item',[-W/2+0.4,0.2,-D/2+5+i*0.8,-W/2+0.46,1.2,-D/2+5.6+i*0.8],{name:'sample',col:[[0.72,0.55,0.38],[0.62,0.62,0.6],[0.78,0.78,0.8]][i]});
+  add('item',[-W/2+0.3,0.6,mz+5,-W/2+0.38,2.0,mz+8],{name:'pinup',col:[0.93,0.90,0.82]});
+  add('item',[W/2-1.0,0,mz+1,W/2-0.4,0.9,mz+1.6],{name:'coffee',col:[0.55,0.55,0.58]});
+  add('item',[mx0+2,0,-D/2+1.5,mx0+4.2,0.78,-D/2+2.5],{name:'boss',col:[0.35,0.24,0.16]});
+  for(let x=mx0+1;x<W/2-1;x+=1.2)add('shelf',[x,0,-D/2+0.4,x+1.1,1.9,-D/2+0.8]);
+  // 비상계단 문 (코어 앞면)
+  let exit;if(core){const b=core.box;exit={x:(b[0]+b[3])/2,z:b[5]+0.05};}else exit={x:-W/2+1,z:-D/2+1};
+  const destroyable=els.filter(e=>e.kind!=='col'&&e.kind!=='core').reduce((a,e)=>a+e.hp0,0);
+  return{k,W,D,H,ceil,els,exit,destroyable};
+}
+
+// ---------- 진입 / 종료 ----------
+function enterFps(){
+  if(!SEC)return;if(SEC.S(SEC.focusK).state!=='ok'){toast('그 층은 이미 무너졌어요');return}
+  const r=buildFpsRoom();
+  FP=Object.assign(r,{x:r.exit.x,z:r.exit.z+1.6,yaw:0,pitch:-0.05,tool:0,cd:0,swing:0,t:180,stab:100,state:'play',collapseT:0,score0:score,broken:{},holding:false,lock:false,dust:0,shown:{}});
+  FP.yaw=Math.PI;   // 사무실 안쪽(+z)을 바라보도록
+  SEC.prevCam={...cam};MODE='fps';D.used.fill(0);D.rest.fill(0);rubDirty=true;FP.dirty=true;
+  document.body.classList.add('fps');$('#fpsHud').style.display='';fpsTool(0);
+  toast(`마감 D-1 · ${floorName(r.k)} 사무실 3분 안에 초토화! 기둥·코어를 건드리면 구조 안정도가 떨어져요`,4200);
+}
+function exitFps(result){
+  if(MODE!=='fps')return;try{document.exitPointerLock&&document.exitPointerLock()}catch(e){}
+  const ruin=fpsRuin();
+  MODE='section';Object.assign(cam,SEC.prevCam);D.used.fill(0);D.rest.fill(0);rubDirty=true;
+  document.body.classList.remove('fps');$('#fpsHud').style.display='none';
+  // 단면 모델에 결과 반영
+  const s=SEC.S(FP.k);
+  if(ruin>0.4)for(const e of SEC.els)if(e.k===FP.k&&e.alive&&(e.kind==='prop'||e.kind==='wall'))secDestroy(e,true);
+  if(result==='collapse'||result==='escape'){if(s.state==='ok'){crushStory(s);secCheck()}}
+  secDirty=true;makeSecLabels();selectWeapon(weapon);
+  if(result)showFpsResult(result,ruin);
+  FP=null;
+}
+function fpsRuin(){let d=0;for(const e of FP.els)if(e.kind!=='col'&&e.kind!=='core'&&!e.alive)d+=e.hp0;return FP.destroyable?d/FP.destroyable:0}
+function showFpsResult(result,ruin){
+  const gained=score-FP.score0,items=Object.keys(FP.broken).map(k=>`${({model:'모형',plotter:'플로터',rolls:'도면 롤',nas:'NAS',sample:'샘플',pinup:'핀업 보드',coffee:'커피머신',boss:'소장실',ramen:'컵라면 탑',sprinkler:'스프링클러'})[k]||k}`).join(' · ')||'-';
+  const g=ruin>=0.85?'S':ruin>=0.65?'A':ruin>=0.45?'B':ruin>=0.25?'C':'D';
+  const title={time:'마감 시간 종료',escape:'비상계단 탈출 성공!',collapse:'붕괴에 깔렸어요…',quit:'철수'}[result];
+  $('#fpsResBody').innerHTML=`<div class="rep-head"><div>${title}</div><small>${esc(SEC.firm.name)} · ${floorName(FP.k)}</small></div>
+  <table class="rep"><tr><th>초토화율</th><td>${Math.round(ruin*100)}% <b>${g}</b></td></tr><tr><th>구조 안정도</th><td>${Math.max(0,Math.round(FP.stab))}%</td></tr>
+  <tr><th>남은 시간</th><td>${Math.max(0,Math.ceil(FP.t))}초</td></tr><tr><th>부순 집기</th><td>${esc(items)}</td></tr><tr><th>획득 점수</th><td>${fmt(gained)}점</td></tr></table>`;
+  $('#mFpsRes').classList.add('open');
+}
+
+// ---------- 도구 ----------
+function fpsTool(i){if(!FP)return;FP.tool=i;document.querySelectorAll('#fpsTools button').forEach((b,j)=>b.classList.toggle('on',j===i))}
+function fpsDir(){const cp=Math.cos(FP.pitch);return[Math.sin(FP.yaw)*cp*-1,Math.sin(FP.pitch),Math.cos(FP.yaw)*cp*-1]}
+function fpsEye(){return[FP.x,1.6,FP.z]}
+function fpsPick(range){const o=fpsEye(),d=fpsDir();let best=range,hit=null;
+  for(const e of FP.els){if(!e.alive)continue;const t=rayBox(o,d,e.box);if(t!=null&&t<best){best=t;hit=e}}
+  return hit?{e:hit,p:[o[0]+d[0]*best,o[1]+d[1]*best,o[2]+d[2]*best]}:null}
+function fpsHit(dt){
+  const T=FTOOLS[FP.tool];const h=fpsPick(T.range);if(!h){if(!T.hold)sfx(2);return}
+  const dmgBase=T.hold?T.dps*dt:T.dmg;
+  for(const e of FP.els){if(!e.alive)continue;const d=boxDist(e.box,...h.p);if(e!==h.e&&d>T.area)continue;
+    let dmg=dmgBase*(e===h.e?1:0.5);if(T.soft&&SOFT[e.kind])dmg*=T.soft;if(T.struct&&(e.kind==='col'||e.kind==='core'))dmg*=T.struct;
+    fpsDamage(e,dmg,h.p)}
+  if(!T.hold){sfx(h.e.kind==='glass'?5:8);FP.shake=0.25;for(let k=0;k<5;k++)spawn(h.p[0],h.p[1],h.p[2],(Math.random()-.5)*3,1+Math.random()*2,(Math.random()-.5)*3,0.05+Math.random()*0.08,h.e.col)}
+  else if(Math.random()<0.5)spawn(h.p[0],h.p[1],h.p[2],(Math.random()-.5)*2,1,(Math.random()-.5)*2,0.04,[0.7,0.7,0.68],0.3,1);
+}
+function fpsDamage(e,dmg,p){
+  e.hp-=dmg;FP.dirty=true;
+  if(e.kind==='col')FP.stab-=dmg*1.6;if(e.kind==='core')FP.stab-=dmg*0.9;
+  if(e.hp>0)return;e.alive=false;addScore(e.pts);
+  const [x0,y0,z0,x1,y1,z1]=e.box,cx=(x0+x1)/2,cy=(y0+y1)/2,cz=(z0+z1)/2;
+  const n=Math.min(14,Math.ceil((x1-x0+y1-y0+z1-z0)*2));
+  for(let k=0;k<n;k++)spawn(x0+Math.random()*(x1-x0),y0+Math.random()*(y1-y0),z0+Math.random()*(z1-z0),(Math.random()-.5)*3,Math.random()*2,(Math.random()-.5)*3,0.08+Math.random()*Math.min(0.35,(x1-x0+z1-z0)*0.15),e.col);
+  if(e.kind==='col'){FP.stab-=10;toast('⚠ 기둥 파괴! 구조 안정도 급감',1600);FP.shake=0.8;sfx(25)}
+  if(e.kind==='core'){FP.stab-=30;FP.shake=1.2;sfx(35)}
+  if(e.kind==='glass')for(let k=0;k<8;k++)spawn(cx,cy,cz,(Math.random()-.5)*4,Math.random()*2,(Math.random()-.5)*4,0.06,[0.75,0.88,0.95],1.2,1);
+  if(e.name==='sprinkler'&&!FP.broken.sprinkler){FP.broken.sprinkler=1;addScore(1500);toast('스프링클러 배관 파손! 사무실 물바다 +1,500',2200)}
+  if(e.name==='sprinkler')FP.water=(FP.water||0)+4;
+  const it=e.name&&ITEMS[e.name];
+  if(it){if(!FP.broken[e.name]){FP.broken[e.name]=1;addScore(it.pts);toast(it.msg+' +'+fmt(it.pts),2200)}
+    if(e.name==='plotter'||e.name==='rolls')for(let k=0;k<20;k++)spawn(cx,y1,cz,(Math.random()-.5)*5,3+Math.random()*4,(Math.random()-.5)*5,0.12+Math.random()*0.15,Math.random()<0.6?[0.97,0.97,0.95]:[0.35,0.5,0.85],2.5,3);
+    if(e.name==='model')for(let k=0;k<20;k++)spawn(cx,y1,cz,(Math.random()-.5)*3,2+Math.random()*3,(Math.random()-.5)*3,0.05+Math.random()*0.08,[[0.98,0.98,0.97],[0.9,0.25,0.2],[0.25,0.45,0.85]][k%3],3,3)}
+  // 받침이 없어진 위 물건 떨어뜨리기
+  for(const o of FP.els){if(!o.alive||o===e||o.kind==='ceil'||o.kind==='light'||o.kind==='duct'||o.kind==='pipe')continue;
+    if(Math.abs(o.box[1]-y1)<0.06&&o.box[3]>x0&&o.box[0]<x1&&o.box[5]>z0&&o.box[2]<z1){o.alive=false;spawn((o.box[0]+o.box[3])/2,o.box[1],(o.box[2]+o.box[5])/2,0,0,0,Math.min(0.5,(o.box[3]-o.box[0])),o.col);addScore(o.pts*0.5)}}
+}
+
+// ---------- 매 프레임 ----------
+function fpsUpdate(dt){
+  if(!FP)return;
+  if(FP.state==='play'||FP.state==='collapse'){
+    // 이동 (WASD) + 충돌
+    let fx=0,fz=0;const k=KEYS;if(k.has('w')||k.has('arrowup'))fz+=1;if(k.has('s')||k.has('arrowdown'))fz-=1;if(k.has('d')||k.has('arrowright'))fx+=1;if(k.has('a')||k.has('arrowleft'))fx-=1;
+    if(k.has('q')&&!FP.lock)FP.yaw+=dt*2;if(k.has('e')&&!FP.lock)FP.yaw-=dt*2;
+    const sp=(k.has('shift')?5.5:3.2)*dt,sy=Math.sin(FP.yaw),cy=Math.cos(FP.yaw);
+    let nx=FP.x+(-sy*fz+cy*fx)*sp,nz=FP.z+(-cy*fz-sy*fx)*sp;
+    nx=clamp(nx,-FP.W/2+0.5,FP.W/2-0.5);nz=clamp(nz,-FP.D/2+0.5,FP.D/2-0.5);
+    for(const e of FP.els){if(!e.alive||e.box[4]<0.5||e.box[1]>1.6||e.kind==='ceil'||e.kind==='light')continue;const b=e.box,r=0.3;
+      const qx=clamp(nx,b[0],b[3]),qz=clamp(nz,b[2],b[5]),dx=nx-qx,dz=nz-qz,dd=Math.hypot(dx,dz);
+      if(dd<r){if(dd>1e-4){nx=qx+dx/dd*r;nz=qz+dz/dd*r}else{nx=FP.x;nz=FP.z}}}
+    FP.x=nx;FP.z=nz;
+    // 공격
+    FP.cd-=dt;const T=FTOOLS[FP.tool];
+    if(FP.holding&&T.hold){fpsHit(dt);FP.swing=(FP.swing+dt*20)%6.28;FP.shake=Math.max(FP.shake||0,0.08);humStart()}else if(T.hold)humStop();
+    if(FP.swingT>0)FP.swingT-=dt;
+    // 시간 · 구조
+    FP.t-=dt;
+    if(FP.stab<50&&Math.random()<(50-FP.stab)/50*0.6)spawn(FP.x+(Math.random()-.5)*8,FP.ceil-0.05,FP.z+(Math.random()-.5)*8,0,-0.5,0,0.03+Math.random()*0.05,[0.8,0.79,0.76],1.5,1);
+    if(FP.stab<25&&Math.random()<0.02){FP.shake=0.4;sfx(6)}
+    if(FP.water>0){FP.water-=dt;for(let k=0;k<3;k++)spawn(FP.x+(Math.random()-.5)*10,FP.ceil,FP.z+(Math.random()-.5)*10,0,-3,0,0.04,[0.55,0.75,0.95],0.8,1)}
+    if(FP.state==='play'&&FP.stab<=0){FP.state='collapse';FP.collapseT=12;toast('구조 붕괴 시작! 초록색 비상구로 12초 안에 탈출하세요',4000);sfx(40,3)}
+    if(FP.state==='collapse'){FP.collapseT-=dt;FP.shake=Math.max(FP.shake||0,0.25+0.5*(1-FP.collapseT/12));
+      if(Math.random()<0.3)spawn(FP.x+(Math.random()-.5)*6,FP.ceil,FP.z+(Math.random()-.5)*6,0,-2,0,0.2+Math.random()*0.4,[0.62,0.6,0.57]);
+      if(Math.hypot(FP.x-FP.exit.x,FP.z-FP.exit.z)<1.4){addScore(20000);toast('탈출 성공! +20,000',2500);FP.state='done';exitFps('escape');return}
+      if(FP.collapseT<=0){FP.state='done';exitFps('collapse');return}}
+    if(FP.t<=0&&FP.state==='play'){FP.state='done';exitFps('time');return}
+  }
+  if(FP.shake>0)FP.shake=Math.max(0,FP.shake-dt*1.5);
+  // 조준: 닿는 거리 안에 있으면 표시
+  {const h=fpsPick(FTOOLS[FP.tool].range);$('#cross').classList.toggle('hit',!!h);
+   const NM={col:'기둥 — 구조!',core:'코어 — 구조!',glass:'유리',gyp:'석고보드 벽',ceil:'천장 텍스',light:'조명',duct:'덕트',pipe:'스프링클러 배관',desk:'책상',mon:'모니터',chair:'의자',shelf:'서가',
+     model:'공모전 모형',plotter:'플로터',rolls:'도면 롤',nas:'NAS',sample:'마감재 샘플',pinup:'핀업 보드',coffee:'커피머신',boss:'소장실 책상',ramen:'컵라면 탑',meeting:'회의실 유리'};
+   const t=h?(NM[h.e.name]||NM[h.e.kind]||''):'';const el=$('#fpsTarget');if(el.textContent!==t)el.textContent=t;el.className=h&&(h.e.kind==='col'||h.e.kind==='core')?'warn':''}
+  // HUD
+  const ruin=fpsRuin(),tm=Math.max(0,FP.state==='collapse'?FP.collapseT:FP.t);
+  $('#fpsTime').textContent=FP.state==='collapse'?`탈출 ${tm.toFixed(1)}초`:`${Math.floor(tm/60)}:${String(Math.floor(tm%60)).padStart(2,'0')}`;
+  $('#fpsTime').classList.toggle('warn',FP.state==='collapse'||tm<30);
+  $('#fpsStab i').style.width=Math.max(0,FP.stab)+'%';$('#fpsStab i').style.background=FP.stab>50?'#3ec46d':FP.stab>25?'#f2b51d':'#e8452c';
+  $('#fpsStabV').textContent=Math.max(0,Math.round(FP.stab))+'%';$('#fpsRuin').textContent=`초토화 ${Math.round(ruin*100)}%`;
+  if(FP.dirty){FP.dirty=false;buildFpsMesh()}
+}
+function fpsCam(){
+  const sh=FP.shake||0,e=[FP.x+(Math.random()-.5)*sh*0.15,1.6+(Math.random()-.5)*sh*0.15,FP.z+(Math.random()-.5)*sh*0.15],d=fpsDir();
+  eye=e;VP=mul(persp(1.15,canvas.width/canvas.height,0.05,300),lookAt(e,[e[0]+d[0],e[1]+d[1],e[2]+d[2]],[0,1,0]));
+}
+function buildFpsMesh(){
+  const m=mFps;m.reset();const {W,D,H,ceil}=FP;
+  const fl=[0.62,0.63,0.62],slab=[0.70,0.69,0.66];
+  secBox(m,-W/2-0.3,-0.3,-D/2-0.3,W/2+0.3,0,D/2+0.3,fl,slab,slab);          // 바닥
+  secBox(m,-W/2-0.3,H,-D/2-0.3,W/2+0.3,H+0.3,D/2+0.3,slab,slab,slab);       // 윗층 슬래브 하부
+  for(const e of FP.els){if(!e.alive)continue;const b=e.box;let c=e.col;
+    if(e.hp<e.hp0&&(e.kind==='col'||e.kind==='core')){const s=1-e.hp/e.hp0;c=[c[0]+(0.9-c[0])*s,c[1]+(0.4-c[1])*s,c[2]+(0.25-c[2])*s]}
+    else if(e.hp<e.hp0)c=[c[0]*0.8,c[1]*0.8,c[2]*0.8];
+    if(e.glow){m.grow(36);pushShape(m,CUBE,(b[0]+b[3])/2,(b[1]+b[4])/2,(b[2]+b[5])/2,b[3]-b[0],b[4]-b[1],b[5]-b[2],0,c,1);continue}
+    secBox(m,b[0],b[1],b[2],b[3],b[4],b[5],c,c,c)}
+  // 비상구
+  const ex=FP.exit;pushShape(m,CUBE,ex.x,1.05,ex.z,1.0,2.1,0.08,0,[0.2,0.45,0.3],0);
+  pushShape(m,CUBE,ex.x,2.35,ex.z+0.05,0.7,0.25,0.05,0,[0.15,0.95,0.4],1);
+  m.upload();
+}
+function drawFpsHand(m,mg){
+  if(!FP)return;const T=FTOOLS[FP.tool];const d=fpsDir(),r=[Math.cos(FP.yaw),0,-Math.sin(FP.yaw)],u=[0,1,0];
+  const sw=FP.swingT>0?Math.sin((1-FP.swingT/0.25)*Math.PI):0;
+  const P=(f,rr,uu)=>[eye[0]+d[0]*f+r[0]*rr+u[0]*uu,eye[1]+d[1]*f+r[1]*rr+u[1]*uu,eye[2]+d[2]*f+r[2]*rr+u[2]*uu];
+  const base=P(0.5+sw*0.25,0.26,-0.3+sw*0.12);const head=P(0.66+sw*0.35,0.24,-0.14+sw*0.05);
+  const rot=Math.atan2(-d[2],d[0]);
+  if(T.id==='breaker'){const j=FP.holding?(Math.random()-.5)*0.03:0;drawSeg(m,base,[head[0]+j,head[1]+j,head[2]],0.04,[0.95,0.75,0.1]);pushShape(m,CUBE,head[0],head[1]-0.03,head[2],0.03,0.03,0.03,rot,[0.3,0.3,0.32],0)}
+  else{drawSeg(m,base,head,0.022,T.id==='pry'?[0.35,0.36,0.4]:[0.55,0.38,0.2]);pushShape(m,CUBE,head[0],head[1]+0.02,head[2],T.id==='pry'?0.025:0.12,T.id==='pry'?0.12:0.06,0.06,rot,T.id==='pry'?[0.75,0.12,0.1]:[0.3,0.31,0.33],0)}
+}
+
+// ---------- 입력 ----------
+function fpsPointerDown(e){
+  if(e.pointerType==='mouse'&&!FP.lock&&canvas.requestPointerLock){try{const r=canvas.requestPointerLock();if(r&&r.catch)r.catch(()=>{})}catch(err){}}
+  FP.drag={x:e.clientX,y:e.clientY,moved:false};
+  if(e.button===0){const T=FTOOLS[FP.tool];if(T.hold)FP.holding=true;else if(FP.cd<=0){FP.cd=T.cd;FP.swingT=0.25;fpsHit(0)}}
+}
+function fpsPointerMove(e){
+  if(FP.lock){FP.yaw-=e.movementX*0.0028;FP.pitch=clamp(FP.pitch-e.movementY*0.0028,-1.3,1.3);return}
+  if(FP.drag){const dx=e.clientX-FP.drag.x,dy=e.clientY-FP.drag.y;FP.drag.x=e.clientX;FP.drag.y=e.clientY;FP.yaw-=dx*0.005;FP.pitch=clamp(FP.pitch-dy*0.005,-1.3,1.3)}
+}
+function fpsPointerUp(){if(FP){FP.holding=false;FP.drag=null;humStop()}}
+document.addEventListener('pointerlockchange',()=>{if(FP)FP.lock=document.pointerLockElement===canvas});
+
+// ---------- 메인 루프 ----------
+function resize(){const dpr=Math.min(devicePixelRatio||1,2);canvas.width=Math.floor(innerWidth*dpr);canvas.height=Math.floor(innerHeight*dpr)}
+function layoutHUD(){const tb=$('#toolbar');if(!tb)return;const r=tb.getBoundingClientRect(),gap=innerHeight-r.top;
+  $('#hint').style.bottom=(gap+8)+'px';$('#cmdbar').style.bottom=(gap+40)+'px';
+  const u=$('#ult');const overlap=r.right>innerWidth-96;u.style.bottom=overlap?(gap+10)+'px':'';
+  const c=$('#credit');c.style.bottom=Math.max(2,(innerHeight-r.bottom)-16)+'px'}
+addEventListener('resize',()=>{resize();layoutHUD()});resize();setTimeout(layoutHUD,0);
+let last=performance.now(),hudT=0;
+const FOG=[0.902,0.914,0.922];
+function drawScene(shadowPass){
+  if(MODE==='fps'){mFps.draw();mRub.draw();mDyn.draw();if(!shadowPass)mGlow.draw();return}
+  if(MODE==='section'){mSec.draw();mRub.draw();mDyn.draw();if(!shadowPass)mGlow.draw();return}
+  if(!shadowPass)mGround.draw();
+  const vis=[];for(const c of CHUNKS.values()){if(Math.hypot(c.ox+TILE/2-cam.tx,c.oz+TILE/2-cam.tz)<CULL_R+Math.max(0,cam.dist-800))vis.push(c)}
+  for(const c of vis)c.mg.draw();
+  if(!shadowPass){gl.enable(gl.POLYGON_OFFSET_FILL);gl.polygonOffset(-2,-2);for(const c of vis)c.mr.draw();gl.disable(gl.POLYGON_OFFSET_FILL)}
+  for(const c of vis){c.mb.draw();c.mt.draw()}drawDets();mRub.draw();mDyn.draw();
+  if(!shadowPass)mGlow.draw();
+}
+function frame(now){
+  const dt=Math.min(0.05,(now-last)/1000);last=now;
+  if(MODE==='fps'){fpsUpdate(dt);updateFloats(dt)}
+  else if(MODE==='section'){secUpdate(dt);updateFloats(dt)}
+  else{
+  for(let i=FALL.length-1;i>=0;i--){const o=FALL[i];o.vy-=60*dt;o.y+=o.vy*dt;if(o.tx!=null){const k=Math.min(1,dt*1.2);o.x+=(o.tx-o.x)*k;o.z+=(o.tz-o.z)*k;o.rot+=dt*4}
+    if(o.y-o.r<=groundAt(o.x,o.z)){if(o.tx!=null){o.x=o.tx;o.z=o.tz}FALL.splice(i,1);o.hit(o)}}
+  if(beam&&firing){humStart();
+    const vdInc=(4+vdAt(beam.x,beam.z)*0.95)*dt;
+    const v=carve(beam.x,beam.z,5.5,28*dt,false,vdInc);addScore(v*0.6+Math.min(vdInc,500)*0.5);
+    blast(beam.x,beam.z,7,60*dt*10,0.6);beam.y=groundAt(beam.x,beam.z);
+    if(Math.random()<0.6)spawn(beam.x+(Math.random()-.5)*6,beam.y+1,beam.z+(Math.random()-.5)*6,(Math.random()-.5)*14,12+Math.random()*14,(Math.random()-.5)*14,1+Math.random()*1.5,[1,0.4+Math.random()*0.3,0.1],0.4+Math.random()*0.3,1);
+    if(maxDepth>=12742000&&!beam.done){beam.done=true;toast('지구 반대편(남대서양, 우루과이 앞바다)에 도착했어요',3500)}}
+  updateTools(dt);
+  if(shock){shock.r+=260*dt;forBuildingsNear(shock.x,shock.z,shock.r+10,b=>{if(!b.alive||b.shockId===shock.id)return;const d=Math.hypot(b.cx-shock.x,b.cz-shock.z);if(Math.abs(d-shock.r)<14){b.shockId=shock.id;facadeStrip(b,shock.x,shock.z,Math.max(0,1-shock.r/shock.max)*1.1)}});
+    forTreesNear(shock.x,shock.z,shock.r+10,t=>{if(t.alive&&Math.abs(Math.hypot(t.x-shock.x,t.z-shock.z)-shock.r)<10&&Math.random()<(1-shock.r/shock.max))killTree(t)});
+    if(shock.r>shock.max)shock=null}
+  if(quake){quake.t+=dt;cam.shake=Math.max(cam.shake,6*(1-quake.t/quake.dur));quake.acc+=dt;
+    if(quake.acc>0.15){quake.acc=0;
+      // 진원지 근처 건물의 저층 기둥이 주로 손상 (높고 가까울수록, 필로티면 더)
+      for(let n=0;n<5;n++){const b=B[Math.floor(Math.random()*B.length)];if(!b||!b.alive)continue;const dd=Math.hypot(b.cx-quake.x,b.cz-quake.z);if(dd>280)continue;
+        const p=(0.35+b.h/60)*(1-dd/280);if(Math.random()>p)continue;const d=ensureDet(b);
+        const soft=b.style===1?2:1;for(let f=0;f<Math.min(d.F,3);f++){if(!d.fl[f])continue;for(let j=0;j<d.C;j++)if(Math.random()<0.25*soft/(1+f))d.hp[f*d.C+j]-=0.5+Math.random()*0.6;
+          for(let j=0;j<d.M;j++)if(Math.random()<0.12)d.panel[f*d.M+j]=0}
+        for(let f=3;f<d.F;f++)for(let j=0;j<d.M;j++)if(d.fl[f]&&Math.random()<0.03)d.panel[f*d.M+j]=0;
+        d.dirty=true;detCheck(b)}}
+    if(Math.random()<0.1){const a=Math.random()*Math.PI*2,r=Math.random()*200;carve(quake.x+Math.cos(a)*r,quake.z+Math.sin(a)*r,6+Math.random()*6,1+Math.random()*1.5)}
+    if(quake.t>quake.dur)quake=null}
+  }
+  if(cam.shake>0)cam.shake=Math.max(0,cam.shake-dt*10);
+  if(MODE==='city'){moveCam(dt);LVPcur=LVP=cityLVP()}
+  if(MODE==='fps'&&FP)fpsCam();else updateCam();
+  updateWorld(dt);
+  if(MODE==='city')updateDet(dt);
+  if(MODE==='section'&&secDirty){secDirty=false;buildSection()}
+  updateDebris(dt);
+  const useSh=opts.shadows&&SH_OK&&MODE!=='fps';
+  if(useSh){
+    gl.bindFramebuffer(gl.FRAMEBUFFER,shFB);gl.viewport(0,0,SHSIZE,SHSIZE);gl.clearColor(1,1,1,1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+    gl.useProgram(sprog);gl.uniformMatrix4fv(SU.uLVP,false,LVPcur);drawScene(true);
+    gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+  }
+  gl.viewport(0,0,canvas.width,canvas.height);
+  gl.clearColor(FOG[0],FOG[1],FOG[2],1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+  gl.useProgram(prog);
+  gl.uniformMatrix4fv(U.uVP,false,VP);gl.uniformMatrix4fv(U.uLVP,false,LVPcur);gl.uniform3fv(U.uCam,eye);gl.uniform3fv(U.uTgt,[cam.tx,cam.ty,cam.tz]);gl.uniform2fv(U.uFogR,MODE==='city'?[Math.max(420,cam.dist*0.6),Math.max(320,cam.dist*0.45)]:[9000,1000]);gl.uniform3fv(U.uFog,FOG);gl.uniform3fv(U.uSun,SUN);
+  gl.uniform1f(U.uShOn,useSh?1:0);gl.uniform1f(U.uTexel,1/SHSIZE);
+  gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,shTex);gl.uniform1i(U.uSh,0);
+  drawScene(false);
+  updateLabels();
+  hudT+=dt;if(hudT>0.1){hudT=0;updateHUD()}
+  requestAnimationFrame(frame);
+}
+
+// ---------- 시작 ----------
+(function start(){
+  selectWeapon(0);$('#btnUndo').disabled=true;$('#btnReset').disabled=true;
+  const sp=new URLSearchParams(location.search);const fk=sp.get('firm')||'';
+  let f=FIRMS.find(x=>x.key===fk);
+  if(!f&&/^d\d+$/.test(fk)){const i=FIRMDATA.findIndex(r=>r[5]===+fk.slice(1));if(i>=0)f=firmFromData(i)}
+  if(!f&&sp.get('lat')&&sp.get('lng'))f={name:sp.get('name')||'공유된 위치',addr:'',lat:+sp.get('lat'),lng:+sp.get('lng')};
+  requestAnimationFrame(frame);
+  if(f)loadFirm(f);else{resetWorld();$('#firmName').textContent='회사를 골라주세요';$('#mFirm').classList.add('open')}
+})();
+
+$('#btnSection').onclick=()=>enterSection();
+
+$('#btnRank').onclick=openRank;$('#rankSubmit').onclick=submitRank;
+$('#optRankUrl').value=rankUrl();
+$('#btnRankUrl').onclick=()=>{const v=$('#optRankUrl').value.trim();if(v&&!/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(v)){toast('Apps Script 웹앱 주소(…/exec) 형식이 아니에요');return}lsSet('smasharch_rank_url',v);toast(v?'랭킹 서버 주소를 저장했어요':'랭킹 서버 주소를 지웠어요')};
+
+// ---------- 철거 공사 일보 (결과 화면) ----------
+function openReport(){
+  const alive=B.filter(b=>b.alive).length,tot=B.length,dead=tot-alive;const n=nbStats();
+  let k=0;for(let i=0;i<RANKS.length;i++)if(score>=RANKS[i][0])k=i;
+  const sec=STATS.t0?Math.round((performance.now()-STATS.t0)/1000):0;
+  const names=Object.fromEntries([...WEAPONS,ULTIMATE].map(w=>[w.id,w.name]));
+  const tools=Object.entries(STATS.tools).sort((a,b)=>b[1]-a[1]).map(([id,c])=>`${names[id]||id} ${c}회`).join(' · ')||'-';
+  const d=new Date();const date=`${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`;
+  const pct=tot?Math.round(dead/tot*100):0;
+  $('#repBody').innerHTML=`<div class="rep-head"><div>철거 공사 일보</div><small>${date} · ${esc(CUR?CUR.name:'')}</small></div>
+  <table class="rep"><tr><th>공정률(파괴율)</th><td>${pct}%</td></tr><tr><th>철거 동수</th><td>${dead}동 / ${tot}동${STATS.erased?` (ERASE ${STATS.erased})`:''}</td></tr>
+  <tr><th>철거한 건축사무소</th><td>${n.d} / ${n.t}곳</td></tr><tr><th>투입 장비·도구</th><td>${esc(tools)}</td></tr>
+  <tr><th>공사 기간</th><td>${Math.floor(sec/60)}분 ${sec%60}초</td></tr><tr><th>점수</th><td>${fmt(score)}점</td></tr><tr><th>최종 직급</th><td><b>${RANKS[k][2]}</b></td></tr></table>
+  <div class="rep-sign"><span>감리 확인</span><span class="stamp">철거<br>완료</span></div>`;
+  $('#mReport').classList.add('open');
+}
+$('#btnReport').onclick=openReport;
+$('#repShare').onclick=()=>{closeModals();$('#btnShare').click()};
+$('#repRank').onclick=()=>{closeModals();openRank()};
+$('#ult').onclick=armUlt;
+
+// ---------- 튜토리얼 ----------
+const TUT=[
+  ['회사를 고르고 돌아다니세요','전국 건축사사무소 9천여 곳 중 하나를 고르면 그 동네로 날아가요. WASD(또는 방향키)로 이동하면 주변 지도가 계속 이어서 만들어져요. 드래그로 회전, 휠로 확대. 노란 이름표가 사옥(입주 건물), 파란 핀은 근처 다른 건축사무소예요.'],
+  ['시공팀 도구 (1~6)','건물을 클릭하면 장비가 출동해요. 철거반·굴착기는 1층부터, 크레인은 클릭한 높이를, 레미콘은 옥상 과하중, 발파는 기둥을 한 번에, 철근 빼기는 건물이 스스로 무너지게 해요.'],
+  ['설계팀 도구 (7~0, -)','ERASE: 드래그로 범위 선택 — 왼→오는 완전히 들어간 건물, 오→왼은 걸친 건물까지(CAD와 같아요). 선택되는 건물이 파랗게 미리 보여요. MOVE: 건물을 잡고 끌어서 놓으면 날아가 떨어진 곳을 덮쳐요. EXTRUDE: 끝없이 증축하다 용적률 초과로 쓰러지며 옆 건물들을 덮쳐요. EXPLODE: 블록 분해, 무거운 조각이 주변을 때려요. 심의 보류(-): 도장으로 찍어 누르기.'],
+  ['구조대로 무너져요','외벽이 떨어지면 기둥·슬래브가 드러나고, 한 층의 기둥이 절반 넘게 부러지면 그 층이 주저앉아요. 1층 기둥을 노리면 빨리 무너지고, 잔해는 옆 건물까지 덮쳐요. 많이 부수면 오른쪽 아래 필살기 게이지가 차요(Q).'],
+  ['단면 · 1인칭 · 랭킹 · 정복','[단면](C 키)으로 우리 층만 정밀 철거하고, 단면에서 F 키로 그 층에 직접 들어가 3분 안에 사무실을 초토화하세요(오함마·빠루·브레이커). 기둥·코어를 건드리면 구조 안정도가 떨어지고, 0이 되면 초록 비상구로 탈출해야 해요. 그다음 [랭킹]에 점수 등록, [일보]로 철거 공사 일보를 받아 공유하세요. Ctrl+Z 되돌리기, 드래그 회전, 휠 확대.']
+];
+let tutI=0;
+function showTut(i){tutI=clamp(i,0,TUT.length-1);$('#tutStep').textContent=`${tutI+1} / ${TUT.length}`;$('#tutTitle').textContent=TUT[tutI][0];$('#tutText').textContent=TUT[tutI][1];
+  $('#tutPrev').disabled=tutI===0;$('#tutNext').textContent=tutI===TUT.length-1?'시작하기':'다음';$('#mTut').classList.add('open')}
+$('#tutPrev').onclick=()=>showTut(tutI-1);
+$('#tutNext').onclick=()=>{if(tutI===TUT.length-1){closeModals();lsSet('smasharch_tut_v1',1)}else showTut(tutI+1)};
+$('#tutSkip').onclick=()=>{closeModals();lsSet('smasharch_tut_v1',1)};
+$('#btnHelp').onclick=()=>showTut(0);
+
+function updateWorld(dt){
+  if(MODE==='city'){pumpTiles();const ti=tileOf(cam.tx)+','+tileOf(cam.tz);if(basePlaneAt!==ti)buildBasePlane()}
+  for(const c of CHUNKS.values()){
+    if(groundDirty)c.dG=true;if(bldDirty)c.dB=true;if(treeDirty)c.dT=true;
+    if(c.dG){c.dG=false;buildChunkGround(c);c.dT=true}
+    if(c.dB)buildChunkBuildings(c);
+    if(c.dT)buildChunkTrees(c);
+  }
+  groundDirty=bldDirty=treeDirty=false;
+}
+
+$('#fpsExit').onclick=()=>exitFps('quit');
+document.querySelectorAll('#fpsTools button').forEach((b,i)=>b.onclick=()=>fpsTool(i));
+$('#fpsResBack').onclick=()=>closeModals();
+$('#fpsResAgain').onclick=()=>{closeModals();enterFps()};
+for(const [id,key] of [['fpsFwd','w'],['fpsBack','s']]){const b=$('#'+id);b.addEventListener('pointerdown',e=>{e.preventDefault();KEYS.add(key)});for(const ev of ['pointerup','pointerleave','pointercancel'])b.addEventListener(ev,()=>KEYS.delete(key))}
+
+// =====================================================================
+//  구별 정복 진행도 — 부순 건축사무소를 시도·시군구별로 집계
+//  '나': 이 브라우저에 저장 / '모두 함께': Apps Script 웹앱 '철거' 탭
+// =====================================================================
+const CONQ=new Set(lsGet('smasharch_conq')||[]);
+let CONQ_Q=new Set(), conqTimer=0, CONQ_ALL=null, conqView={who:'all',scope:'seoul',open:null};
+const FKI=new Map(FIRMDATA.map((r,i)=>[r[5],i]));
+function keyIdx(k){return /^d\d+$/.test(k||'')?FKI.get(+k.slice(1)):undefined}
+function regionOfRow(r){return r&&r[6]?(r[6]+' '+r[7]).trim():''}
+// 지역별 전체 수(좌표 있는 곳만) — 시트 데이터에서 계산
+const REG=(()=>{const m=new Map();FIRMDATA.forEach((r,i)=>{if(!r[6])return;const k=regionOfRow(r);
+  if(!m.has(k))m.set(k,{key:k,sido:r[6],sgg:r[7],idx:[],n:0});const g=m.get(k);g.n++;if(r[4]!==2&&r[2]!=null)g.idx.push(i)});return m})();
+function conqKeysOf(b){const ks=[];if(b&&b.firms)for(const f of b.firms)if(f.i!=null&&FIRMDATA[f.i])ks.push('d'+FIRMDATA[f.i][5]);
+  if(b&&b.hq&&CUR&&CUR.dkey)ks.push(CUR.dkey);return [...new Set(ks)]}
+function myDone(reg){let n=0;for(const i of reg.idx)if(CONQ.has('d'+FIRMDATA[i][5]))n++;return n}
+function allDone(reg){return CONQ_ALL&&CONQ_ALL.done?(CONQ_ALL.done[reg.key]||0):0}
+function conqRecord(b){
+  const ks=conqKeysOf(b);if(!ks.length)return;let fresh=[];
+  for(const k of ks){CONQ_Q.add(k);if(!CONQ.has(k)){CONQ.add(k);fresh.push(k)}}
+  if(fresh.length){lsSet('smasharch_conq',[...CONQ]);
+    const i=keyIdx(fresh[0]);const reg=i!=null?REG.get(regionOfRow(FIRMDATA[i])):null;
+    if(reg){const d=myDone(reg),t=reg.idx.length;setTimeout(()=>toast(`${reg.sgg} 정복 ${d} / ${t}곳 (${Math.floor(d/t*100)}%)${d===t?' · 완전 정복!':''}`,2600),2400)}}
+  clearTimeout(conqTimer);conqTimer=setTimeout(flushConq,6000);
+}
+function conqBody(){return JSON.stringify({type:'kill',keys:[...CONQ_Q].slice(0,200),nick:lsGet('smasharch_nick')||'익명'})}
+async function flushConq(){
+  const u=rankUrl();if(!u||!CONQ_Q.size)return;const body=conqBody();const sent=[...CONQ_Q].slice(0,200);
+  try{const r=await fetchT(u,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body},15000);
+    if(r&&r.ok){for(const k of sent)CONQ_Q.delete(k);if(CONQ_ALL)CONQ_ALL=null}}catch(e){}
+  if(CONQ_Q.size){clearTimeout(conqTimer);conqTimer=setTimeout(flushConq,20000)}
+}
+addEventListener('pagehide',()=>{const u=rankUrl();if(u&&CONQ_Q.size&&navigator.sendBeacon){try{navigator.sendBeacon(u,new Blob([conqBody()],{type:'text/plain;charset=utf-8'}))}catch(e){}}});
+
+// 서울 25개 구 타일 지도 (열, 행)
+const SEOUL_TILES={'은평구':[2,0],'강북구':[4,0],'도봉구':[5,0],'노원구':[6,0],
+  '마포구':[1,1],'서대문구':[2,1],'종로구':[3,1],'성북구':[4,1],'동대문구':[5,1],'중랑구':[6,1],
+  '강서구':[0,2],'영등포구':[1,2],'용산구':[2,2],'중구':[3,2],'성동구':[4,2],'광진구':[5,2],'강동구':[6,2],
+  '양천구':[0,3],'구로구':[1,3],'동작구':[2,3],'서초구':[3,3],'강남구':[4,3],'송파구':[5,3],
+  '금천구':[1,4],'관악구':[2,4]};
+function pctOf(reg){const t=reg.idx.length;if(!t)return 0;return Math.min(100,(conqView.who==='me'?myDone(reg):allDone(reg))/t*100)}
+function heat(p){if(p<=0)return '#2b2e33';const a=0.25+0.75*Math.min(1,p/100);return `rgba(255,90,31,${a.toFixed(2)})`}
+function pctTxt(p){return p>0&&p<1?'<1%':Math.floor(p)+'%'}
+function conqBar(reg,label){const p=pctOf(reg),d=conqView.who==='me'?myDone(reg):allDone(reg);
+  return `<button class="cq-row" data-reg="${esc(reg.key)}"><span class="cq-n">${esc(label)}</span><span class="cq-bar"><i style="width:${p.toFixed(1)}%"></i></span><em>${reg.idx.length?`${fmt(d)}/${fmt(reg.idx.length)} · ${pctTxt(p)}`:`좌표 준비 중 (${fmt(reg.n)}곳)`}</em></button>`}
+function sidoGroups(){const g=new Map();for(const reg of REG.values()){if(!g.has(reg.sido))g.set(reg.sido,{key:reg.sido,sido:reg.sido,sgg:reg.sido,idx:[],subs:[]});const s=g.get(reg.sido);s.idx.push(...reg.idx);s.subs.push(reg)}
+  return [...g.values()].sort((a,b)=>b.idx.length-a.idx.length)}
+function allDoneSido(s){return s.subs.reduce((n,r)=>n+allDone(r),0)}
+function renderConq(){
+  const box=$('#conqBody');const who=conqView.who;
+  document.querySelectorAll('#mConq [data-who]').forEach(b=>b.classList.toggle('on',b.dataset.who===who));
+  document.querySelectorAll('#mConq [data-scope]').forEach(b=>b.classList.toggle('on',b.dataset.scope===conqView.scope));
+  let tot=0,dn=0;for(const reg of REG.values()){tot+=reg.idx.length;dn+=who==='me'?myDone(reg):allDone(reg)}
+  let note='';
+  if(who==='all'&&!CONQ_ALL)note=rankUrl()?'<p class="small">모두의 기록을 불러오는 중…</p>':'<p class="small">서버가 연결되지 않아 "모두 함께" 기록을 볼 수 없어요. 설정 → 서버 주소를 확인해주세요.</p>';
+  let html=`<div class="cq-sum"><b>${fmt(dn)}</b> / ${fmt(tot)}곳 정복 <small>(${pctTxt(tot?dn/tot*100:0)}, 좌표 있는 사무소 기준)</small></div>${note}`;
+  if(conqView.scope==='seoul'){
+    const regs=[...REG.values()].filter(r=>r.sido==='서울특별시');
+    html+='<div class="cq-map">';
+    for(const reg of regs){const t=SEOUL_TILES[reg.sgg];if(!t)continue;const p=pctOf(reg);
+      html+=`<button class="cq-tile${p>=100?' full':''}" data-reg="${esc(reg.key)}" style="grid-column:${t[0]+1};grid-row:${t[1]+1};background:${heat(p)}"><b>${esc(reg.sgg.replace(/구$/,''))}</b><small>${reg.idx.length?pctTxt(p):'준비 중'}</small></button>`}
+    html+='</div><div class="rk-h">구별 순위</div>';
+    html+=regs.sort((a,b)=>pctOf(b)-pctOf(a)||a.sgg.localeCompare(b.sgg)).map(r=>conqBar(r,r.sgg)).join('');
+  }else{
+    for(const s of sidoGroups()){const t=s.idx.length,d=who==='me'?s.subs.reduce((n,r)=>n+myDone(r),0):allDoneSido(s),p=t?d/t*100:0,op=conqView.open===s.sido;
+      html+=`<button class="cq-row sido" data-sido="${esc(s.sido)}"><span class="cq-n">${op?'▾':'▸'} ${esc(s.sido)}</span><span class="cq-bar"><i style="width:${p.toFixed(1)}%"></i></span><em>${fmt(d)}/${fmt(t)} · ${pctTxt(p)}</em></button>`;
+      if(op)html+='<div class="cq-sub">'+s.subs.sort((a,b)=>pctOf(b)-pctOf(a)||b.idx.length-a.idx.length).map(r=>conqBar(r,r.sgg||r.sido)).join('')+'</div>'}
+  }
+  html+='<div id="conqPick"></div>';
+  box.innerHTML=html;
+  box.querySelectorAll('[data-reg]').forEach(el=>el.onclick=()=>conqPick(REG.get(el.dataset.reg)));
+  box.querySelectorAll('[data-sido]').forEach(el=>el.onclick=()=>{conqView.open=conqView.open===el.dataset.sido?null:el.dataset.sido;renderConq()});
+}
+function conqPick(reg){if(!reg)return;const left=reg.idx.filter(i=>!CONQ.has('d'+FIRMDATA[i][5]));
+  const el=$('#conqPick');const name=reg.sido==='서울특별시'?reg.sgg:reg.key;
+  el.innerHTML=`<div class="cq-pick"><b>${esc(name)}</b> · ${reg.idx.length?`내가 남긴 사무소 ${fmt(left.length)}곳 / 전체 ${fmt(reg.idx.length)}곳`:`사무소 ${fmt(reg.n)}곳 · 아직 좌표가 없어요(시트에서 좌표 작업 후 열려요)`}<br><small>모두 함께 ${fmt(allDone(reg))}곳 철거</small>
+    <div class="row"><button class="btn-p" id="cqGo" ${left.length?'':'disabled'} style="flex:1">${left.length?'남은 사무소로 출동':reg.idx.length?'완전 정복!':'좌표 준비 중'}</button></div></div>`;
+  el.scrollIntoView({block:'nearest'});
+  const go=$('#cqGo');if(go)go.onclick=()=>{const i=left[Math.floor(Math.random()*left.length)];closeModals();loadFirm(firmFromData(i))};
+}
+async function loadConqAll(){const u=rankUrl();if(!u)return;
+  try{const r=await fetchT(u+(u.includes('?')?'&':'?')+'action=progress',{},15000);if(r&&r.ok){CONQ_ALL=r;if($('#mConq').classList.contains('open'))renderConq()}}catch(e){}}
+function openConq(){$('#mConq').classList.add('open');renderConq();if(CONQ_Q.size)flushConq().then(loadConqAll);else loadConqAll()}
+$('#btnConq').onclick=openConq;
+document.querySelectorAll('#mConq [data-who]').forEach(b=>b.onclick=()=>{conqView.who=b.dataset.who;renderConq()});
+document.querySelectorAll('#mConq [data-scope]').forEach(b=>b.onclick=()=>{conqView.scope=b.dataset.scope;renderConq()});

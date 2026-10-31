@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>SMASH ARCH</title>
+<meta name="description" content="전국 건축사사무소 사옥을 부수고 구별로 정복하는 비공식 팬 게임">
+<meta property="og:title" content="SMASH ARCH — 건축사사무소 부수기">
+<meta property="og:description" content="우리 회사 사옥을 부수고 서울 25개 구를 정복해보세요">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#e6e9eb; --panel:#17191c; --panel2:#24272b; --ink:#f3f4f5; --muted:#9aa0a6;
+  --accent:#ff5a1f; --gold:#ffcc1a; --line:#33373c;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;background:var(--bg);font-family:"Noto Sans KR",system-ui,sans-serif;color:var(--ink);-webkit-user-select:none;user-select:none;touch-action:none}
+canvas#gl{position:fixed;inset:0;width:100%;height:100%;display:block;cursor:crosshair}
+.panel{background:var(--panel);border:1px solid #000;border-radius:8px;box-shadow:0 3px 0 rgba(0,0,0,.35)}
+#brand{position:fixed;left:12px;top:12px;display:flex;align-items:center;gap:10px;padding:8px 10px 8px 14px;z-index:5}
+#brand b{font-family:"Black Han Sans",sans-serif;font-size:20px;letter-spacing:1px}
+#brand b span{color:var(--accent)}
+button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}
+.btn-s{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:4px 10px;font-size:13px}
+.btn-s:hover{background:#30343a}
+#hudTop{position:fixed;left:50%;top:12px;transform:translateX(-50%);padding:8px 14px;min-width:300px;max-width:calc(100vw - 24px);z-index:5;display:flex;gap:18px;justify-content:space-between;align-items:center}
+#hudTop .k{font-size:11px;color:var(--muted)}
+#hudTop .v{font-family:ui-monospace,Consolas,monospace;font-size:17px;font-weight:700;white-space:nowrap}
+#firmName{font-weight:900;font-size:14px;max-width:44vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#firmAddr{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:44vw}
+#scoreBox{position:fixed;right:12px;top:12px;z-index:5;display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+#rank{display:flex;align-items:center;gap:8px}
+#rankLetter{font-family:"Black Han Sans",sans-serif;font-size:46px;line-height:1;color:var(--gold);-webkit-text-stroke:2px #1a1a1a;text-shadow:3px 3px 0 #1a1a1a}
+#rankTitle{font-family:"Black Han Sans",sans-serif;font-size:14px;color:#1a1a1a;text-align:right}
+#rankBar{width:150px;height:5px;background:#9a9a9a;border-radius:3px;overflow:hidden}
+#rankBar i{display:block;height:100%;width:0;background:var(--gold)}
+#score{padding:6px 12px;font-family:"Black Han Sans",sans-serif;font-size:26px;letter-spacing:1px}
+#score small{font-size:12px;margin-right:6px;color:#ccc}
+#toolbar{position:fixed;left:calc(50% - 30px);bottom:calc(22px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:5;display:flex;gap:4px;padding:6px;max-width:calc(100vw - 16px);overflow-x:auto;scrollbar-width:none}
+#toolbar::-webkit-scrollbar{display:none}
+.tool{position:relative;width:62px;min-width:62px;height:58px;border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:11.5px;line-height:1.1;background:var(--panel2);border:1px solid var(--line);text-align:center}
+.tool:hover{background:#30343a}
+.tool.on{background:var(--accent);border-color:#ff8a5a}
+.tool .num{position:absolute;left:5px;top:3px;font-size:9px;color:#aaa}
+.tool.on .num{color:#fff}
+.tool svg{width:22px;height:22px}
+.sep{width:1px;min-width:1px;background:var(--line);margin:4px 3px}
+.tool.sm{width:54px;min-width:54px}
+.tool:disabled{opacity:.4;cursor:default}
+#credit{position:fixed;left:50%;bottom:calc(2px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:4;font-size:10.5px;color:#cfd2d5;background:rgba(23,25,28,.82);padding:2px 8px;border-radius:4px;white-space:nowrap;max-width:calc(100vw - 16px);overflow:hidden;text-overflow:ellipsis}
+#credit a{color:#cfd2d5}
+#labels{position:fixed;inset:0;pointer-events:none;z-index:3;overflow:hidden}
+.lbl{position:absolute;transform:translate(-50%,-100%);background:rgba(20,22,25,.88);color:#fff;font-size:11.5px;font-weight:700;padding:2px 6px;border-radius:3px;white-space:nowrap;border:1px solid #000}
+.lbl.hq{background:var(--gold);color:#111;font-size:13.5px;font-weight:900;padding:3px 8px;border:2px solid #111;box-shadow:2px 2px 0 #111}
+#secPanel{position:fixed;left:50%;top:76px;transform:translateX(-50%);z-index:5;padding:7px 14px;text-align:center;max-width:calc(100vw - 24px)}
+#secPanel .k{font-size:11px;color:var(--muted)}
+#secPanel .v{font-size:15px;font-weight:900;white-space:nowrap}
+#secPanel .grade{display:inline-block;margin-left:8px;background:var(--gold);color:#111;border-radius:4px;padding:0 7px;font-family:"Black Han Sans",sans-serif}
+body.sec #toast{top:136px}
+#btnSection.on{background:#2d6cdf;border-color:#5b8cf0}
+#nbBox{padding:4px 10px;font-size:12px;font-weight:700}
+.lbl.pin{background:#1f4fa8;border-color:#0d2a63;font-size:10.5px;font-weight:700;padding:1px 5px;pointer-events:auto;cursor:pointer;z-index:1}
+.lbl.pin:hover{background:#2d6cdf;z-index:3}
+.lbl.other{background:#1f4fa8;border-color:#0d2a63}
+ol.rk{list-style:none;margin:4px 0 12px}
+ol.rk li{display:flex;align-items:center;gap:8px;padding:6px 8px;border-bottom:1px solid var(--line);font-size:13px}
+ol.rk li b{width:22px;color:var(--gold);font-family:"Black Han Sans",sans-serif}
+ol.rk li span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ol.rk li small{color:var(--muted)}
+ol.rk li em{font-style:normal;color:#ddd;white-space:nowrap}
+ol.rk li.empty{color:var(--muted)}
+.rk-h{font-size:12px;color:var(--muted);margin-top:4px}
+#marks{position:fixed;inset:0;pointer-events:none;z-index:4}
+.mark{position:absolute;font-family:"Black Han Sans",sans-serif;font-size:54px;color:#d81b1b;border:6px solid #d81b1b;border-radius:10px;padding:0 14px;background:rgba(255,255,255,0.15);letter-spacing:6px;white-space:nowrap}
+.grp{display:flex;gap:4px;position:relative;padding-top:12px}
+.glbl{position:absolute;left:2px;top:-1px;font-size:9.5px;color:var(--muted);letter-spacing:1px}
+#ult{position:fixed;right:16px;bottom:calc(20px + env(safe-area-inset-bottom));z-index:6;width:74px;height:74px;border-radius:50%;border:3px solid #111;color:#fff;font-weight:900;font-size:12px;
+  background:radial-gradient(circle at 50% 50%,#24272b 54%,transparent 55%),conic-gradient(var(--accent) var(--p,0%),#3a3d42 0);box-shadow:0 3px 0 rgba(0,0,0,.4)}
+#ult.ready{animation:pulse 1s infinite}#ult.armed{background:radial-gradient(circle at 50% 50%,#d81b1b 54%,transparent 55%),conic-gradient(var(--gold) 100%,#3a3d42 0)}
+@keyframes pulse{50%{transform:scale(1.08)}}
+#cmdbar{position:fixed;left:12px;bottom:calc(96px + env(safe-area-inset-bottom));z-index:5;font-family:ui-monospace,Consolas,monospace;font-size:12.5px;background:rgba(20,22,25,.92);color:#d6f0ff;border:1px solid #000;border-radius:4px;padding:6px 10px;opacity:0;transition:opacity .2s;pointer-events:none;max-width:calc(100vw - 24px)}
+#cmdbar.show{opacity:1}
+#selrect{position:fixed;z-index:4;pointer-events:none}
+#selrect.win{border:1.5px solid #3b82f6;background:rgba(59,130,246,.15)}
+#selrect.cross{border:1.5px dashed #22c55e;background:rgba(34,197,94,.15)}
+.cad{position:absolute;font-family:ui-monospace,Consolas,monospace;font-weight:900;font-size:26px;color:#fff;background:#1d4ed8;padding:2px 10px;border-radius:4px;white-space:nowrap}
+.count{position:absolute;font-family:"Black Han Sans",sans-serif;font-size:72px;color:#ff3b1f;-webkit-text-stroke:3px #111}
+.card.report{background:#fbfaf6;color:#111}
+.card.report .close{color:#666}
+.rep-head{text-align:center;border-bottom:2px solid #111;padding-bottom:8px;margin-bottom:10px}
+.rep-head div{font-family:"Black Han Sans",sans-serif;font-size:26px;letter-spacing:4px}
+.rep-head small{color:#555}
+table.rep{width:100%;border-collapse:collapse;font-size:14px}
+table.rep th{text-align:left;font-weight:700;color:#444;padding:7px 6px;border-bottom:1px solid #ddd;width:40%}
+table.rep td{text-align:right;padding:7px 6px;border-bottom:1px solid #ddd}
+.rep-sign{display:flex;justify-content:flex-end;align-items:center;gap:10px;margin-top:12px;color:#444;font-size:13px}
+.rep-sign .stamp{border:3px solid #d81b1b;color:#d81b1b;border-radius:50%;width:58px;height:58px;display:flex;align-items:center;justify-content:center;text-align:center;font-weight:900;font-size:13px;line-height:1.1;transform:rotate(-12deg)}
+.report .btn-s{color:#111;background:#eee;border-color:#ccc}
+#mTut .tut{max-width:420px}
+body.fps #toolbar,body.fps #hint,body.fps #secPanel,body.fps #hudTop,body.fps #ult,body.fps #brand,body.fps #nbBox,body.fps #btnReport,body.fps #tileBox,body.fps #credit{display:none!important}
+body.fps canvas#gl{cursor:none}
+#cross{position:fixed;left:50%;top:50%;width:22px;height:22px;margin:-11px 0 0 -11px;z-index:5;pointer-events:none;
+  background:linear-gradient(#fff,#fff) center/2px 100% no-repeat,linear-gradient(#fff,#fff) center/100% 2px no-repeat;filter:drop-shadow(0 0 2px #000)}
+#cross.hit{filter:drop-shadow(0 0 2px #000) drop-shadow(0 0 4px #ff6a2c);background:linear-gradient(#ff8a3c,#ff8a3c) center/3px 100% no-repeat,linear-gradient(#ff8a3c,#ff8a3c) center/100% 3px no-repeat}
+#fpsTarget{position:fixed;left:50%;top:calc(50% + 20px);transform:translateX(-50%);z-index:5;pointer-events:none;font-size:12.5px;font-weight:700;color:#fff;text-shadow:0 1px 2px #000;white-space:nowrap}
+#fpsTarget.warn{color:#ff6a4c}
+#fpsTop{position:fixed;left:50%;top:12px;transform:translateX(-50%);z-index:6;display:flex;gap:18px;align-items:center;padding:8px 14px}
+#fpsTop .k{font-size:11px;color:var(--muted)}
+#fpsTime{font-family:ui-monospace,Consolas,monospace;font-size:24px;font-weight:900}
+#fpsTime.warn{color:#ff5a3c}
+#fpsStab{height:8px;background:#3a3d42;border-radius:4px;overflow:hidden;margin-top:4px}
+#fpsStab i{display:block;height:100%;width:100%;background:#3ec46d}
+#fpsRuin{font-weight:900;font-size:15px;white-space:nowrap}
+#fpsTools{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:6;display:flex;gap:6px;padding:6px}
+#fpsTools button{position:relative;min-width:84px;padding:10px 12px 8px;border-radius:6px;background:var(--panel2);border:1px solid var(--line);font-size:13px;font-weight:700;display:flex;flex-direction:column;align-items:center}
+#fpsTools button small{font-size:9.5px;color:var(--muted);font-weight:400}
+#fpsTools button.on{background:var(--accent);border-color:#ff8a5a}
+#fpsHelp{position:fixed;left:50%;bottom:calc(86px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:5;font-size:12px;color:#fff;background:rgba(20,22,25,.75);padding:3px 10px;border-radius:12px;white-space:nowrap;max-width:calc(100vw - 24px);overflow:hidden;text-overflow:ellipsis}
+#fpsMove{display:none;position:fixed;left:16px;bottom:100px;z-index:6;flex-direction:column;gap:8px}
+#fpsMove button{width:60px;height:60px;border-radius:50%;background:rgba(20,22,25,.8);color:#fff;font-size:22px;border:1px solid #000}
+@media (pointer:coarse){#fpsMove{display:flex}}
+@media (max-width:1280px){.tool{width:54px;min-width:54px;font-size:10.5px}.tool.sm{width:48px;min-width:48px}#toolbar{left:50%}#ult{bottom:calc(96px + env(safe-area-inset-bottom));width:64px;height:64px}}
+#hint{max-width:calc(100vw - 24px);overflow:hidden;text-overflow:ellipsis}
+#toolbar .grp{padding-top:13px}
+.glbl{top:0;font-weight:700;letter-spacing:.5px}
+#scoreBox{gap:5px}
+#scoreBox>.panel,#scoreBox>.btn-s{min-width:0}
+#nbBox,#tileBox,#btnReport{font-size:11.5px;padding:4px 10px;border-radius:6px}
+#btnReport{background:var(--panel);border:1px solid #000}
+@media (max-width:720px){#nbBox,#tileBox{display:none!important}#hudTop{top:62px!important;left:12px;transform:none;width:calc(100vw - 132px)!important}#rankTitle,#rankBar{display:none}#brand .btn-s{padding:3px 7px;font-size:12px}}
+#flash{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:6}
+#toast{position:fixed;left:50%;top:76px;transform:translateX(-50%);z-index:9;background:var(--panel);border:1px solid #000;border-radius:6px;padding:8px 14px;font-size:13px;opacity:0;transition:opacity .25s;pointer-events:none;max-width:calc(100vw - 24px);text-align:center}
+#toast.show{opacity:1}
+#hint{position:fixed;left:50%;bottom:calc(98px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:4;font-size:12px;color:#222;background:rgba(255,255,255,.85);padding:3px 10px;border-radius:12px;white-space:nowrap;pointer-events:none}
+.modal{position:fixed;inset:0;background:rgba(10,12,14,.55);z-index:20;display:none;align-items:center;justify-content:center;padding:16px}
+.modal.open{display:flex}
+.card{background:var(--panel);border:1px solid #000;border-radius:10px;padding:18px;width:min(460px,100%);max-height:calc(100vh - 32px);overflow:auto;box-shadow:0 6px 0 rgba(0,0,0,.4)}
+.card h2{font-family:"Black Han Sans",sans-serif;font-size:22px;margin-bottom:4px;font-weight:400}
+.card p.sub{color:var(--muted);font-size:12.5px;margin-bottom:14px}
+.firm{display:flex;flex-direction:column;align-items:flex-start;width:100%;text-align:left;padding:10px 12px;border-radius:7px;background:var(--panel2);border:1px solid var(--line);margin-bottom:7px}
+.firm:hover{border-color:var(--accent)}
+.firm b{font-size:14.5px}
+.firm span{font-size:12px;color:var(--muted)}
+#searchRes{max-height:260px;overflow:auto;margin-bottom:4px}
+#searchRes .firm{padding:7px 10px;margin-bottom:5px}
+#searchRes .firm b{font-size:13.5px}
+.row{display:flex;gap:6px;margin-top:6px}
+.row input{flex:1;min-width:0;background:#0e0f11;border:1px solid var(--line);border-radius:6px;color:#fff;padding:8px 10px;font:inherit;font-size:13px;-webkit-user-select:text;user-select:text}
+.btn-p{background:var(--accent);color:#fff;border-radius:6px;padding:8px 14px;font-weight:700;font-size:13px}
+.card label.opt{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--line);font-size:14px}
+.card .close{float:right;color:var(--muted);font-size:20px;line-height:1}
+#loading{position:fixed;inset:0;z-index:15;display:flex;align-items:center;justify-content:center;background:rgba(230,233,235,.7);pointer-events:none;opacity:0;transition:opacity .2s}
+#loading.on{opacity:1;pointer-events:auto}
+#loading div{background:var(--panel);padding:14px 20px;border-radius:8px;font-size:14px}
+.small{font-size:11.5px;color:var(--muted);margin-top:10px;line-height:1.5}
+@media (max-width:720px){
+  #hudTop{top:104px;min-width:0;width:calc(100vw - 24px);padding:6px 10px}
+  #hudTop .v{font-size:14px}
+  #scoreBox{top:10px}
+  #rankLetter{font-size:30px}
+  #rankTitle{display:none}
+  #rankBar{width:90px}
+  #score{font-size:18px;padding:5px 8px}
+  #brand{padding:6px 8px 6px 10px}
+  #brand b{font-size:16px}
+  .tool{width:54px;min-width:54px;height:52px;font-size:10.5px}
+  .tool.sm{width:48px;min-width:48px}
+  #hint{bottom:calc(88px + env(safe-area-inset-bottom));font-size:11px}
+  #toast{top:200px}
+  #secPanel{top:150px}
+  body.sec #toast{top:210px}
+  #secPanel .v{font-size:12.5px}
+}
+
+/* ---- 구별 정복 ---- */
+.card.conq{width:min(560px,100%)}
+.seg{display:flex;gap:4px;margin:0 0 8px}.seg button{flex:1;padding:6px 8px;border-radius:6px;background:var(--panel2);border:1px solid var(--line);font-size:12.5px}
+.seg button.on{background:var(--accent);border-color:#ff8a5a;font-weight:700}
+.cq-sum{font-size:13px;margin:6px 0 10px}.cq-sum b{font-family:"Black Han Sans",sans-serif;font-size:22px;color:var(--gold);font-weight:400}.cq-sum small{color:var(--muted)}
+.cq-map{display:grid;grid-template-columns:repeat(7,1fr);grid-template-rows:repeat(5,52px);gap:4px;margin:4px 0 14px}
+.cq-tile{border-radius:6px;border:1px solid #000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;color:#fff;font-size:12px;line-height:1.1;padding:2px}
+.cq-tile b{font-size:12.5px}.cq-tile small{font-size:10.5px;opacity:.9}.cq-tile:hover{outline:2px solid var(--gold)}
+.cq-tile.full{box-shadow:inset 0 0 0 2px var(--gold)}
+.cq-row{display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:6px 4px;border-bottom:1px solid var(--line);font-size:12.5px}
+.cq-row:hover{background:var(--panel2)}.cq-row.sido{font-weight:700}
+.cq-n{width:118px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cq-bar{flex:1;height:8px;background:#2b2e33;border-radius:4px;overflow:hidden}.cq-bar i{display:block;height:100%;background:var(--accent)}
+.cq-row em{font-style:normal;color:#ccc;white-space:nowrap;font-size:11.5px;min-width:96px;text-align:right}
+.cq-sub{padding-left:14px;border-left:2px solid var(--line);margin:2px 0 6px}
+.cq-pick{margin-top:12px;padding:10px 12px;border-radius:8px;background:var(--panel2);border:1px solid var(--line);font-size:13px}.cq-pick small{color:var(--muted)}
+#boot{position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;background:var(--bg)}
+#boot div{background:var(--panel);color:var(--ink);padding:16px 22px;border-radius:8px;font-size:14px;text-align:center;line-height:1.6}
+#boot b{font-family:"Black Han Sans",sans-serif;font-size:26px;font-weight:400}#boot b span{color:var(--accent)}
+@media (max-width:480px){.cq-map{grid-template-rows:repeat(5,44px)}.cq-tile b{font-size:11px}.cq-n{width:84px}.cq-row em{min-width:80px}}
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<div id="labels"></div>
+<div id="marks"></div>
+<div id="flash"></div>
+
+<div id="brand" class="panel"><b>SMASH <span>ARCH</span></b><button class="btn-s" id="btnFirm">⌂ 다른 회사</button><button class="btn-s" id="btnHelp" title="튜토리얼">?</button></div>
+
+<div id="hudTop" class="panel">
+  <div style="min-width:0">
+    <div id="firmName">불러오는 중…</div>
+    <div id="firmAddr"></div>
+  </div>
+  <div style="text-align:right">
+    <div class="k">가장 깊은 구멍</div>
+    <div class="v" id="depth">지하 0 m</div>
+  </div>
+</div>
+
+<div id="scoreBox">
+  <div id="rank"><div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px"><div id="rankTitle">인턴</div><div id="rankBar"><i></i></div></div><div id="rankLetter">F</div></div>
+  <div id="score" class="panel"><small>SCORE</small><span id="scoreV">0</span></div>
+  <div id="nbBox" class="panel" style="display:none"></div>
+  <div id="tileBox" class="panel" style="display:none;padding:3px 9px;font-size:11.5px"></div>
+  <button class="btn-s" id="btnReport" style="background:var(--panel)">철거 일보</button>
+</div>
+
+<div id="secPanel" class="panel" style="display:none"></div>
+<div id="hint">클릭: 사용 · 드래그: 회전 · 우클릭 드래그: 이동 · 휠: 확대</div>
+
+<div id="toolbar" class="panel">
+  <div class="grp"><span class="glbl">시공팀</span><button class="tool on" data-w="0"><span class="num">1</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="5" r="2"/><path d="M8 7v7M8 14l-3 6M8 14l3 6M5 10h6"/><path d="M14 4l6 6M17 7l-5 5"/></svg>철거반</button><button class="tool" data-w="1"><span class="num">2</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 19h10M4 16h8v3H4z"/><path d="M8 16v-4h3l6-6 3 4-3 3"/><path d="M20 13v5"/></svg>굴착기</button><button class="tool" data-w="2"><span class="num">3</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 21V4M5 4h15M5 8l4-4M17 4v6"/><circle cx="17" cy="13" r="3" fill="currentColor"/><path d="M2 21h7"/></svg>타워크레인</button><button class="tool" data-w="3"><span class="num">4</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="13" width="10" height="5" rx="1"/><ellipse cx="16" cy="12" rx="5" ry="3.5"/><circle cx="5" cy="19" r="1.5"/><circle cx="16" cy="19" r="1.5"/></svg>레미콘</button><button class="tool" data-w="4"><span class="num">5</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="9" width="12" height="9" rx="1"/><path d="M12 9V5M12 5l3-2M9 13h6"/><path d="M19 3l1 2M21 6h-2"/></svg>발파 해체</button><button class="tool" data-w="5"><span class="num">6</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 21V9M12 21V3M17 21V9"/><path d="M10 6l2-3 2 3"/><path d="M4 21h16"/></svg>철근 빼기</button></div>
+  <div class="sep"></div>
+  <div class="grp"><span class="glbl">설계팀</span><button class="tool" data-w="6"><span class="num">7</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" stroke-dasharray="3 2"/><path d="M8 9l8 6M16 9l-8 6"/></svg>ERASE</button><button class="tool" data-w="7"><span class="num">8</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M2 12h20M12 2l-3 3M12 2l3 3M12 22l-3-3M12 22l3-3M2 12l3-3M2 12l3 3M22 12l-3-3M22 12l-3 3"/></svg>MOVE</button><button class="tool" data-w="8"><span class="num">9</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="7" y="13" width="10" height="8"/><path d="M7 13V5h10v8" stroke-dasharray="2 2"/><path d="M12 11V2M9 5l3-3 3 3"/></svg>EXTRUDE</button><button class="tool" data-w="9"><span class="num">0</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2 6 6-3-3 6 5 2-6 2 2 6-6-3-2 6-2-6-6 3 2-6-5-2 6-2-3-6 6 3z"/></svg>EXPLODE</button><button class="tool" data-w="10"><span class="num">-</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 3h4v6l3 3H7l3-3z"/><rect x="5" y="13" width="14" height="4" rx="1"/><path d="M4 21h16"/></svg>심의 보류</button></div>
+  <div class="sep"></div>
+  <button class="tool sm" id="btnSection"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 21V8l8-5 8 5v13"/><path d="M4 12h16M4 16h16M9 21v-5"/><path d="M14 3v18" stroke-dasharray="2 2"/></svg>단면</button>
+  <div class="sep"></div>
+  <button class="tool sm" id="btnUndo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg>되돌리기</button>
+  <button class="tool sm" id="btnReset"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>전부 복구</button>
+  <button class="tool sm" id="btnRank"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/></svg>랭킹</button>
+  <button class="tool sm" id="btnConq"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3z"/><path d="M9 3v15M15 6v15"/></svg>정복</button>
+  <button class="tool sm" id="btnShare"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v13M7 8l5-5 5 5"/><path d="M5 14v6h14v-6"/></svg>공유</button>
+  <button class="tool sm" id="btnSet"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>설정</button>
+</div>
+<div id="credit">건물·도로 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap 기여자</a> · 건물 모양은 단순화된 일반 재질 · 사무소 목록 © 공공데이터포털 · 회사와 관계없는 비공식 팬 게임 · 원작 아이디어 SMASH HYU (@Hong_Iron_DEV)</div>
+
+<div class="modal" id="mConq"><div class="card conq">
+  <button class="close" data-close>×</button>
+  <h2>구별 정복 현황</h2>
+  <p class="sub">부순 건축사무소(사옥·동네 핀)가 시도·시군구별로 쌓여요. 구를 누르면 아직 안 부순 사무소로 출동할 수 있어요.</p>
+  <div class="seg"><button data-who="all" class="on">모두 함께</button><button data-who="me">나</button></div>
+  <div class="seg"><button data-scope="seoul" class="on">서울 25개 구</button><button data-scope="kr">전국 시도</button></div>
+  <div id="conqBody"></div>
+</div></div>
+
+<div class="modal" id="mRank"><div class="card">
+  <button class="close" data-close>×</button>
+  <h2>랭킹</h2>
+  <p class="sub" id="rankMine"></p>
+  <div class="row" style="margin:0 0 12px"><input id="rankNick" placeholder="닉네임 (최대 20자)" maxlength="20"><button class="btn-p" id="rankSubmit">내 점수 등록</button></div>
+  <div id="rankBody"></div>
+</div></div>
+
+<button id="ult" title="필살기 (Q)"><span>필살기</span></button>
+<div id="cmdbar"></div>
+<div id="selrect" style="display:none"></div>
+<div class="modal" id="mTut"><div class="card tut">
+  <div class="small" id="tutStep"></div><h2 id="tutTitle"></h2><p id="tutText" style="font-size:14px;line-height:1.7;margin:8px 0 16px"></p>
+  <div class="row" style="justify-content:space-between"><button class="btn-s" id="tutSkip">건너뛰기</button><div class="row" style="margin:0"><button class="btn-s" id="tutPrev">이전</button><button class="btn-p" id="tutNext">다음</button></div></div>
+</div></div>
+<div class="modal" id="mReport"><div class="card report">
+  <button class="close" data-close>×</button>
+  <div id="repBody"></div>
+  <div class="row" style="margin-top:14px"><button class="btn-p" id="repShare" style="flex:1">결과 공유하기</button><button class="btn-s" id="repRank">랭킹 등록</button></div>
+</div></div>
+<div id="fpsHud" style="display:none">
+  <div id="cross"></div><div id="fpsTarget"></div>
+  <div id="fpsTop" class="panel"><div><div class="k">마감까지</div><div id="fpsTime">3:00</div></div>
+    <div style="min-width:150px"><div class="k">구조 안정도 <b id="fpsStabV">100%</b></div><div id="fpsStab"><i></i></div></div>
+    <div id="fpsRuin">초토화 0%</div><button class="btn-s" id="fpsExit">나가기 (X)</button></div>
+  <div id="fpsTools" class="panel"><button class="on"><span class="num">1</span>오함마</button><button><span class="num">2</span>빠루</button><button><span class="num">3</span>브레이커<small>누르고 있기</small></button></div>
+  <div id="fpsHelp">WASD 이동 · 마우스로 둘러보기(클릭하면 시점 고정, Esc 해제) · 클릭: 부수기 · Shift 달리기 · 기둥·코어 = 구조 안정도↓</div>
+  <div id="fpsMove"><button id="fpsFwd">▲</button><button id="fpsBack">▼</button></div>
+</div>
+<div class="modal" id="mFpsRes"><div class="card report">
+  <div id="fpsResBody"></div>
+  <div class="row" style="margin-top:14px"><button class="btn-p" id="fpsResAgain" style="flex:1">다시 도전</button><button class="btn-s" id="fpsResBack">단면으로</button></div>
+</div></div>
+<div id="toast"></div>
+<div id="loading"><div id="loadingMsg">불러오는 중…</div></div>
+<div id="boot"><div><b>SMASH <span>ARCH</span></b><br><span id="bootMsg">건축사사무소 목록을 불러오는 중…</span></div></div>
+
+<div class="modal" id="mFirm"><div class="card">
+  <button class="close" data-close>×</button>
+  <h2>어느 회사를 부술까요?</h2>
+  <p class="sub">사옥 주변 건물을 OpenStreetMap에서 불러옵니다.</p>
+  <div class="row" style="margin:0 0 4px"><input id="customQ" placeholder="전국 건축사사무소 검색 (이름·주소·좌표)" autocomplete="off"></div>
+  <div class="small" style="margin:2px 0 8px">전국 건축사사무소 <b id="firmCount">0</b> · 출처: 공공데이터포털 전국건축사사무소표준데이터</div>
+  <div id="searchRes" style="display:none"></div>
+  <div class="small" style="margin:10px 0 6px;color:#ccc">대형 설계사무소</div>
+  <div id="firmList"></div>
+  <div class="small">"좌표 확정" 사무소는 TMap 지오코딩 좌표로 바로 이동해요. 나머지는 OpenStreetMap 주소 검색이라 어긋날 수 있어요. 그럴 땐 설정 → "사옥 건물 직접 지정"을 쓰세요.</div>
+</div></div>
+
+<div class="modal" id="mSet"><div class="card">
+  <button class="close" data-close>×</button>
+  <h2>설정</h2>
+  <label class="opt">효과음 <input type="checkbox" id="optSound" checked></label>
+  <label class="opt">건물 이름표 <input type="checkbox" id="optLabels" checked></label>
+  <label class="opt">동네 건축사무소 표시 <input type="checkbox" id="optPins" checked></label>
+  <label class="opt">잔해 많이 (느리면 끄기) <input type="checkbox" id="optDebris" checked></label>
+  <label class="opt">그림자 (느리면 끄기) <input type="checkbox" id="optShadows" checked></label>
+  <button class="btn-p" id="btnPickHQ" style="width:100%;margin-top:12px">사옥 건물 직접 지정</button>
+  <div class="small" style="margin-top:14px">게임 서버 주소 (Apps Script 웹앱 …/exec) · 비워두면 config.js 값 사용</div>
+  <div class="row"><input id="optRankUrl" placeholder="https://script.google.com/macros/s/…/exec"><button class="btn-p" id="btnRankUrl">저장</button></div>
+  <div class="small">단축키: WASD·방향키 이동(Shift 빠르게) · 1~9·0·- 도구 · Q 필살기 · C 단면 · Ctrl+Z 되돌리기 · S 단면 보기<br>원작: SMASH HYU (hong-iron.github.io/SMASH-HYU) — 코드는 새로 작성했습니다.</div>
+</div></div>
+
+<script src="config.js"></script>
+<script>
+/* 부트스트랩: 구글 시트(Apps Script 웹앱)에서 사무소 목록을 받아 FIRMDATA_BOOT 로 넘긴 뒤 game.js 실행
+   - 이 브라우저에 저장된 목록이 있으면 바로 시작하고, 뒤에서 새 목록을 받아 다음 접속 때 반영
+   - 서버가 안 되면 data/firms.json(저장된 스냅샷)으로 시작 */
+(function(){
+  var CK='smasharch_firms_v2';
+  function api(){var u='';try{u=JSON.parse(localStorage.getItem('smasharch_rank_url')||'null')||''}catch(e){}return String(u||(window.SMASH_CONFIG&&SMASH_CONFIG.API_URL)||'').trim()}
+  function getT(url,ms){var c=new AbortController(),t=setTimeout(function(){c.abort()},ms);return fetch(url,{signal:c.signal}).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}).finally(function(){clearTimeout(t)})}
+  function ok(d){return d&&Array.isArray(d.rows)&&d.rows.length>0}
+  function save(d){try{localStorage.setItem(CK,JSON.stringify({t:Date.now(),d:d}))}catch(e){}}
+  function start(d,src){window.FIRMDATA_BOOT=ok(d)?d.rows:[];window.FIRMDATA_SRC=src;var s=document.createElement('script');s.src='game.js';s.onload=function(){var b=document.getElementById('boot');if(b)b.remove()};
+    s.onerror=function(){document.getElementById('bootMsg').textContent='game.js 를 불러오지 못했어요'};document.body.appendChild(s)}
+  var u=api(),cached=null;try{cached=JSON.parse(localStorage.getItem(CK)||'null')}catch(e){}
+  var fromSheet=u?getT(u+(u.indexOf('?')>=0?'&':'?')+'action=firms',30000).then(function(d){if(!ok(d))throw new Error('empty');save(d);return d}):Promise.reject(new Error('no api'));
+  if(cached&&ok(cached.d)){start(cached.d,'cache');fromSheet.catch(function(){});return}
+  fromSheet.then(function(d){start(d,'sheet')}).catch(function(){
+    document.getElementById('bootMsg').textContent=u?'시트 연결이 안 돼서 저장된 목록으로 시작해요…':'저장된 목록으로 시작해요…';
+    getT('data/firms.json',30000).then(function(d){start(d,'snapshot')}).catch(function(){start(null,'none')})});
+})();
+</script>
+</body>
+</html>
