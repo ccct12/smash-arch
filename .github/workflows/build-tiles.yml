@@ -40,7 +40,7 @@ jobs:
             -o filtered.osm.pbf --overwrite
           ls -lh filtered.osm.pbf
       - name: 타일 만들기
-        run: python3 tools/build_tiles.py --pbf filtered.osm.pbf --out out --radius "${{ github.event.inputs.radius || '750' }}" --osm-date "$OSM_DATE"
+        run: python3 -u tools/build_tiles.py --pbf filtered.osm.pbf --out out --radius "${{ github.event.inputs.radius || '750' }}" --osm-date "$OSM_DATE"
       - name: 릴리스에 올리기
         env:
           GH_TOKEN: ${{ github.token }}
