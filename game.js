@@ -951,11 +951,11 @@ function drawWorker(m,w,S){
 }
 
 // ---------- 3. 불도저 — 선을 그으면 그 방향으로 밀고 가며 경로의 건물 저층에 구멍을 뚫음 ----------
-const DZ_S=TOY*0.95;
+const DZ_S=TOY*1.8;   // 불도저 크기 (길이 약 17m · 높이 약 7m)
 function spawnDozerLine(A,B){
   let dx=B.x-A.x,dz=B.z-A.z,l=Math.hypot(dx,dz);
   if(l<10){toast('불도저: 밀고 갈 방향으로 길게 그어주세요');return false}
-  l=Math.min(l,260);dx/=Math.hypot(B.x-A.x,B.z-A.z);dz/=Math.hypot(B.x-A.x,B.z-A.z);
+  l=Math.min(l,400);dx/=Math.hypot(B.x-A.x,B.z-A.z);dz/=Math.hypot(B.x-A.x,B.z-A.z);
   DOZERS.push({x:A.x-dx*14,z:A.z-dz*14,dx,dz,left:l+14,t:0,gone:0,v:4,acc:0,inB:null,hits:new Set(),shake:0});
   toast('불도저 출동 — 경로를 밀고 지나가요!',1300);sfx(12,1.5);statTool('dozer');return true}
 function dozerBlade(d){const s=DZ_S;return[d.x+d.dx*3.0*s,d.z+d.dz*3.0*s]}
@@ -963,21 +963,22 @@ function updateDozers(dt){
   for(let i=DOZERS.length-1;i>=0;i--){const d=DOZERS[i];d.t+=dt;
     if(d.left<=0){d.gone+=dt;if(d.gone>1.2)DOZERS.splice(i,1);continue}
     const [bx,bz]=dozerBlade(d);let inside=null;
-    forBuildingsNear(bx,bz,8,b=>{if(!inside&&b.alive&&!b.lifted&&distToBuilding(b,bx,bz)<2.2)inside=b});
+    forBuildingsNear(bx,bz,8,b=>{if(!inside&&b.alive&&!b.lifted&&distToBuilding(b,bx,bz)<3.5)inside=b});
     // 건물 안에서는 느려지고(밀어붙이는 느낌), 밖에서는 빨라짐
-    const vmax=inside?7:18;d.v+=(vmax-d.v)*Math.min(1,dt*(inside?6:1.5));
+    const vmax=inside?15:32;d.v+=(vmax-d.v)*Math.min(1,dt*(inside?5:2.5));
     const sp=d.v*dt;d.x+=d.dx*sp;d.z+=d.dz*sp;d.left-=sp;
     if(inside&&!d.hits.has(inside)){d.hits.add(inside);hitStop(0.05);cam.shake=Math.max(cam.shake,5);boom3(bx,inside.base+2,bz,12);sfxBoom(0.4);floatText(bx,inside.base+6,bz,'쾅!','boom',0.7)}
     d.acc+=dt;
-    if(d.acc>0.1){d.acc=0;const w=2.2*DZ_S;   // 블레이드 폭
+    if(d.acc>0.07){d.acc=0;const w=1.8*DZ_S;   // 블레이드 폭
       forBuildingsNear(bx,bz,w+6,b=>{if(!b.alive||b.lifted)return;if(distToBuilding(b,bx,bz)>w*0.6)return;
         if(b.area<90&&b.h0<9){killBuilding(b);return}
         structDamage(b,bx,b.base+1.8,bz,w+1.5,2.2,{floors:[0]});
-        if(b.alive&&b.det&&b.det.F>1)structDamage(b,bx,b.base+b.det.fh+1.5,bz,w,1.1,{floors:[1]});
+        if(b.alive&&b.det&&b.det.F>1)structDamage(b,bx,b.base+b.det.fh+1.5,bz,w,1.4,{floors:[1]});
+        if(b.alive&&b.det&&b.det.F>2)structDamage(b,bx,b.base+b.det.fh*2+1.5,bz,w*0.7,0.8,{floors:[2]});
         if(Math.random()<0.6)spawn(bx,b.base+1.5,bz,d.dx*9+(Math.random()-.5)*5,3+Math.random()*3,d.dz*9+(Math.random()-.5)*5,0.8+Math.random()*1.2,Math.random()<0.5?b.col:CONC)});
       if(inside)cam.shake=Math.max(cam.shake,1.6)}
-    forTreesNear(bx,bz,4,t=>{if(t.alive&&Math.hypot(t.x-bx,t.z-bz)<4)killTree(t)});
-    for(let k=0;k<MAXD;k++){if(!D.used[k]||!D.rest[k])continue;if(Math.hypot(D.x[k]-bx,D.z[k]-bz)<3.5){D.rest[k]=0;D.vx[k]=d.dx*8+(Math.random()-.5)*3;D.vz[k]=d.dz*8+(Math.random()-.5)*3;D.vy[k]=2;rubDirty=true}}
+    forTreesNear(bx,bz,8,t=>{if(t.alive&&Math.hypot(t.x-bx,t.z-bz)<8)killTree(t)});
+    for(let k=0;k<MAXD;k++){if(!D.used[k]||!D.rest[k])continue;if(Math.hypot(D.x[k]-bx,D.z[k]-bz)<7){D.rest[k]=0;D.vx[k]=d.dx*8+(Math.random()-.5)*3;D.vz[k]=d.dz*8+(Math.random()-.5)*3;D.vy[k]=2;rubDirty=true}}
     if(Math.random()<0.35)spawn(d.x-d.dx*2,groundAt(d.x,d.z)+4.5*DZ_S*0.7,d.z-d.dz*2,(Math.random()-.5),3,(Math.random()-.5),0.6,[0.35,0.35,0.36],0.8,2);
   }
 }
@@ -993,7 +994,7 @@ function drawDozerAt(m,x,gy,z,dx,dz,s,jig){
   p=P(2.2*s,0,1.1*s);pushShape(m,CUBE,p[0],p[1],p[2],1.4*s,0.25*s,0.25*s,ro,STEEL,0);
   p=P(2.9*s,0,1.1*s);pushShape(m,CUBE,p[0],p[1],p[2],0.4*s,1.8*s,4.4*s,ro,[0.42,0.42,0.42],0);   // 블레이드
 }
-function drawDozer(m,d){const a=d.left<=0?Math.max(0,1-d.gone/1.2):1;if(a<=0)return;drawDozerAt(m,d.x,groundAt(d.x,d.z),d.z,d.dx,d.dz,DZ_S,d.hits.size&&d.v<9?(Math.random()-.5)*0.25:0)}
+function drawDozer(m,d){const a=d.left<=0?Math.max(0,1-d.gone/1.2):1;if(a<=0)return;drawDozerAt(m,d.x,groundAt(d.x,d.z),d.z,d.dx,d.dz,DZ_S,d.hits.size&&d.v<17?(Math.random()-.5)*0.4:0)}
 
 // ---------- 4. 철근 빼기 (순살 공법) ----------
 function spawnRebar(h){
@@ -2038,7 +2039,7 @@ function updateSecCrew(dt){const W=SEC.W;
 
 // ---------- 불도저 (단면) — 시작한 층 바닥을 따라 좌우로 밀고 가며 터널 ----------
 let SDOZ=[];
-const SD_S=1.25;
+const SD_S=1.8;   // 단면 불도저 크기 (위층 바닥까지 긁고 지나감)
 function secDozerLine(A,B){const dxs=B.x-A.x;if(Math.abs(dxs)<3){toast('불도저: 좌우로 길게 그어주세요 (단면에서는 그 층을 따라 밀고 가요)');SUNDO.pop();return}
   const dir=Math.sign(dxs),z=SEC.D/2-2.6,hw=SEC.W/2;
   // 선이 건물을 지나가는 높이의 층으로 출발 (건물 밖에서 시작하면 그 층 외벽 안쪽에 내려놓음)
@@ -2050,12 +2051,12 @@ function secDozerLine(A,B){const dxs=B.x-A.x;if(Math.abs(dxs)<3){toast('불도�
 function updateSecDozers(dt){
   for(let i=SDOZ.length-1;i>=0;i--){const d=SDOZ[i];d.t+=dt;
     if(d.dir*(d.x-d.end)>0){d.gone+=dt;if(d.gone>1)SDOZ.splice(i,1);continue}
-    const inB=Math.abs(d.x)<SEC.W/2;const vmax=inB?6:15;d.v+=(vmax-d.v)*Math.min(1,dt*(inB?6:1.5));d.x+=d.dir*d.v*dt;
+    const inB=Math.abs(d.x)<SEC.W/2;const vmax=inB?11:24;d.v+=(vmax-d.v)*Math.min(1,dt*(inB?5:2.5));d.x+=d.dir*d.v*dt;
     if(inB&&!d.inB){hitStop(0.05);cam.shake=Math.max(cam.shake,2.5);secBoom(d.x+d.dir*3,d.y+1.5,d.z,10);sfxBoom(0.4);floatText(d.x+d.dir*3,d.y+3,SEC.D/2,'쾅!','boom',0.7)}d.inB=inB;
     // 바닥 따라가기 (아래층이 무너지면 같이 떨어짐)
     const g=surfaceAt(d.x,d.y+0.3,d.z),gg=g<-300?0:g;if(d.y>gg+0.05){d.vy-=30*dt;d.y=Math.max(gg,d.y+d.vy*dt)}else{d.y=gg;d.vy=0}
     d.acc+=dt;if(d.acc>0.08){d.acc=0;const bx=d.x+d.dir*3.1*SD_S;
-      const n=secHit2D(bx,d.y+1.3,1.7,1.4);if(n){cam.shake=Math.max(cam.shake,1.2);
+      const n=secHit2D(bx,d.y+2.0,2.5,1.6);if(n){cam.shake=Math.max(cam.shake,1.2);
         for(let q=0;q<3;q++)spawn(bx,d.y+1+Math.random()*1.5,d.z+0.5,d.dir*(5+Math.random()*5),2+Math.random()*3,1+Math.random()*3,0.25+Math.random()*0.5,Math.random()<0.5?C_COL:C_SLAB)}}
     if(Math.random()<0.3)spawn(d.x-d.dir*2,d.y+4.5*SD_S*0.7,d.z,0,3,0,0.35,[0.35,0.35,0.36],0.8,2)}}
 function drawSecDozers(m){for(const d of SDOZ){if(d.gone>1)continue;drawDozerAt(m,d.x,d.y,d.z,d.dir,0,SD_S,d.inB?(Math.random()-.5)*0.12:0)}}
