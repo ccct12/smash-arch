@@ -409,7 +409,7 @@ function pumpTiles(){
   const grp=need.filter(([i,j])=>i>=bi&&i<=bi+2&&j>=bj&&j<=bj+2).slice(0,9);
   tileBusy++;
   loadTiles(grp,{bg:true}).then(n=>{if(n<0){retryN++;retryAt=performance.now()+Math.min(30000,3000*Math.pow(2,retryN-1));if(!pumpTiles.warned){pumpTiles.warned=1;toast('지도 서버가 바빠요. 잠시 뒤 다시 시도해요',2500)}}
-    else{retryN=0;buildNeighborhood();if(MODE==='city')makeLabels()}}).finally(()=>{tileBusy--});
+    else{retryN=0;buildNeighborhood();applyLandmarks();if(MODE==='city')makeLabels()}}).finally(()=>{tileBusy--});
 }
 // 카메라를 따라다니는 그림자 범위
 function cityLVP(){const cx=Math.round(cam.tx/40)*40,cz=Math.round(cam.tz/40)*40,R=clamp(cam.dist*0.75,320,900);
@@ -639,7 +639,7 @@ const COL_HP=1.5, SUPPORT_MIN=0.45;
 function raidMult(b){return b.hq&&CUR&&!CUR.tenant&&parseFloor(CUR.addr)==null?2:1}
 
 function makeDet(b){
-  const F=clamp(Math.round(b.h0/3.4),1,40),fh=b.h0/F;
+  const F=b.customF||clamp(Math.round(b.h0/3.4),1,40),fh=b.h0/F;
   // 외곽 기둥 위치: 각 변을 약 5.5m 간격으로 분할
   let per=b.pts.reduce((a,p,i)=>{const q=b.pts[(i+1)%b.pts.length];return a+Math.hypot(q[0]-p[0],q[1]-p[1])},0);
   const sp=Math.max(5.5,per/56);
@@ -772,6 +772,7 @@ function prismCol(m,x,z,y0,y1,w,c){const h=w/2;m.grow(24);
   quad(m,[x+h,y0,z-h],[x+h,y0,z+h],[x+h,y1,z+h],[x+h,y1,z-h],[1,0,0],c,-1,-1,0);quad(m,[x-h,y0,z-h],[x-h,y0,z+h],[x-h,y1,z+h],[x-h,y1,z-h],[-1,0,0],c,-1,-1,0)}
 function rebars(m,x,z,y,R){for(let k=0;k<4;k++){const ox=(k%2?0.18:-0.18)+(R()-.5)*0.1,oz=(k<2?0.18:-0.18)+(R()-.5)*0.1,hh=0.8+R()*1.0;pushShape(m,CUBE,x+ox+(R()-.5)*0.3,y+hh/2,z+oz+(R()-.5)*0.3,0.07,hh,0.07,0,REBAR,0)}}
 function buildDetMesh(b){
+  if(b.custom==='map'){buildMapMesh(b);return}
   const d=b.det,m=d.mb;m.reset();const st=b.style,c=b.col,base=b.base,R=mulberry(b.id%9973+5);
   const dark=d.weak?[c[0]*0.7,c[1]*0.66,c[2]*0.62]:c;
   let topF=-1;for(let f=d.F-1;f>=0;f--)if(d.fl[f]){topF=f;break}
@@ -806,6 +807,105 @@ function buildDetMesh(b){
   }
   m.upload();
 }
+// =====================================================================
+//  랜드마크 — MAP 사옥 (문정동 디자인 캠퍼스) 전용 3D 모델
+//  치수: 도면(X2~X6 33.9m + 북쪽 매스 + 남쪽 계단, 깊이 14.7m) · 지상 9층
+//  외관: 흰 세로 루버, 가운데 유리 커튼월, 9층 테라스 정원, 높은 남쪽 타워(루버 스크린 + 초록 지그재그 계단), MAP GROUP 글자
+//  구조(층·기둥·외피)는 일반 건물과 같아서 똑같이 부서짐
+// =====================================================================
+const LM_WHITE=[0.95,0.96,0.97],LM_FIN=[0.985,0.985,0.98],LM_GLASS=[0.40,0.54,0.66],LM_GLASS2=[0.52,0.64,0.74],LM_DARK=[0.22,0.28,0.34],LM_GREEN=[0.12,0.78,0.32];
+const LM_FH=4.2, LM_F=9;
+function isMapFirmKey(k){return k==='map'||k==='d5523'}
+function applyLandmark(b){if(!b||b.custom)return;b.custom='map';b.customF=LM_F;b.h0=LM_F*LM_FH;b.h=b.h0;b.col=LM_WHITE.slice();b.col0=b.col;b.roof=[0.86,0.87,0.88];b.lm=null;freeDet(b);ensureDet(b);markB(b)}
+function applyLandmarks(){
+  if(CUR&&(isMapFirmKey(CUR.key)||isMapFirmKey(CUR.dkey))){const h=B.find(x=>x.hq&&x.alive);if(h)applyLandmark(h)}
+  for(const f of NB){if(f.i!=null&&FIRMDATA[f.i]&&FIRMDATA[f.i][5]===5523&&f.b&&f.b.alive)applyLandmark(f.b)}}
+// 건물 축: u = 긴 방향(북쪽 끝 s=0 → 남쪽 끝 s=1), v = 짧은 방향
+function lmFrame(b){if(b.lm)return b.lm;const ob=obbOf(b),ca=Math.cos(ob.ang),sa=Math.sin(ob.ang);let u0=1e9,u1=-1e9,v0=1e9,v1=-1e9;
+  for(const p of b.pts){const u=(p[0]-b.cx)*ca+(p[1]-b.cz)*sa,v=-(p[0]-b.cx)*sa+(p[1]-b.cz)*ca;u0=Math.min(u0,u);u1=Math.max(u1,u);v0=Math.min(v0,v);v1=Math.max(v1,v)}
+  const flip=sa<0;   // +u 쪽이 북쪽(-z)이면 뒤집음
+  return b.lm={ca,sa,u0,u1,v0,v1,L:Math.max(1,u1-u0),flip}}
+function lmUV(b,x,z){const f=lmFrame(b);return[(x-b.cx)*f.ca+(z-b.cz)*f.sa,-(x-b.cx)*f.sa+(z-b.cz)*f.ca]}
+function lmS(b,x,z){const f=lmFrame(b),u=lmUV(b,x,z)[0];return f.flip?(f.u1-u)/f.L:(u-f.u0)/f.L}
+function lmXZ(b,s,v){const f=lmFrame(b),u=f.flip?f.u1-s*f.L:f.u0+s*f.L;return[b.cx+u*f.ca-v*f.sa,b.cz+u*f.sa+v*f.ca]}
+function lmZone(s){return s<0.24?'A':s<0.58?'B':'C'}
+function bossSpotOf(b){if(b.custom==='map'){const [x,z]=lmXZ(b,0.12,0);return{x,z}}return{x:b.cx,z:b.cz}}
+// 5×7 글자
+const PIXFONT={M:['10001','11011','10101','10101','10001','10001','10001'],A:['01110','10001','10001','11111','10001','10001','10001'],P:['11110','10001','10001','11110','10000','10000','10000'],
+  G:['01111','10000','10000','10111','10001','10001','01111'],R:['11110','10001','10001','11110','10100','10010','10001'],O:['01110','10001','10001','10001','10001','10001','01110'],U:['10001','10001','10001','10001','10001','10001','01110'],' ':['00000','00000','00000','00000','00000','00000','00000']};
+function pixText(m,text,cx,cy,cz,rx,rz,nx,nz,px,col){const n=text.length*6-1,x0=-n*px/2,rot=Math.atan2(-rz,rx);
+  for(let i=0;i<text.length;i++){const g=PIXFONT[text[i]]||PIXFONT[' '];for(let r=0;r<7;r++)for(let c=0;c<5;c++){if(g[r][c]!=='1')continue;
+    const o=x0+(i*6+c)*px+px/2,y=cy+(3-r)*px;pushShape(m,CUBE,cx+rx*o+nx*px*0.3,y,cz+rz*o+nz*px*0.3,px*0.96,px*0.96,px*0.6,rot,col,0)}}}
+// 세로 루버를 선분 a→e 위에 늘어놓기 (n: 바깥 방향)
+function fins(m,a,e,n,y0,y1,step,off,dep,w,col){const L=Math.hypot(e[0]-a[0],e[1]-a[1]);if(L<0.3)return;const dx=(e[0]-a[0])/L,dz=(e[1]-a[1])/L,rot=Math.atan2(-dz,dx);
+  for(let t=(off%step)+step*0.25;t<L;t+=step){const x=a[0]+dx*t+n[0]*dep/2,z=a[1]+dz*t+n[1]*dep/2;pushShape(m,CUBE,x,(y0+y1)/2,z,w,y1-y0,dep,rot,col,0)}}
+function buildMapMesh(b){
+  const d=b.det,m=d.mb;m.reset();const base=b.base,R=mulberry(b.id%9973+5);const F=d.F;
+  let topF=-1;for(let f=F-1;f>=0;f--)if(d.fl[f]){topF=f;break}
+  const t=detTargets(d);const fr=lmFrame(b);
+  const off=(p,n,k)=>[p[0]+n[0]*k,p[1]+n[1]*k];
+  for(let f=0;f<F;f++){
+    if(!d.fl[f]){const y=base+t[f]+0.6;m.grow(b.tris.length);for(let q=0;q<b.tris.length;q+=3)for(let k=0;k<3;k++){const P=b.pts[b.tris[q+k]];m.v(P[0],y,P[1],0,1,0,...RUBBLE)}continue}
+    const y0=base+d.fy[f],y1=y0+d.fh,ys=y1-0.45,top=f===F-1;
+    let intact=true;for(let j=0;j<d.M;j++)if(!d.panel[f*d.M+j]){intact=false;break}
+    if(intact)for(let j=0;j<d.C;j++)if(d.hp[f*d.C+j]<d.hp0){intact=false;break}
+    m.grow(d.M*40);
+    for(let j=0;j<d.M;j++){const a=d.nodes[j],e=d.nodes[(j+1)%d.M],n=d.edgeN[j];const N3=[n[0],0,n[1]];
+      // 층마다 흰 슬래브 띠
+      quad(m,[a[0],ys,a[1]],[e[0],ys,e[1]],[e[0],y1,e[1]],[a[0],y1,a[1]],N3,LM_WHITE,-1,-1,0);
+      if(!d.panel[f*d.M+j])continue;
+      const mx=(a[0]+e[0])/2,mz=(a[1]+e[1])/2,s=lmS(b,mx,mz),zone=lmZone(s);
+      const L=Math.hypot(e[0]-a[0],e[1]-a[1]),longSide=Math.abs(((e[0]-a[0])*fr.ca+(e[1]-a[1])*fr.sa)/(L||1))>0.7;
+      if(zone==='B'){
+        if(top){// 9층 테라스: 안쪽으로 물러난 유리벽 + 낮은 유리 난간
+          const ia=off(a,n,-2.6),ie=off(e,n,-2.6);quad(m,[ia[0],y0,ia[1]],[ie[0],y0,ie[1]],[ie[0],ys,ie[1]],[ia[0],ys,ia[1]],N3,LM_GLASS2,-1,-1,0);
+          quad(m,[a[0],y0,a[1]],[e[0],y0,e[1]],[e[0],y0+1.1,e[1]],[a[0],y0+1.1,a[1]],N3,[0.72,0.82,0.88],-1,-1,0);continue}
+        quad(m,[a[0],y0,a[1]],[e[0],y0,e[1]],[e[0],ys,e[1]],[a[0],ys,a[1]],N3,LM_GLASS,-1,-1,0);
+        // 사무실 조명 줄 · 멀리언
+        const dx=(e[0]-a[0])/L,dz=(e[1]-a[1])/L,rot=Math.atan2(-dz,dx);
+        for(let k=0.9;k<L;k+=1.8){const x=a[0]+dx*k-n[0]*0.35,z=a[1]+dz*k-n[1]*0.35;pushShape(m,CUBE,x,ys-0.15,z,1.1,0.06,0.12,rot,[1,1,0.96],1)}
+        for(let k=1.5;k<L;k+=1.5)pushShape(m,CUBE,a[0]+dx*k+n[0]*0.04,(y0+ys)/2,a[1]+dz*k+n[1]*0.04,0.07,ys-y0,0.08,rot,[0.85,0.88,0.9],0);
+        if(f<=2)fins(m,a,e,n,y0,y1,1.25,f%2*0.6,0.55,0.15,LM_FIN);
+      }else{
+        // A(북쪽 매스)는 흰 벽, C(남쪽 타워)는 유리 뒤에 루버
+        let wall=zone==='A'?LM_WHITE:LM_GLASS;
+        const win=zone==='A'&&longSide&&(f===F-2||f===F-3);   // 7·8층 큰 창 (사진의 MAP GROUP 아래)
+        if(win)wall=LM_DARK;
+        quad(m,[a[0],y0,a[1]],[e[0],y0,e[1]],[e[0],ys,e[1]],[a[0],ys,a[1]],N3,wall,-1,-1,0);
+        if(!win)fins(m,a,e,n,y0+0.05,y1,0.85,(f%2)*0.42,0.55,0.16,LM_FIN);
+      }
+    }
+    // 슬래브 윗면 / 아랫면
+    const roof=f===topF&&topF===F-1?b.roof:CONC;m.grow(b.tris.length*2);
+    for(let q=0;q<b.tris.length;q+=3){for(let k=0;k<3;k++){const P=b.pts[b.tris[q+k]];m.v(P[0],y1,P[1],0,1,0,...roof)}
+      if(!intact)for(let k=0;k<3;k++){const P=b.pts[b.tris[q+k]];m.v(P[0],ys,P[1],0,-1,0,...CONC_D)}}
+    if(f===0&&!intact)for(let q=0;q<b.tris.length;q+=3)for(let k=0;k<3;k++){const P=b.pts[b.tris[q+k]];m.v(P[0],y0+0.05,P[1],0,1,0,...CONC_D)}
+    if(!intact){for(let j=0;j<d.C;j++){const hp=d.hp[f*d.C+j],[x,z]=colPos(d,j);
+      if(hp>0){const sx=1-hp/d.hp0;const cc=[CONC[0]+(0.85-CONC[0])*sx,CONC[1]+(0.40-CONC[1])*sx,CONC[2]+(0.25-CONC[2])*sx];prismCol(m,x,z,y0,ys,0.8,cc)}
+      else{prismCol(m,x,z,y0,y0+0.5,0.8,CONC_D);rebars(m,x,z,y0+0.5,R);prismCol(m,x,z,ys-0.4,ys,0.8,CONC_D)}}}
+    if(f===topF&&topF<F-1){for(let j=0;j<d.C;j++)if(d.hp[f*d.C+j]>0){const [x,z]=colPos(d,j);rebars(m,x,z,y1,R)}}
+  }
+  // 9층이 살아 있을 때만: 남쪽 타워 루버 스크린 · 지그재그 계단 · 글자 · 테라스 정원
+  if(topF===F-1){const roofY=base+d.fy[F-1]+d.fh,f9=F-1;
+    for(let j=0;j<d.M;j++){if(!d.panel[f9*d.M+j])continue;const a=d.nodes[j],e=d.nodes[(j+1)%d.M],n=d.edgeN[j];if(lmZone(lmS(b,(a[0]+e[0])/2,(a[1]+e[1])/2))!=='C')continue;
+      fins(m,a,e,n,roofY,roofY+6,0.85,0,0.55,0.16,LM_FIN);
+      const dx=e[0]-a[0],dz=e[1]-a[1],L=Math.hypot(dx,dz);pushShape(m,CUBE,(a[0]+e[0])/2+n[0]*0.25,roofY+6,(a[1]+e[1])/2+n[1]*0.25,L,0.25,0.5,Math.atan2(-dz,dx),LM_FIN,0)}
+    // 남쪽 끝면: 초록 점선 지그재그 (외부 계단)
+    const sv=fr.v1-fr.v0,endN=fr.flip?[-fr.ca,-fr.sa]:[fr.ca,fr.sa],ex=lmXZ(b,1,0);
+    for(let f=0;f<F;f++){if(!d.fl[f])continue;const y0=base+d.fy[f];
+      for(let k=0;k<10;k++){const u=k/9,v=fr.v0+sv*(0.08+0.84*(f%2?1-u:u)),y=y0+0.5+u*(d.fh-1.0);
+        const [x,z]=lmXZ(b,1,v);pushShape(m,CUBE,x+endN[0]*0.85,y,z+endN[1]*0.85,0.6,0.24,0.6,Math.atan2(endN[0],endN[1]),LM_GREEN,0)}}
+    // MAP GROUP (북쪽 매스 양쪽 긴 면, 9층 창 위)
+    for(const side of [1,-1]){const v=side>0?fr.v1:fr.v0,nn=[-fr.sa*side,fr.ca*side],[x,z]=lmXZ(b,0.12,v);const r=[nn[1],-nn[0]];
+      const px=Math.min(0.24,(0.2*fr.L)/53);pixText(m,'MAP GROUP',x+nn[0]*0.75,base+d.fy[f9]+d.fh*0.5,z+nn[1]*0.6,r[0],r[1],nn[0],nn[1],px,LM_GREEN)}
+    // 남쪽 타워 꼭대기에도 작은 MAP
+    {const [x,z]=lmXZ(b,1,0);pixText(m,'MAP',x+endN[0]*0.8,roofY+3,z+endN[1]*0.8,endN[1],-endN[0],endN[0],endN[1],0.32,LM_GREEN)}
+    // 9층 테라스 정원 (가운데 유리 부분)
+    const y9=base+d.fy[f9];for(let k=0;k<6;k++){const s=0.27+k*0.055,v=(k%2?0.3:-0.3)*sv*0.6,[x,z]=lmXZ(b,s,v),sz=2.2+R()*0.8;
+      pushShape(m,CUBE,x,y9+sz*0.4,z,sz*0.12,sz*0.8,sz*0.12,0,[0.38,0.29,0.21],0,1);pushShape(m,ICO,x,y9+sz*1.1,z,sz*0.6,sz*0.75,sz*0.6,x,[0.24,0.45,0.22],0,1)}}
+  m.upload();
+}
+
 function drawDets(){for(const b of DETS)if(b.alive&&b.det)b.det.mb.draw()}
 
 // ---------- 되돌리기용 ----------
@@ -1672,7 +1772,7 @@ async function loadFirm(f){
   WORLD.fake=lat==null;let n=await loadTile(0,0);
   let fake=WORLD.fake;
   if(!fake&&n<3){resetWorld();WORLD.fake=true;fake=true;await loadTile(0,0);toast(lat==null?'주소 위치를 찾지 못해 가상 단지로 시작해요. 다른 회사 → 좌표 입력으로 다시 시도해보세요.':'지도 데이터를 불러오지 못해 가상 단지로 시작해요.',4500);$('#firmAddr').textContent=(f.addr||'')+' · 가상 단지'}
-  chooseHQ();buildNeighborhood();stage={done:false,t0:0};
+  chooseHQ();buildNeighborhood();applyLandmarks();stage={done:false,t0:0};
   D.used.fill(0);D.rest.fill(0);FALL=[];beam=null;shock=null;quake=null;score=0;UNDO.length=0;$('#btnUndo').disabled=true;$('#btnReset').disabled=true;
   bldDirty=true;rubDirty=true;treeDirty=true;groundDirty=true;makeLabels();
   bossSpawn();BASE=takeState();updateHUD();
@@ -1791,7 +1891,7 @@ function buildSectionModel(b,firm,others){
   others=others||[];
   const fl=parseFloor(firm.addr);
   let {W,D}=footprintOBB(b.pts);W=clamp(W,14,80);D=clamp(D,11,46);
-  let N=Math.round((b.h0-1.2)/FLOOR_H);if(fl>0)N=Math.max(N,fl+1);for(const o of others)if(o.fl>0)N=Math.max(N,o.fl);N=clamp(N,2,45);
+  let N=Math.round((b.h0-1.2)/FLOOR_H);if(b.customF)N=b.customF;if(fl>0)N=Math.max(N,fl+1);for(const o of others)if(o.fl>0)N=Math.max(N,o.fl);N=clamp(N,2,45);
   const nb=fl<0?Math.max(1,-fl):(N>=6?2:1);
   const R=mulberry(b.id%100000+7);
   const piloti=b.style===1&&N>=4&&R()<0.6;   // 아파트·다세대형은 1층 필로티 확률
@@ -2431,7 +2531,7 @@ const SUIT=[0.16,0.19,0.30],SUIT_D=[0.11,0.13,0.21],SKIN=[0.95,0.78,0.62],HAIR=[
 function bTop(b){return b.base+Math.max(0,b.h)}
 function bossReset(){BOSS=null;CAMGO=null;drawBossUI()}
 function bossSpawn(){const b=B.find(x=>x.hq&&x.alive);if(!b){BOSS=null;return}
-  BOSS={b,home:b,flees:0,state:'idle',t:0,sayT:2.5,lastSay:0,lastTool:0,text:'',textT:0,stun:0,flinch:0,x:b.cx,z:b.cz,y:bTop(b),visited:new Set([b]),firm:CUR?CUR.name:'',yaw:0}}
+  const sp0=bossSpotOf(b);BOSS={b,home:b,flees:0,state:'idle',t:0,sayT:2.5,lastSay:0,lastTool:0,text:'',textT:0,stun:0,flinch:0,x:sp0.x,z:sp0.z,y:bTop(b),visited:new Set([b]),firm:CUR?CUR.name:'',yaw:0}}
 function bossFill(s){return s.replace(/\{firm\}/g,BOSS?BOSS.firm:'')}
 function bossSay(text,prio){if(!BOSS||!text)return;const now=performance.now();if((prio||0)<1&&now-BOSS.lastSay<2600)return;if((prio||0)<2&&BOSS.state==='caught')return;
   BOSS.text=bossFill(text);BOSS.textT=3.4;BOSS.lastSay=now}
@@ -2476,7 +2576,7 @@ function bossUpdate(dt){if(!BOSS)return;const S=bossScale();
   if(MODE!=='city')return;
   const b=BOSS.b;
   if(BOSS.state==='idle'){
-    BOSS.x+=(b.cx-BOSS.x)*Math.min(1,dt*3);BOSS.z+=(b.cz-BOSS.z)*Math.min(1,dt*3);
+    const sp=bossSpotOf(b);BOSS.x+=(sp.x-BOSS.x)*Math.min(1,dt*3);BOSS.z+=(sp.z-BOSS.z)*Math.min(1,dt*3);
     const ty=b.alive&&!b.lifted?bTop(b):groundAt(BOSS.x,BOSS.z);BOSS.y=BOSS.y>ty?Math.max(ty,BOSS.y-25*dt):ty;
     let low=false;if(b.det){let a=0;for(let f=0;f<b.det.F;f++)a+=b.det.fl[f];low=a/b.det.F<0.35}else low=b.h<b.h0*0.35;
     if(!b.alive||b.lifted||low){bossFlee();return}
