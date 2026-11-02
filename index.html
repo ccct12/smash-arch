@@ -3,10 +3,30 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
-<title>SMASH ARCH</title>
-<meta name="description" content="전국 건축사사무소 사옥을 부수고 구별로 정복하는 비공식 팬 게임">
-<meta property="og:title" content="SMASH ARCH — 건축사사무소 부수기">
-<meta property="og:description" content="우리 회사 사옥을 부수고 서울 25개 구를 정복해보세요">
+<title>SMASH ARCH — 건축사무소 사옥 부수기 게임 | 전국 건축사사무소 9천 곳</title>
+<meta name="description" content="전국 건축사사무소 9천여 곳의 사옥을 실제 지도 위 3D로 부수는 무료 웹 게임. 불도저·쇠공·다이너마이트, 설계팀 무기 MOVE·EXTRUDE·TRIM, 단면 모드로 우리 층만 정밀 철거. 건축하는 사람들의 마감 스트레스 해소용 비공식 팬 게임.">
+<meta name="keywords" content="건축사무소 게임, 사옥 부수기, 건물 부수기 게임, 건축 게임, 설계사무소, 건축사사무소, 스트레스 해소 게임, 웹 게임, SMASH ARCH">
+<meta name="robots" content="index,follow">
+<!-- 사이트 주소를 옮기면 아래 주소 4곳(canonical, og:url, og:image, JSON-LD url)과 sitemap.xml 을 같이 바꿔주세요 -->
+<link rel="canonical" href="https://ccct12.github.io/smash-arch/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="SMASH ARCH">
+<meta property="og:locale" content="ko_KR">
+<meta property="og:url" content="https://ccct12.github.io/smash-arch/">
+<meta property="og:title" content="SMASH ARCH — 건축사무소 사옥 부수기">
+<meta property="og:description" content="전국 건축사사무소 9천 곳, 우리 회사 사옥을 3D 지도에서 부숴보세요. 불도저·다이너마이트·TRIM·단면 철거. 무료, 로그인 없음.">
+<meta property="og:image" content="https://ccct12.github.io/smash-arch/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="SMASH ARCH 게임 화면 — 도시 위 사옥 옥상의 사장님">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="SMASH ARCH — 건축사무소 사옥 부수기">
+<meta name="twitter:description" content="전국 건축사사무소 9천 곳, 우리 회사 사옥을 3D 지도에서 부숴보세요.">
+<meta name="twitter:image" content="https://ccct12.github.io/smash-arch/og.jpg">
+<!-- 검색 등록 인증: 구글 서치 콘솔 / 네이버 서치어드바이저에서 받은 한 줄로 아래 주석을 바꿔 넣으세요 -->
+<!-- <meta name="google-site-verification" content="여기에_구글_코드"> -->
+<!-- <meta name="naver-site-verification" content="여기에_네이버_코드"> -->
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"VideoGame","name":"SMASH ARCH","alternateName":"건축사무소 사옥 부수기","url":"https://ccct12.github.io/smash-arch/","image":"https://ccct12.github.io/smash-arch/og.jpg","description":"전국 건축사사무소 사옥을 실제 지도 위 3D로 부수는 무료 웹 게임","genre":["Action","Casual","Simulation"],"gamePlatform":"Web browser","applicationCategory":"Game","operatingSystem":"Any","inLanguage":"ko","isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"KRW"}}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
 <style>
@@ -121,6 +141,7 @@ table.rep td{text-align:right;padding:7px 6px;border-bottom:1px solid #ddd}
 #bossBox{font-size:11.5px;padding:3px 9px;color:#fff;background:#8f1d16!important}
 #gest.dozer line{stroke:#ff9a1a;stroke-width:6;stroke-dasharray:4 5;filter:drop-shadow(0 0 3px #000)}
 #gest circle{fill:#fff;stroke:#111;stroke-width:2}
+.seo-intro{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 #flash{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:6}
 #toast{position:fixed;left:50%;top:76px;transform:translateX(-50%);z-index:9;background:var(--panel);border:1px solid #000;border-radius:6px;padding:8px 14px;font-size:13px;opacity:0;transition:opacity .25s;pointer-events:none;max-width:calc(100vw - 24px);text-align:center}
 #toast.show{opacity:1}
@@ -191,6 +212,18 @@ table.rep td{text-align:right;padding:7px 6px;border-bottom:1px solid #ddd}
 <canvas id="gl"></canvas>
 <div id="labels"></div>
 <div id="marks"></div>
+<section class="seo-intro">
+  <h1>SMASH ARCH — 건축사무소 사옥 부수기 게임</h1>
+  <p>전국 건축사사무소 9천여 곳 중 한 곳을 고르면 그 사무소 주변의 실제 지도(OpenStreetMap)가 3D로 만들어지고, 사옥과 주변 건물을 마음껏 부술 수 있는 무료 웹 게임입니다. 설치와 로그인 없이 브라우저에서 바로 플레이할 수 있습니다.</p>
+  <h2>시공팀 무기</h2>
+  <p>철거반 인부떼, 불도저, 타워크레인 쇠공, 레미콘 과타설, 다이너마이트 연쇄 발파, 철근 빼기.</p>
+  <h2>설계팀 무기</h2>
+  <p>MOVE로 건물 던지기, EXTRUDE로 무한 증축 후 붕괴, TRIM으로 건물 자르기, 심의 보류 도장.</p>
+  <h2>단면 모드와 사장님</h2>
+  <p>단면 모드에서는 사옥을 잘라 우리 층만 정밀 철거할 수 있고, 기둥이 부러지면 층이 주저앉는 연쇄 붕괴가 일어납니다. 옥상의 사장님은 부술 때마다 한마디씩 하고, 사옥이 무너지면 근처 건축사무소로 도망칩니다.</p>
+  <p>철거 공사 일보, 주간 랭킹, 서울 25개 구 정복 지도를 제공합니다. 실제 회사·인물과 무관한 비공식 팬 게임입니다.</p>
+</section>
+<noscript><p style="padding:24px;font:16px sans-serif">SMASH ARCH는 자바스크립트와 WebGL이 필요한 3D 웹 게임입니다. 브라우저 설정에서 자바스크립트를 켜주세요.</p></noscript>
 <div id="flash"></div>
 <svg id="gest" style="display:none"><line x1="0" y1="0" x2="0" y2="0"/><circle r="6" cx="0" cy="0"/></svg>
 <div id="bossUI" style="display:none"><div class="bubble"></div><div class="tag">사장님</div></div>
