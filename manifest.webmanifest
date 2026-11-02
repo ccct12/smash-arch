@@ -1,0 +1,17 @@
+{
+  "name": "SMASH ARCH — 건축사무소 사옥 부수기",
+  "short_name": "SMASH ARCH",
+  "description": "전국 건축사사무소 사옥을 3D 지도에서 부수는 웹 게임",
+  "lang": "ko",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#17191c",
+  "theme_color": "#17191c",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

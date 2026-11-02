@@ -27,6 +27,15 @@
 <!-- <meta name="google-site-verification" content="여기에_구글_코드"> -->
 <!-- <meta name="naver-site-verification" content="여기에_네이버_코드"> -->
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"VideoGame","name":"SMASH ARCH","alternateName":"건축사무소 사옥 부수기","url":"https://ccct12.github.io/smash-arch/","image":"https://ccct12.github.io/smash-arch/og.jpg","description":"전국 건축사사무소 사옥을 실제 지도 위 3D로 부수는 무료 웹 게임","genre":["Action","Casual","Simulation"],"gamePlatform":"Web browser","applicationCategory":"Game","operatingSystem":"Any","inLanguage":"ko","isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"KRW"}}</script>
+<!-- 휴대폰: 홈 화면에 추가하면 주소창 없이 가로 전체 화면으로 실행 -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#17191c">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="SMASH ARCH">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
 <style>
@@ -68,6 +77,7 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}
 .sep{width:1px;min-width:1px;background:var(--line);margin:4px 3px}
 .tool.sm{width:54px;min-width:54px}
 .tool:disabled{opacity:.4;cursor:default}
+.tool[data-w="4"]{font-size:9.5px;letter-spacing:-0.3px}
 #credit{position:fixed;left:50%;bottom:calc(2px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:4;font-size:10.5px;color:#cfd2d5;background:rgba(23,25,28,.82);padding:2px 8px;border-radius:4px;white-space:nowrap;max-width:calc(100vw - 16px);overflow:hidden;text-overflow:ellipsis}
 #credit a{color:#cfd2d5}
 #labels{position:fixed;inset:0;pointer-events:none;z-index:3;overflow:hidden}
@@ -148,7 +158,7 @@ table.rep td{text-align:right;padding:7px 6px;border-bottom:1px solid #ddd}
 #hint{position:fixed;left:50%;bottom:calc(98px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:4;font-size:12px;color:#222;background:rgba(255,255,255,.85);padding:3px 10px;border-radius:12px;white-space:nowrap;pointer-events:none}
 .modal{position:fixed;inset:0;background:rgba(10,12,14,.55);z-index:20;display:none;align-items:center;justify-content:center;padding:16px}
 .modal.open{display:flex}
-.card{background:var(--panel);border:1px solid #000;border-radius:10px;padding:18px;width:min(460px,100%);max-height:calc(100vh - 32px);overflow:auto;box-shadow:0 6px 0 rgba(0,0,0,.4)}
+.card{background:var(--panel);border:1px solid #000;border-radius:10px;padding:18px;width:min(460px,100%);max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflow:auto;touch-action:pan-y;-webkit-overflow-scrolling:touch;box-shadow:0 6px 0 rgba(0,0,0,.4)}
 .card h2{font-family:"Black Han Sans",sans-serif;font-size:22px;margin-bottom:4px;font-weight:400}
 .card p.sub{color:var(--muted);font-size:12.5px;margin-bottom:14px}
 .firm{display:flex;flex-direction:column;align-items:flex-start;width:100%;text-align:left;padding:10px 12px;border-radius:7px;background:var(--panel2);border:1px solid var(--line);margin-bottom:7px}
@@ -206,6 +216,122 @@ table.rep td{text-align:right;padding:7px 6px;border-bottom:1px solid #ddd}
 #boot div{background:var(--panel);color:var(--ink);padding:16px 22px;border-radius:8px;font-size:14px;text-align:center;line-height:1.6}
 #boot b{font-family:"Black Han Sans",sans-serif;font-size:26px;font-weight:400}#boot b span{color:var(--accent)}
 @media (max-width:480px){.cq-map{grid-template-rows:repeat(5,44px)}.cq-tile b{font-size:11px}.cq-n{width:84px}.cq-row em{min-width:80px}}
+
+/* ---- 후원 버튼 (설정 · 철거 일보 아래, 눈에 덜 띄게) ---- */
+a.donate{display:block;margin-top:12px;padding:8px 10px;border-radius:6px;border:1px dashed var(--line);color:var(--muted);font-size:12.5px;text-align:center;text-decoration:none}
+a.donate:hover{color:var(--ink);border-color:var(--accent)}
+a.donate small{font-size:11px;opacity:.8}
+.report a.donate{border-color:#ccc;color:#666}
+/* ---- 발주처 ---- */
+#clientUI{position:fixed;z-index:4;pointer-events:none;transform:translate(-18%,-100%);display:flex;flex-direction:column;align-items:center;gap:6px}
+#clientUI .bubble{position:relative;max-width:240px;background:#fff;color:#111;font-weight:800;font-size:13.5px;line-height:1.35;padding:7px 12px;border-radius:12px;border:2px solid #d8261b;box-shadow:0 3px 10px rgba(0,0,0,.35);text-align:center;word-break:keep-all}
+#clientUI .bubble:after{content:'';position:absolute;left:50%;bottom:-8px;transform:translateX(-50%);border:7px solid transparent;border-top-color:#d8261b;border-bottom:0}
+#clientUI .tag{background:#f6c6d2;color:#5a0d24;font-family:"Black Han Sans",sans-serif;font-size:15px;padding:2px 12px;border-radius:6px;border:2px solid #5a0d24;letter-spacing:1px}
+#clientUI .tag.warn{background:#d8261b;color:#fff;border-color:#fff;animation:pulse .5s infinite}
+#clientBox{font-size:11.5px;padding:3px 9px;color:#fff;background:#5a0d24!important;max-width:46vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ---- 간단 화면 (H 키 · UI 버튼 · 설정) : 필요한 것만 작게 ---- */
+body.mini #hudTop,body.mini #rank,body.mini #nbBox,body.mini #tileBox,body.mini #bossBox,body.mini #btnReport,
+body.mini .glbl,body.mini .tool .num,body.mini #btnRank,body.mini #btnConq,body.mini #btnShare,body.mini #brand b,body.mini #secHint,body.mini #secInfo .k{display:none!important}
+body.mini #brand{padding:4px 6px;gap:5px}
+body.mini #toolbar .grp{padding-top:0;gap:3px}
+body.mini .tool,body.mini .tool.sm{width:40px;min-width:40px;height:40px;font-size:0!important;gap:0}
+body.mini .tool svg{width:20px;height:20px}
+body.mini #score{font-size:16px;padding:2px 8px}
+body.mini #score small{display:none}
+body.mini #credit{font-size:8px;opacity:.55}
+body.mini #hint{opacity:0;transition:opacity .35s}
+body.mini #hint.flash{opacity:1}
+body.mini #clientBox{font-size:10px;padding:2px 7px}
+body.mini #btnMini{background:var(--accent);border-color:#ff8a5a}
+
+/* ---- 휴대폰 공통 ---- */
+#toolbar{touch-action:pan-x}
+#btnFS{display:none}body.canfs #btnFS{display:inline-block}
+@media (pointer:coarse){
+  .lbl.pin{pointer-events:none}                 /* 손가락으로 회전하다 핀이 눌려 단면으로 들어가는 것 방지 → 핀은 두 번 탭 */
+  .lbl.pin.armed{background:var(--accent);border-color:#111;z-index:3}
+}
+
+/* ---- 휴대폰 가로 (터치 화면 · 높이 500px 이하) ---- */
+@media (pointer:coarse) and (max-height:500px){
+  #brand{left:calc(6px + env(safe-area-inset-left));top:6px;padding:3px 5px 3px 8px;gap:5px}
+  #brand b{font-size:13px;letter-spacing:.5px}
+  #brand .btn-s{padding:2px 7px;font-size:11px}
+  #hudTop{top:6px;padding:4px 10px;min-width:0;max-width:36vw;gap:10px}
+  #firmName{font-size:11.5px;max-width:24vw}
+  #firmAddr,#hudTop .k{display:none}
+  #hudTop .v{font-size:11.5px}
+  body.sec #hudTop{display:none}
+  #scoreBox{top:6px;right:calc(6px + env(safe-area-inset-right));gap:3px}
+  #rankLetter{font-size:24px;-webkit-text-stroke:1.5px #1a1a1a;text-shadow:2px 2px 0 #1a1a1a}
+  #rankTitle{display:none}
+  #rankBar{width:60px;height:4px}
+  #score{font-size:15px;padding:2px 8px}
+  #score small{font-size:9px;margin-right:4px}
+  #nbBox,#tileBox{display:none!important}
+  #bossBox,#btnReport,#clientBox{font-size:10px;padding:2px 7px}
+  #clientUI .bubble{max-width:190px;font-size:11.5px;padding:5px 9px}
+  #clientUI .tag{font-size:12px;padding:1px 9px}
+  #toolbar{left:calc(50% - 36px);bottom:calc(4px + env(safe-area-inset-bottom));padding:4px;gap:3px;max-width:calc(100vw - 86px - env(safe-area-inset-left) - env(safe-area-inset-right))}
+  #toolbar .grp{padding-top:0;gap:3px}
+  .glbl,.tool .num{display:none}
+  .sep{margin:3px 2px}
+  .tool,.tool.sm,.tool[data-w="4"]{width:44px;min-width:44px;height:40px;font-size:8.5px;gap:1px;letter-spacing:-.3px;border-radius:5px}
+  .tool svg{width:17px;height:17px}
+  #ult{right:calc(8px + env(safe-area-inset-right));bottom:calc(3px + env(safe-area-inset-bottom));width:58px;height:58px;font-size:10.5px}
+  #credit{left:calc(6px + env(safe-area-inset-left));top:40px;bottom:auto!important;transform:none;font-size:8.5px;padding:1px 5px;max-width:34vw;opacity:.85}
+  #hint{font-size:10.5px;padding:2px 9px;max-width:calc(100vw - 100px);opacity:0;transition:opacity .35s}
+  #hint.flash{opacity:1}
+  #toast,body.sec #toast{top:42px;font-size:12px;padding:6px 10px;max-width:60vw}
+  body.sec #toast{top:70px}
+  #secPanel{top:6px;padding:3px 10px;max-width:48vw}
+  #secPanel .v{font-size:12px}
+  #secPanel .k{font-size:9.5px}
+  #secHint,#secInfo .k{display:none}
+  #secPanel .btn-s{font-size:11px;padding:2px 8px;margin-top:3px!important}
+  #cmdbar{font-size:11px;padding:4px 8px}
+  #btnDet{padding:6px 16px;font-size:14px}
+  .lbl{font-size:10px;padding:1px 4px}
+  .lbl.hq{font-size:11px;padding:2px 6px}
+  .lbl.pin{font-size:9.5px}
+  #bossUI .bubble{max-width:200px;font-size:12px;padding:6px 10px}
+  #bossUI .tag{font-size:13px;padding:1px 10px}
+  #bossArrow{font-size:11px}
+  .mark{font-size:34px;border-width:4px}
+  .boom{font-size:52px}
+  .count{font-size:48px}
+  .modal{padding:6px calc(6px + env(safe-area-inset-right)) 6px calc(6px + env(safe-area-inset-left))}
+  .card{padding:12px 14px;max-height:calc(100vh - 12px);max-height:calc(100dvh - 12px)}
+  .card h2{font-size:18px}
+  .card p.sub{margin-bottom:8px;font-size:11.5px}
+  #mRank .card,.card.conq,#mFirm .card,#mSet .card,#mReport .card{width:min(760px,100%)}
+  #rankBody{display:grid;grid-template-rows:auto auto;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:0 18px}
+  ol.rk{margin:2px 0 6px}
+  ol.rk li{padding:4px 6px;font-size:12px}
+  .cq-map{grid-template-rows:repeat(5,34px);margin:2px 0 8px}
+  .cq-tile b{font-size:11px}.cq-tile small{font-size:9.5px}
+  #searchRes{max-height:38vh}
+  .card label.opt{padding:6px 0;font-size:13px}
+  #mTut .tut{max-width:560px}
+  #mTut #tutText{margin:4px 0 10px!important;font-size:13px!important;line-height:1.6!important}
+}
+
+/* ---- 세로로 들면 '가로로 돌려주세요' (휴대폰만) ---- */
+#rot,#inapp{position:fixed;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:var(--panel);color:var(--ink);text-align:center;padding:24px;line-height:1.6}
+#rot{z-index:60}#inapp{z-index:70}
+#rot svg{width:76px;height:76px;color:var(--accent);animation:rotph 1.8s ease-in-out infinite}
+@keyframes rotph{0%,25%{transform:rotate(0)}60%,100%{transform:rotate(-90deg)}}
+#rot b,#inapp b{font-family:"Black Han Sans",sans-serif;font-size:24px;font-weight:400}
+#rot p,#inapp p{font-size:13.5px;color:#c9cdd1;max-width:340px}
+#rot .btn-p,#inapp .btn-p{font-size:15px;padding:11px 22px}
+#rot .ios,#inapp .ios,#inapp .and{display:none}
+body.ios #rot .ios,body.ios #inapp .ios,body.android #inapp .and{display:block}
+@media (pointer:coarse) and (orientation:portrait) and (max-width:600px){#rot{display:flex}}
+body.inapp #inapp{display:flex}
+#iosTip{position:fixed;left:50%;bottom:calc(60px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:8;display:none;align-items:center;gap:8px;background:#fff;color:#111;border-radius:10px;padding:7px 8px 7px 12px;font-size:12px;font-weight:700;box-shadow:0 3px 10px rgba(0,0,0,.35);white-space:nowrap}
+#iosTip button{font-size:16px;line-height:1;padding:0 4px;color:#666}
+body.iostip #iosTip{display:flex}
 </style>
 </head>
 <body>
@@ -227,10 +353,11 @@ table.rep td{text-align:right;padding:7px 6px;border-bottom:1px solid #ddd}
 <div id="flash"></div>
 <svg id="gest" style="display:none"><line x1="0" y1="0" x2="0" y2="0"/><circle r="6" cx="0" cy="0"/></svg>
 <div id="bossUI" style="display:none"><div class="bubble"></div><div class="tag">사장님</div></div>
+<div id="clientUI" style="display:none"><div class="bubble"></div><div class="tag">발주처</div></div>
 <button id="bossArrow" style="display:none"><i></i>사장님</button>
 <button id="btnDet" style="display:none">기폭! (Space)<b>0</b></button>
 
-<div id="brand" class="panel"><b>SMASH <span>ARCH</span></b><button class="btn-s" id="btnFirm">⌂ 다른 회사</button><button class="btn-s" id="btnHelp" title="튜토리얼">?</button></div>
+<div id="brand" class="panel"><b>SMASH <span>ARCH</span></b><button class="btn-s" id="btnFirm">⌂ 다른 회사</button><button class="btn-s" id="btnHelp" title="튜토리얼">?</button><button class="btn-s" id="btnMini" title="간단 화면 (H)">UI</button><button class="btn-s" id="btnFS" title="전체 화면">⛶</button></div>
 
 <div id="hudTop" class="panel">
   <div style="min-width:0">
@@ -249,6 +376,7 @@ table.rep td{text-align:right;padding:7px 6px;border-bottom:1px solid #ddd}
   <div id="nbBox" class="panel" style="display:none"></div>
   <div id="tileBox" class="panel" style="display:none;padding:3px 9px;font-size:11.5px"></div>
   <div id="bossBox" class="panel" style="display:none"></div>
+  <div id="clientBox" class="panel" style="display:none"></div>
   <button class="btn-s" id="btnReport" style="background:var(--panel)">철거 일보</button>
 </div>
 
@@ -256,7 +384,7 @@ table.rep td{text-align:right;padding:7px 6px;border-bottom:1px solid #ddd}
 <div id="hint">클릭: 사용 · 드래그: 회전 · 우클릭 드래그: 이동 · 휠: 확대</div>
 
 <div id="toolbar" class="panel">
-  <div class="grp"><span class="glbl">시공팀</span><button class="tool on" data-w="0"><span class="num">1</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="5" r="1.6"/><path d="M6 7v6M6 13l-2 5M6 13l2 5M4 9h4"/><circle cx="13" cy="5" r="1.6"/><path d="M13 7v6M13 13l-2 5M13 13l2 5M11 9h4"/><path d="M17 4l4 4M19 6l-3 3"/></svg>철거반</button><button class="tool" data-w="1"><span class="num">2</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="8" width="9" height="6" rx="1"/><path d="M7 8V5h4v3"/><rect x="4" y="15" width="12" height="4" rx="2"/><path d="M16 11h3l1 8"/><path d="M19 10v10"/></svg>불도저</button><button class="tool" data-w="2"><span class="num">3</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 21V4M5 4h15M5 8l4-4"/><path d="M15 4l2 7" /><circle cx="17.5" cy="14" r="3" fill="currentColor"/><path d="M2 21h7"/><path d="M10 16c2 3 6 4 10 3" stroke-dasharray="2 2"/></svg>쇠공</button><button class="tool" data-w="3"><span class="num">4</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="13" width="10" height="5" rx="1"/><ellipse cx="16" cy="12" rx="5" ry="3.5"/><circle cx="5" cy="19" r="1.5"/><circle cx="16" cy="19" r="1.5"/></svg>레미콘</button><button class="tool" data-w="4" style="font-size:9.5px;letter-spacing:-0.3px"><span class="num">5</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="10" width="3.5" height="10" rx="1"/><rect x="10" y="10" width="3.5" height="10" rx="1"/><rect x="15" y="10" width="3.5" height="10" rx="1"/><path d="M12 10V6c0-2 3-2 4-4"/><path d="M18 2l1 1M20 4h1"/></svg>다이너마이트</button><button class="tool" data-w="5"><span class="num">6</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 21V9M12 21V3M17 21V9"/><path d="M10 6l2-3 2 3"/><path d="M4 21h16"/></svg>철근 빼기</button></div>
+  <div class="grp"><span class="glbl">시공팀</span><button class="tool on" data-w="0"><span class="num">1</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="5" r="1.6"/><path d="M6 7v6M6 13l-2 5M6 13l2 5M4 9h4"/><circle cx="13" cy="5" r="1.6"/><path d="M13 7v6M13 13l-2 5M13 13l2 5M11 9h4"/><path d="M17 4l4 4M19 6l-3 3"/></svg>철거반</button><button class="tool" data-w="1"><span class="num">2</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="8" width="9" height="6" rx="1"/><path d="M7 8V5h4v3"/><rect x="4" y="15" width="12" height="4" rx="2"/><path d="M16 11h3l1 8"/><path d="M19 10v10"/></svg>불도저</button><button class="tool" data-w="2"><span class="num">3</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 21V4M5 4h15M5 8l4-4"/><path d="M15 4l2 7" /><circle cx="17.5" cy="14" r="3" fill="currentColor"/><path d="M2 21h7"/><path d="M10 16c2 3 6 4 10 3" stroke-dasharray="2 2"/></svg>쇠공</button><button class="tool" data-w="3"><span class="num">4</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="13" width="10" height="5" rx="1"/><ellipse cx="16" cy="12" rx="5" ry="3.5"/><circle cx="5" cy="19" r="1.5"/><circle cx="16" cy="19" r="1.5"/></svg>레미콘</button><button class="tool" data-w="4"><span class="num">5</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="10" width="3.5" height="10" rx="1"/><rect x="10" y="10" width="3.5" height="10" rx="1"/><rect x="15" y="10" width="3.5" height="10" rx="1"/><path d="M12 10V6c0-2 3-2 4-4"/><path d="M18 2l1 1M20 4h1"/></svg>다이너마이트</button><button class="tool" data-w="5"><span class="num">6</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 21V9M12 21V3M17 21V9"/><path d="M10 6l2-3 2 3"/><path d="M4 21h16"/></svg>철근 빼기</button></div>
   <div class="sep"></div>
   <div class="grp"><span class="glbl">설계팀</span><button class="tool" data-w="6"><span class="num">7</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M2 12h20M12 2l-3 3M12 2l3 3M12 22l-3-3M12 22l3-3M2 12l3-3M2 12l3 3M22 12l-3-3M22 12l-3 3"/></svg>MOVE</button><button class="tool" data-w="7"><span class="num">8</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="7" y="13" width="10" height="8"/><path d="M7 13V5h10v8" stroke-dasharray="2 2"/><path d="M12 11V2M9 5l3-3 3 3"/></svg>EXTRUDE</button><button class="tool" data-w="8"><span class="num">9</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="4" width="14" height="17"/><path d="M2 15L22 7" stroke-dasharray="3 2"/><path d="M14 2l3 3-3 3"/></svg>TRIM</button><button class="tool" data-w="9"><span class="num">0</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 3h4v6l3 3H7l3-3z"/><rect x="5" y="13" width="14" height="4" rx="1"/><path d="M4 21h16"/></svg>심의 보류</button></div>
   <div class="sep"></div>
@@ -298,6 +426,7 @@ table.rep td{text-align:right;padding:7px 6px;border-bottom:1px solid #ddd}
   <button class="close" data-close>×</button>
   <div id="repBody"></div>
   <div class="row" style="margin-top:14px"><button class="btn-p" id="repShare" style="flex:1">결과 공유하기</button><button class="btn-s" id="repRank">랭킹 등록</button></div>
+  <a class="donate" href="https://fairy.hada.io/@smash-arch#support" target="_blank" rel="noopener">☕ 만든 사람에게 커피 한 잔 <small>(선택 · 게임은 계속 무료)</small></a>
 </div></div>
 <div id="toast"></div>
 <div id="loading"><div id="loadingMsg">불러오는 중…</div></div>
@@ -323,12 +452,85 @@ table.rep td{text-align:right;padding:7px 6px;border-bottom:1px solid #ddd}
   <label class="opt">동네 건축사무소 표시 <input type="checkbox" id="optPins" checked></label>
   <label class="opt">잔해 많이 (느리면 끄기) <input type="checkbox" id="optDebris" checked></label>
   <label class="opt">그림자 (느리면 끄기) <input type="checkbox" id="optShadows" checked></label>
+  <label class="opt">간단 화면 — 필요한 버튼만 작게 (H) <input type="checkbox" id="optMini"></label>
+  <div class="row" id="setLinks" style="margin-top:10px"><button class="btn-s" data-go="btnRank">랭킹</button><button class="btn-s" data-go="btnConq">정복</button><button class="btn-s" data-go="btnShare">공유</button><button class="btn-s" data-go="btnReport">철거 일보</button></div>
+  <a class="donate" href="https://fairy.hada.io/@smash-arch#support" target="_blank" rel="noopener">☕ 만든 사람에게 커피 한 잔 <small>(선택 · 게임은 계속 무료)</small></a>
   <button class="btn-p" id="btnPickHQ" style="width:100%;margin-top:12px">사옥 건물 직접 지정</button>
   <div class="small" style="margin-top:14px">게임 서버 주소 (Apps Script 웹앱 …/exec) · 비워두면 config.js 값 사용</div>
   <div class="row"><input id="optRankUrl" placeholder="https://script.google.com/macros/s/…/exec"><button class="btn-p" id="btnRankUrl">저장</button></div>
-  <div class="small">단축키: WASD·방향키 이동(Shift 빠르게) · 1~9·0·- 도구 · Q 필살기 · C 단면 · Ctrl+Z 되돌리기 · S 단면 보기<br>원작: SMASH HYU (hong-iron.github.io/SMASH-HYU) — 코드는 새로 작성했습니다.</div>
+  <div class="small">단축키: WASD·방향키 이동(Shift 빠르게) · 1~9·0 도구 · Q 필살기 · C 단면 · F 우리 층 확대 · H 간단 화면 · Ctrl+Z 되돌리기<br>원작: SMASH HYU (hong-iron.github.io/SMASH-HYU) — 코드는 새로 작성했습니다.</div>
 </div></div>
 
+<div id="rot">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="7" y="2.5" width="10" height="19" rx="2"/><path d="M11 18.5h2"/></svg>
+  <b>가로로 돌려주세요</b>
+  <p>SMASH ARCH는 가로 화면 전용이에요.<br>휴대폰 화면 자동 회전이 꺼져 있으면 켜주세요.</p>
+  <button class="btn-p" id="rotFS" style="display:none">전체 화면으로 시작</button>
+  <p class="ios">Safari 아래쪽 <b style="font-size:15px">공유 버튼 → 홈 화면에 추가</b>로 실행하면<br>주소창 없이 전체 화면으로 할 수 있어요.</p>
+</div>
+<div id="inapp">
+  <b>SMASH <span style="color:var(--accent)">ARCH</span></b>
+  <p id="inappMsg">앱 안의 브라우저에서는 화면이 작게 나와요.<br>크롬·사파리에서 열어주세요.</p>
+  <p class="and"><b style="font-size:15px">⋮</b> 또는 <b style="font-size:15px">⋯</b> 메뉴 → <b style="font-size:15px">다른 브라우저로 열기</b></p>
+  <p class="ios">오른쪽 아래(또는 위) <b style="font-size:15px">⋯</b> 메뉴 → <b style="font-size:15px">Safari로 열기</b></p>
+  <button class="btn-p" id="inappOpen">크롬·사파리로 열기</button>
+  <button class="btn-s" id="inappStay" style="padding:7px 14px">그냥 여기서 할게요</button>
+</div>
+<div id="iosTip">공유 버튼 → 홈 화면에 추가하면 전체 화면으로 할 수 있어요<button id="iosTipX">×</button></div>
+<script>
+/* 휴대폰: 앱 안 브라우저(카톡 등) 탈출 · 전체 화면 · 가로 고정 — game.js 와 따로 동작 */
+(function(){
+  var ua=navigator.userAgent||'',B=document.body,root=document.documentElement;
+  var isIOS=/iPhone|iPad|iPod/i.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+  var isAnd=/Android/i.test(ua);
+  var coarse=matchMedia('(pointer:coarse)').matches;
+  var standalone=navigator.standalone===true||matchMedia('(display-mode: fullscreen),(display-mode: standalone)').matches;
+  if(isIOS)B.classList.add('ios');if(isAnd)B.classList.add('android');
+  function ss(k,v){try{if(v===undefined)return sessionStorage.getItem(k);sessionStorage.setItem(k,v)}catch(e){return null}}
+  function ls(k,v){try{if(v===undefined)return localStorage.getItem(k);localStorage.setItem(k,v)}catch(e){return null}}
+
+  // 1) 앱 안 브라우저 → 크롬·사파리로
+  var kakao=/KAKAOTALK/i.test(ua),line=/\sLine\//i.test(ua);
+  var inapp=kakao||line||/NAVER\(inapp|Instagram|FBAN|FBAV|FB_IAB|DaumApps|everytimeApp|BAND\/|; wv\)/i.test(ua);
+  function openExternal(){
+    var url=location.href;
+    if(kakao){location.href='kakaotalk://web/openExternal?url='+encodeURIComponent(url);return}
+    if(line){location.href=url+(url.indexOf('?')<0?'?':'&')+'openExternalBrowser=1';return}
+    if(isAnd){location.href='intent://'+url.replace(/^https?:\/\//,'')+'#Intent;scheme=https;package=com.android.chrome;end';return}
+  }
+  if(inapp&&!ss('sa_inapp_stay')){
+    B.classList.add('inapp');
+    if(isIOS&&!kakao&&!line)document.getElementById('inappOpen').style.display='none';   // 아이폰 다른 앱은 직접 Safari로 여는 방법이 없음 → 안내만
+    if(!ss('sa_ext_tried')){ss('sa_ext_tried','1');setTimeout(openExternal,300)}           // 한 번만 자동 시도 (무한 반복 방지)
+    else document.getElementById('inappMsg').innerHTML='자동으로 열리지 않았으면 아래 방법으로 열어주세요.';
+  }
+  document.getElementById('inappOpen').onclick=openExternal;
+  document.getElementById('inappStay').onclick=function(){ss('sa_inapp_stay','1');B.classList.remove('inapp')};
+
+  // 2) 전체 화면 + 가로 고정 (안드로이드 크롬 등. 아이폰은 웹에서 불가 → 홈 화면에 추가 안내)
+  var canFS=coarse&&!isIOS&&!standalone&&!inapp&&!!(root.requestFullscreen||root.webkitRequestFullscreen);
+  function inFS(){return !!(document.fullscreenElement||document.webkitFullscreenElement)}
+  function goFS(){if(!canFS||inFS())return;
+    try{var p=root.requestFullscreen?root.requestFullscreen({navigationUI:'hide'}):root.webkitRequestFullscreen();
+      Promise.resolve(p).then(function(){if(screen.orientation&&screen.orientation.lock)return screen.orientation.lock('landscape')}).catch(function(){})}catch(e){}}
+  function upd(){B.classList.toggle('canfs',canFS&&!inFS())}
+  if(canFS){
+    document.getElementById('rotFS').style.display='';
+    document.getElementById('rotFS').onclick=goFS;
+    document.getElementById('btnFS').onclick=goFS;
+    document.addEventListener('fullscreenchange',upd);document.addEventListener('webkitfullscreenchange',upd);upd();
+    // 처음 화면을 만지면 자동으로 전체 화면 (나중에 직접 나가면 다시 강제하지 않음)
+    var first=function(e){if(e.target&&e.target.closest&&e.target.closest('#inapp,input'))return;document.removeEventListener('pointerup',first,true);goFS()};
+    document.addEventListener('pointerup',first,true);
+  }
+  // 3) 아이폰 Safari: 가로 화면에서 한 번만 '홈 화면에 추가' 안내
+  if(isIOS&&coarse&&!standalone&&!inapp&&!ls('sa_iostip')){
+    setTimeout(function(){B.classList.add('iostip')},4000);
+    document.getElementById('iosTipX').onclick=function(){ls('sa_iostip','1');B.classList.remove('iostip')};
+    setTimeout(function(){B.classList.remove('iostip')},16000);
+  }
+})();
+</script>
 <script src="config.js"></script>
 <script>
 /* 부트스트랩: 구글 시트(Apps Script 웹앱)에서 사무소 목록을 받아 FIRMDATA_BOOT 로 넘긴 뒤 game.js 실행
