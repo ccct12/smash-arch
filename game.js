@@ -694,7 +694,7 @@ function structDamage(b,x,y,z,r,power,opt){
         for(let k=0;k<2;k++)spawn(cx,y0+Math.random()*d.fh,cz,(Math.random()-.5)*5,2+Math.random()*3,(Math.random()-.5)*5,0.6+Math.random()*0.8,CONC_D)}}}
   }
   if(!changed)return;
-  addScore(pan*60+cols*400);
+  addScore(pan*60+cols*400);clientDamage(b,pan+cols*3);
   if(BOSS&&b===BOSS.b)bossHit(cols?'col':'facade');
   d.dirty=true;detCheck(b);
 }
@@ -710,7 +710,9 @@ function facadeStrip(b,x,z,strength){
 function floorSupport(d,f){let a=0;for(let j=0;j<d.C;j++)if(d.hp[f*d.C+j]>0)a++;return a/d.C}
 function detCheck(b){
   const d=b.det;if(!d)return;
-  for(let f=0;f<d.F;f++){if(!d.fl[f])continue;if(floorSupport(d,f)<SUPPORT_MIN){collapseFloor(b,f);return detCheck(b)}}
+  for(let f=0;f<d.F;f++){if(!d.fl[f])continue;if(floorSupport(d,f)<SUPPORT_MIN){
+    if(clientHolds(b)){for(let j=0;j<d.C;j++)d.hp[f*d.C+j]=Math.max(d.hp[f*d.C+j],d.hp0*0.5);d.dirty=true;continue}   // 발주처 공사 중지
+    collapseFloor(b,f);return detCheck(b)}}
   if(!d.fl.some(v=>v)){freeDet(b);killBuilding(b)}
 }
 function collapseFloor(b,f){
@@ -1581,7 +1583,7 @@ const UNDO=[];let BASE=null;
 function takeState(){const chunks=new Map();for(const c of CHUNKS.values())if(c.Hg)chunks.set(c.k,{H:c.Hg.slice(),VD:c.VD.slice()});return{chunks,h:B.map(b=>b.h),h0:B.map(b=>b.h0),a:B.map(b=>b.alive),det:B.map(detSnap),t:T.map(t=>t.alive),score,maxDepth,boss:BOSS?{bi:B.indexOf(BOSS.b),flees:BOSS.flees,state:BOSS.state==='caught'?'caught':'idle',firm:BOSS.firm,vis:[...BOSS.visited].map(x=>B.indexOf(x)),x:BOSS.x,y:BOSS.y,z:BOSS.z}:null}}
 function snapshot(){UNDO.push(takeState());if(UNDO.length>15)UNDO.shift();$('#btnUndo').disabled=false;$('#btnReset').disabled=false}
 function restore(s){clientReset();for(const [k,v] of s.chunks){const c=CHUNKS.get(k);if(c&&c.Hg){c.Hg.set(v.H);c.VD.set(v.VD)}}clearTools();
-  B.forEach((b,i)=>{b.lifted=false;if(i>=s.h.length)return;if(s.h0)b.h0=s.h0[i];b.h=s.h[i];b.alive=s.a[i];if(s.det)detRestore(b,s.a[i]?s.det[i]:null)});T.forEach((t,i)=>{if(i<s.t.length)t.alive=s.t[i]});score=s.score;maxDepth=s.maxDepth;
+  B.forEach((b,i)=>{b.lifted=false;if(b.colPre){b.col=b.colPre;b.colPre=null}if(i>=s.h.length)return;if(s.h0)b.h0=s.h0[i];b.h=s.h[i];b.alive=s.a[i];if(s.det)detRestore(b,s.a[i]?s.det[i]:null)});T.forEach((t,i)=>{if(i<s.t.length)t.alive=s.t[i]});score=s.score;maxDepth=s.maxDepth;
   D.used.fill(0);D.rest.fill(0);FALL=[];beam=null;firing=false;humStop();shock=null;quake=null;cam.shake=0;
   if(BOSS&&s.boss&&B[s.boss.bi]){const k=s.boss;Object.assign(BOSS,{b:B[k.bi],flees:k.flees,state:k.state,firm:k.firm,x:k.x,y:k.y,z:k.z,jump:null,visited:new Set(k.vis.map(i=>B[i]).filter(Boolean)),textT:0});CAMGO=null}
   groundDirty=true;bldDirty=true;rubDirty=true;treeDirty=true;updateHUD()}
@@ -1792,7 +1794,7 @@ async function loadFirm(f){
       if(lat!=null)lsSet('smasharch_geo3_'+f.id,{lat,lng,approx})}
   }
   CUR=f;$('#firmName').textContent=f.name;$('#firmAddr').textContent=(f.addr||'')+(f.tenant?' · 입주 건물':'');
-  bossReset();clientReset();CLIENT_LAST=-1e9;for(const b of [...DETS])freeDet(b);clearTools();STATS={t0:0,kills:0,tools:{}};ULT=0;ultArmed=false;
+  bossReset();clientReset();CLIENT_LAST=-1e9;CLIENT_REBUILDS=0;for(const b of [...DETS])freeDet(b);clearTools();STATS={t0:0,kills:0,tools:{}};ULT=0;ultArmed=false;
   BASE=null;resetWorld();LAT0=lat!=null?lat:37.5665;LNG0=lat!=null?lng:126.978;
   cam.tx=0;cam.tz=0;
   setLoading(true,'사옥 주변 지도 불러오는 중…');
@@ -2597,14 +2599,21 @@ function bossFlee(){const from=BOSS.b;let best=null,bd=1e9;
   BOSS.state='jump';BOSS.jump={t:0,T:1.2+bd/240,x0:BOSS.x,y0,z0:BOSS.z,b:best,h:Math.max(30,bd*0.4)};
   CAMGO={t:0,dur:BOSS.jump.T+0.8,follow:true};
   toast(`사장님이 ${best.firms&&best.firms[0]?best.firms[0].short:'빈 건물'}(으)로 도망쳐요! 쫓아가세요`,2400);sfx(6,0.4)}
-function bossLand(){const b=BOSS.jump.b;BOSS.b=b;BOSS.state='idle';BOSS.flees++;BOSS.sayT=6;const n=BOSS.flees;
+function bossLand(){const b=BOSS.jump.b;BOSS.b=b;BOSS.state='idle';BOSS.sayT=6;
+  if(BOSS.rehire){BOSS.rehire=false;BOSS.firm=(b.firms&&b.firms[0]?b.firms[0].short:BOSS.firm);const top=bTop(b);boom3(BOSS.x,top+1,BOSS.z,10);sfx(14,0.4);
+    bossSay(pickL(['돈 받았으니 다시 일한다!','재계약이다! 다들 자리로!','이번엔 진짜 끝까지 간다!']),3);floatText(BOSS.x,top+14,BOSS.z,'사장님 재고용','cad',2.2);return}
+  BOSS.flees++;const n=BOSS.flees;
   BOSS.firm=b.firms&&b.firms[0]?b.firms[0].short:'임시 사무실';
   bossSay(pickL(BOSS_LINES.arrive[Math.min(2,n-1)]),3);const bonus=5000*n;addScore(bonus);
   const top=bTop(b);boom3(BOSS.x,top+1,BOSS.z,10);cam.shake=Math.max(cam.shake,3);sfx(14,0.4);
-  floatText(BOSS.x,top+14,BOSS.z,`${BOSS.firm} 대표 취임`,'cad',2.2);toast(`사장님이 ${BOSS.firm}에 새로 자리 잡았어요 · 도주 ${n}회 · +${fmt(bonus)}`,2600)}
+  floatText(BOSS.x,top+14,BOSS.z,`${BOSS.firm} 대표 취임`,'cad',2.2);setTimeout(clientFollowBoss,0);toast(`사장님이 ${BOSS.firm}에 새로 자리 잡았어요 · 도주 ${n}회 · +${fmt(bonus)}`,2600)}
 function bossCaught(){BOSS.state='caught';BOSS.t=0;const bonus=50000+20000*BOSS.flees;addScore(bonus);
   bossSay(pickL(BOSS_LINES.caught),3);floatText(BOSS.x,BOSS.y+12,BOSS.z,'사장님 검거!','count',2.6);
-  toast(`더 도망칠 곳이 없어요 — 사장님 검거! 도주 ${BOSS.flees}회 · +${fmt(bonus)}`,4000);sfx(20,1);flashScreen(0.3,'#fff3c4')}
+  toast(`더 도망칠 곳이 없어요 — 사장님 검거! 도주 ${BOSS.flees}회 · +${fmt(bonus)}`,4000);sfx(20,1);flashScreen(0.3,'#fff3c4');clientOnBossCaught()}
+// 발주처가 새로 지은 건물로 사장님 재고용 (검거 상태에서도 풀려나 점프)
+function bossRehire(b){if(!BOSS)return;const y0=BOSS.y,d=Math.hypot(b.cx-BOSS.x,b.cz-BOSS.z);
+  BOSS.rehire=true;BOSS.flees=0;BOSS.visited=new Set([b]);BOSS.stun=0;BOSS.lastSay=0;
+  BOSS.state='jump';BOSS.jump={t:0,T:1.0+d/240,x0:BOSS.x,y0,z0:BOSS.z,b,h:Math.max(25,d*0.4)};CAMGO={t:0,dur:BOSS.jump.T+0.6,follow:true}}
 function bossUpdate(dt){if(!BOSS)return;const S=bossScale();
   BOSS.t+=dt;if(BOSS.textT>0)BOSS.textT-=dt;if(BOSS.stun>0)BOSS.stun-=dt;if(BOSS.flinch>0)BOSS.flinch-=dt;
   if(MODE==='section'){bossSecUpdate(dt);return}
@@ -2673,7 +2682,10 @@ function drawBossUI(){const ui=$('#bossUI'),ar=$('#bossArrow'),bx=$('#bossBox');
 function bossGo(){if(!BOSS||MODE!=='city')return;CAMGO={t:0,dur:1.6}}
 
 // =====================================================================
-//  발주처(클라이언트) — 사장님 건물 층이 처음 무너지면 검은 차를 타고 나타나 철거를 방해
+//  발주처(클라이언트) — 사장님 건물이 어느 정도 부서지면 검은 차를 타고 나타나 철거를 방해
+//   · 공사 중지 명령: 등장 즉시 4초간 건물이 안 무너지게 붙잡고 부러진 기둥을 되살림
+//   · 사장님을 따라다님: 사장님이 다른 사무소로 도망가면 차를 타고 따라감
+//   · 재건축: 사장님이 검거되면 "돈 줬잖아요, 다시 일하세요!" → 빈터에 건물을 새로 짓고 사장님을 재고용 (최대 3번)
 //   · 설계변경 증축 : 옥상에 기괴한 매스를 얹음. 매스가 있는 동안 건물이 계속 보강됨
 //   · 빨간펜 방어막 : 건물을 빨간 테이프로 감아 철거반(1)·불도저(2) 타격 1회 무효
 //   · 받아치기     : 패턴 준비 중이거나 방어막이 있을 때 그 건물에 심의 보류(0) 도장 → 패턴 취소 + 스턴. 3번이면 포기
@@ -2693,28 +2705,69 @@ const CLIENT_LINES={
   counter:['심의… 보류요? 제가 누군지 알아요?!','아니 그걸 왜 지금 찍어요!','허가권자한테 전화할 거예요!'],
   addonHit:['그거 제 아이디어였는데!','그 매스 비싼 거예요!','디자인 감리 불러요!'],
   defeat:['…예산 다시 잡아볼게요.','다음 프로젝트 때 봬요…','법무팀이랑 얘기하세요!'],
+  hold:['공사 중지! 지금 당장 멈춰요!','누가 허락했어요? 스톱!'],
+  follow:['사장님! 어디 가세요! 계약서 있잖아요!','도망가도 소용없어요, 따라갑니다!'],
+  rebuild:['돈 줬잖아요, 다시 일하세요!','처음부터 다시 지어요. 예산은 그대로!','사장님, 재계약입니다. 도장 찍으세요.'],
+  rebuilt:['자, 새 건물이에요. 이번엔 부수지 마세요.','준공 날짜는 그대로예요!'],
+  finalGone:['…이 프로젝트는 접습니다.','다른 사무소 알아볼게요!'],
   giveup:['아 몰라요, 알아서 하세요!','이 프로젝트 보류할게요!'],
 };
-let CLIENT=null,CLIENT_LAST=-1e9,CLIENT_TIP=0;
+let CLIENT=null,CLIENT_LAST=-1e9,CLIENT_TIP=0,CLIENT_REBUILDS=0;const CLIENT_MAX_REBUILD=3;
 const CL_SHIRT=[0.93,0.52,0.64],CL_PANTS=[0.80,0.72,0.54],CL_CAP=[0.97,0.97,0.95],CL_CAR=[0.06,0.06,0.07],CL_GLASS=[0.16,0.2,0.24],CL_RED=[1,0.08,0.06];
 const ADDON_COLS=[[0.93,0.30,0.62],[0.18,0.78,0.72],[0.98,0.78,0.12],[0.56,0.38,0.92]];
 function clientReset(){CLIENT=null;drawClientUI()}
 function clientSay(text,prio){const c=CLIENT;if(!c||!text)return;const now=performance.now();if((prio||0)<1&&now-c.lastSay<2600)return;c.text=text;c.textT=3.2;c.lastSay=now}
 function clientAddonC(){const c=CLIENT,a=c&&c.addon;if(!a||a.dead)return null;return{x:c.b.cx,y:bTop(c.b)+a.dy+a.H/2,z:c.b.cz,R:a.R}}
-// collapseFloor 에서 호출: 사장님 건물 층이 처음 무너질 때 등장 (건물당 1번, 45초 간격)
+// 차 세울 자리 (건물 중심에서 카메라 쪽)
+function clientSpot(b){let ax=eye[0]-b.cx,az=eye[2]-b.cz;const l=Math.hypot(ax,az)||1;ax/=l;az/=l;const R=Math.sqrt(b.area)/2+9;return{x:b.cx+ax*R,z:b.cz+az*R,tx:-az,tz:ax}}
+function clientHolds(b){return !!CLIENT&&CLIENT.b===b&&CLIENT.hold>0&&CLIENT.state!=='leave'}
+// 새 발주처 생성 (goal: 'guard' 건물 지키기 / 'rebuild' 빈터에 재건축)
+function clientCreate(b,goal){const sp=clientSpot(b);
+  CLIENT={b,name:pickL(CLIENT_NAMES),goal,state:'arrive',t:0,x:sp.x,z:sp.z,
+    car:{x:sp.x+sp.tx*110,z:sp.z+sp.tz*110,px:sp.x+sp.tx*7,pz:sp.z+sp.tz*7,dx:-sp.tx,dz:-sp.tz,v:70},
+    text:'',textT:0,lastSay:0,sayT:5,stun:0,mental:3,counters:0,wind:null,cool:0,addon:null,shield:0,shieldT:0,repT:0,hitT:0,hold:0};
+  CLIENT_LAST=performance.now();sfx(10,0.6);
+  if(goal==='guard')clientStopOrder();
+  else toast(`발주처 ${CLIENT.name} 등장 — 검거된 사장님을 재고용하러 왔어요!`,2800);
+}
+// 공사 중지 명령: 즉시 보강 + 몇 초간 붕괴 정지
+function clientStopOrder(){const c=CLIENT,b=c.b;c.hold=4;clientRepair(0.6,true);
+  floatText(b.cx,bTop(b)+8,b.cz,'공사 중지!','mark',2);clientSay(pickL(CLIENT_LINES.hold),3);cam.shake=Math.max(cam.shake,2);
+  toast(`발주처 ${c.name} 등장! 공사 중지 명령 — 잠깐 동안 건물이 안 무너져요`,2800)}
+// 사장님 건물이 일정 이상 부서지거나 층이 처음 무너지면 등장 (건물당 1번, 30초 간격)
 function clientMaybeSpawn(b){
   if(CLIENT||MODE!=='city'||!BOSS||BOSS.state!=='idle'||b!==BOSS.b||b.clientDone||!b.alive||b.lifted||!b.det)return;
-  if(performance.now()-CLIENT_LAST<45000)return;
-  const d=b.det;let alive=0;for(let f=0;f<d.F;f++)if(d.fl[f])alive++;if(alive<3)return;
-  b.clientDone=true;CLIENT_LAST=performance.now();
-  let ax=eye[0]-b.cx,az=eye[2]-b.cz;const l=Math.hypot(ax,az)||1;ax/=l;az/=l;
-  const R=Math.sqrt(b.area)/2+9,px=b.cx+ax*R,pz=b.cz+az*R,tx=-az,tz=ax;
-  CLIENT={b,name:pickL(CLIENT_NAMES),state:'arrive',t:0,x:px,z:pz,
-    car:{x:px+tx*150,z:pz+tz*150,px:px+tx*7,pz:pz+tz*7,dx:-tx,dz:-tz,v:70},
-    text:'',textT:0,lastSay:0,sayT:5,stun:0,mental:3,counters:0,wind:null,cool:0,addon:null,shield:0,shieldT:0,repT:0,hitT:0};
-  toast(`발주처 ${CLIENT.name} 등장! 무너지는 건물을 억지로 살리려 해요`,2800);sfx(10,0.6);
+  if(performance.now()-CLIENT_LAST<30000)return;
+  b.clientDone=true;clientCreate(b,'guard');
   if(BOSS)bossSay('발주처 오셨다! 다들 일어나!',3);
 }
+function clientDamage(b,n){if(!BOSS||b!==BOSS.b||CLIENT||!b.det)return;b.cdmg=(b.cdmg||0)+n;
+  if(b.cdmg>Math.max(10,b.det.F*b.det.M*0.1))clientMaybeSpawn(b)}
+// 차 타고 다른 건물로 이동
+function clientDriveTo(b,goal){const c=CLIENT;if(!c)return;const sp=clientSpot(b);
+  if(c.addon&&!c.addon.dead)c.addon.dead=true;
+  Object.assign(c,{b,goal,state:'arrive',t:0,x:sp.x,z:sp.z,wind:null,shield:0,cool:0});
+  const car=c.car,px=sp.x+sp.tx*7,pz=sp.z+sp.tz*7,l=Math.hypot(px-car.x,pz-car.z)||1;
+  Object.assign(car,{px,pz,dx:(px-car.x)/l,dz:(pz-car.z)/l,v:Math.max(70,l/3)})}
+// 사장님이 다른 사무소에 착지 → 따라가기
+function clientFollowBoss(){const c=CLIENT;if(!c||c.state==='leave'||!BOSS||c.b===BOSS.b)return;
+  clientSay(pickL(CLIENT_LINES.follow),3);clientDriveTo(BOSS.b,'guard');toast('발주처가 사장님을 따라가요!',1800)}
+// 사장님 검거 → 재건축 (최대 3번)
+function clientOnBossCaught(){const b=BOSS&&BOSS.b;if(!b)return;
+  if(CLIENT_REBUILDS>=CLIENT_MAX_REBUILD){if(CLIENT&&CLIENT.state!=='leave'){clientSay(pickL(CLIENT_LINES.finalGone),3);clientDefeat('final')}return}
+  later(2.6,()=>{if(MODE!=='city'||!BOSS||BOSS.state!=='caught'||BOSS.b!==b)return;
+    if(CLIENT&&CLIENT.state!=='leave'){clientSay(pickL(CLIENT_LINES.rebuild),3);clientDriveTo(b,'rebuild')}
+    else clientCreate(b,'rebuild')})}
+function clientRebuild(){const c=CLIENT,b=c.b;
+  if(!b.custom){if(!b.colPre)b.colPre=b.col;b.col=[0.95,0.70,0.78];b.h0=Math.min(b.h0*1.15+4,b.h0+30)}   // MAP 사옥 모델은 모양 유지
+  freeDet(b);b.alive=true;b.lifted=false;b.h=b.h0;b.cdmg=0;b.domino=0;markB(b);bldDirty=true;
+  const R=Math.sqrt(b.area)/2+2;for(let i=0;i<MAXD;i++)if(D.used[i]&&Math.hypot(D.x[i]-b.cx,D.z[i]-b.cz)<R)D.used[i]=0;rubDirty=true;
+  boom3(b.cx,b.base+3,b.cz,30);cam.shake=Math.max(cam.shake,8);hitStop(0.08);sfxBoom(0.8);flashScreen(0.2,'#ffe1ea');
+  for(let k=0;k<30;k++)spawn(b.cx+(Math.random()-.5)*R*2,b.base+1,b.cz+(Math.random()-.5)*R*2,(Math.random()-.5)*10,4+Math.random()*8,(Math.random()-.5)*10,1+Math.random()*2,[0.85,0.83,0.8],0.9,2);
+  CLIENT_REBUILDS++;const n=CLIENT_REBUILDS,bonus=20000*n;addScore(bonus);
+  floatText(b.cx,b.base+b.h+10,b.cz,`재건축 ${n}/${CLIENT_MAX_REBUILD}`,'cad',2.6);clientSay(pickL(CLIENT_LINES.rebuilt),3);
+  toast(`발주처가 건물을 새로 지었어요 (재건축 ${n}/${CLIENT_MAX_REBUILD}) — 사장님 재고용! 다시 부수세요 · +${fmt(bonus)}`,3600);
+  bossRehire(b);c.goal='guard';c.hold=5;c.cool=3;c.mental=3}
 // 건물 보강: revive=true 면 부러진 기둥도 되살림
 function clientRepair(f,revive){const b=CLIENT&&CLIENT.b;if(!b||!b.alive||!b.det)return;const d=b.det;
   for(let k=0;k<d.F;k++){if(!d.fl[k])continue;for(let j=0;j<d.C;j++){const i=k*d.C+j;
@@ -2762,17 +2815,25 @@ function clientDefeat(how){const c=CLIENT;if(!c||c.state==='leave')return;const 
     clientSay(pickL(how==='win'?CLIENT_LINES.defeat:CLIENT_LINES.giveup),3);
     toast(`발주처 격퇴! [${label}] 건물 내구도 급감 — 이제 한 방이면 무너져요 · +${fmt(bonus)}`,4000);
     if(BOSS&&BOSS.state==='idle')bossSay('발주처 가셨다… 이제 우리 끝이다…',3)}
+  else if(how==='final')toast(`발주처가 프로젝트를 접었어요 — 재건축 ${CLIENT_MAX_REBUILD}번 끝, 이번엔 진짜 검거!`,3600);
   else toast('발주처가 현장을 떠났어요',2000)}
 function clientUpdate(dt){const c=CLIENT;if(!c||MODE!=='city')return;
-  c.t+=dt;if(c.textT>0)c.textT-=dt;if(c.stun>0)c.stun-=dt;if(c.hitT>0)c.hitT-=dt;
+  c.t+=dt;if(c.textT>0)c.textT-=dt;if(c.stun>0)c.stun-=dt;if(c.hitT>0)c.hitT-=dt;if(c.hold>0)c.hold-=dt;
   const b=c.b,car=c.car;
   if(c.state==='arrive'){const dx=car.px-car.x,dz=car.pz-car.z,l=Math.hypot(dx,dz);
     if(l>0.6){const sp=Math.min(l,Math.max(12,Math.min(car.v,l*2.2))*dt);car.x+=dx/l*sp;car.z+=dz/l*sp}
-    else{c.state='idle';c.t=0;c.cool=1.4;clientSay(pickL(CLIENT_LINES.arrive),3);clientRepair(0.6,true);floatText(b.cx,bTop(b)+8,b.cz,'긴급 보강','cad',1.8);sfx(12,0.5)}
+    else{c.state='idle';c.t=0;
+      if(c.goal==='rebuild'){c.wind={kind:'rebuild',t:0,T:2.4};clientSay(pickL(CLIENT_LINES.rebuild),3)}
+      else{c.cool=1.4;clientSay(pickL(CLIENT_LINES.arrive),2);if(b.alive){clientRepair(0.6,true);if(c.hold<2)c.hold=2;floatText(b.cx,bTop(b)+8,b.cz,'긴급 보강','cad',1.8)}sfx(12,0.5)}}
     return}
   if(c.state==='leave'){if(c.t>0.7){car.v=Math.min(90,(car.v||0)+60*dt);car.x+=car.dx*car.v*dt;car.z+=car.dz*car.v*dt}
     if(c.t>4.2)CLIENT=null;return}
-  if(!b.alive||b.lifted){clientDefeat('gone');return}
+  if(c.wind&&c.wind.kind==='rebuild'){c.wind.t+=dt;if(c.wind.t>=c.wind.T){c.wind=null;clientRebuild()}return}
+  if(!b.alive||b.lifted){   // 건물이 무너짐 → 사장님을 따라가거나, 검거됐으면 재건축을 기다림
+    if(BOSS&&BOSS.state==='jump'&&BOSS.jump.b!==b){c.t=0;return}
+    if(BOSS&&BOSS.state==='idle'&&BOSS.b!==b){clientFollowBoss();return}
+    if(BOSS&&(BOSS.state==='caught'||BOSS.state==='jump'||BOSS.state==='idle')){if(c.t>12)clientDefeat('gone');return}
+    clientDefeat('gone');return}
   const a=c.addon;
   if(a&&!a.dead&&!a.landed){a.v+=70*dt;a.dy=Math.max(0,a.dy-a.v*dt);
     if(a.dy<=0){a.landed=true;const top=bTop(b);boom3(b.cx,top+1,b.cz,18);cam.shake=Math.max(cam.shake,6);hitStop(0.06);sfxBoom(0.6);
@@ -2798,6 +2859,9 @@ function drawClient(m,mg){const c=CLIENT;if(!c||MODE!=='city')return;
   if(c.wind&&c.wind.kind==='mass'&&b.alive){const u=c.wind.t/c.wind.T,s=clamp(Math.sqrt(b.area)*0.5,6,22),pul=0.5+0.5*Math.sin(now*14);
     pushShape(mg,CUBE,b.cx,top+0.6,b.cz,s*(1.1-u*0.3),0.4,s*(1.1-u*0.3),now,[1,0.2+0.3*pul,0.1],1);
     pushShape(mg,CUBE,b.cx,top+60-u*52,b.cz,s*0.7,0.5,s*0.7,0,[1,0.35,0.2],1)}
+  if(c.wind&&c.wind.kind==='rebuild'){const u=c.wind.t/c.wind.T,R=Math.sqrt(b.area)/2,pul=0.5+0.5*Math.sin(now*12),g0=groundAt(b.cx,b.cz);
+    pushShape(mg,CUBE,b.cx,g0+0.5,b.cz,R*1.6,0.3,R*1.6,0,[1,0.4+0.3*pul,0.6],1);
+    pushShape(mg,CUBE,b.cx,g0+(b.h0||20)*u*0.5,b.cz,R*0.9,(b.h0||20)*u,R*0.9,0,[1,0.55,0.75],1)}
   const a=c.addon;
   if(a&&!a.dead&&b.alive){const flash=c.hitT>0;for(const bl of a.blocks)pushShape(m,CUBE,b.cx+bl.ox,top+a.dy+bl.y,b.cz+bl.oz,bl.w,bl.h,bl.d,bl.rot,flash?[1,1,1]:bl.col,0)}
   const sh=c.shield||(c.wind&&c.wind.kind==='shield');
@@ -2827,13 +2891,13 @@ function drawClient(m,mg){const c=CLIENT;if(!c||MODE!=='city')return;
 }
 function drawClientUI(){const ui=$('#clientUI'),bx=$('#clientBox');if(!ui)return;const c=CLIENT;
   if(!c||MODE!=='city'){ui.style.display='none';if(bx)bx.style.display='none';return}
-  if(bx){bx.style.display='';const a=c.addon;const t=`발주처 · ${c.name} · 멘탈 ${'●'.repeat(Math.max(0,c.mental))}${'○'.repeat(3-Math.max(0,c.mental))}${a&&!a.dead?` · 매스 ${a.hp}/${a.hp0}`:''}${c.shield?' · 빨간펜':''}${c.state==='leave'?' · 퇴장':''}`;if(bx.textContent!==t)bx.textContent=t}
+  if(bx){bx.style.display='';const a=c.addon;const t=`발주처 · ${c.name} · 멘탈 ${'●'.repeat(Math.max(0,c.mental))}${'○'.repeat(3-Math.max(0,c.mental))}${a&&!a.dead?` · 매스 ${a.hp}/${a.hp0}`:''}${c.shield?' · 빨간펜':''}${c.hold>0?' · 공사 중지':''} · 재건축 ${CLIENT_REBUILDS}/${CLIENT_MAX_REBUILD}${c.state==='leave'?' · 퇴장':''}`;if(bx.textContent!==t)bx.textContent=t}
   if(c.state==='arrive'||(c.state==='leave'&&c.t>1.5)){ui.style.display='none';return}
   const S=bossScale(),q=project(c.x,groundAt(c.x,c.z)+2.4*S,c.z);
   if(!q||q[0]<10||q[0]>innerWidth-10||q[1]<10||q[1]>innerHeight-50){ui.style.display='none';return}
   ui.style.display='';ui.style.left=q[0]+'px';ui.style.top=Math.max(q[1],90)+'px';
   const bb=ui.querySelector('.bubble'),txt=c.textT>0?c.text:'';if(bb.textContent!==txt)bb.textContent=txt;bb.style.display=txt?'':'none';
-  const tg=ui.querySelector('.tag');const tt=c.wind?(c.wind.kind==='mass'?'증축 준비 중!':'빨간펜 준비 중!'):c.stun>0?'멘붕':'발주처';if(tg.textContent!==tt)tg.textContent=tt;
+  const tg=ui.querySelector('.tag');const tt=c.wind?(c.wind.kind==='mass'?'증축 준비 중!':c.wind.kind==='rebuild'?'재건축 중!':'빨간펜 준비 중!'):c.stun>0?'멘붕':c.hold>0?'공사 중지!':'발주처';if(tg.textContent!==tt)tg.textContent=tt;
   tg.classList.toggle('warn',!!c.wind)}
 
 // =====================================================================
