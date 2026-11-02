@@ -222,6 +222,8 @@ a.donate{display:block;margin-top:12px;padding:8px 10px;border-radius:6px;border
 a.donate:hover{color:var(--ink);border-color:var(--accent)}
 a.donate small{font-size:11px;opacity:.8}
 .report a.donate{border-color:#ccc;color:#666}
+#btnDonate{color:var(--gold)}
+body.mini #btnDonate{display:none!important}
 /* ---- 발주처 ---- */
 #clientUI{position:fixed;z-index:4;pointer-events:none;transform:translate(-18%,-100%);display:flex;flex-direction:column;align-items:center;gap:6px}
 #clientUI .bubble{position:relative;max-width:240px;background:#fff;color:#111;font-weight:800;font-size:13.5px;line-height:1.35;padding:7px 12px;border-radius:12px;border:2px solid #d8261b;box-shadow:0 3px 10px rgba(0,0,0,.35);text-align:center;word-break:keep-all}
@@ -396,6 +398,7 @@ body.iostip #iosTip{display:flex}
   <button class="tool sm" id="btnConq"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3z"/><path d="M9 3v15M15 6v15"/></svg>정복</button>
   <button class="tool sm" id="btnShare"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v13M7 8l5-5 5 5"/><path d="M5 14v6h14v-6"/></svg>공유</button>
   <button class="tool sm" id="btnSet"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>설정</button>
+  <button class="tool sm" id="btnDonate" title="개발자 커피 후원"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9h12v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5z"/><path d="M16 10h2a2.5 2.5 0 0 1 0 5h-2"/><path d="M8 3c0 1.5 1 1.5 1 3M12 3c0 1.5 1 1.5 1 3"/></svg>후원</button>
 </div>
 <div id="credit">건물·도로 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap 기여자</a> · 건물 모양은 단순화된 일반 재질 · 사무소 목록 © 공공데이터포털 · 회사와 관계없는 비공식 팬 게임 · 원작 아이디어 SMASH HYU (@Hong_Iron_DEV)</div>
 
@@ -408,6 +411,13 @@ body.iostip #iosTip{display:flex}
   <div id="conqBody"></div>
 </div></div>
 
+<div class="modal" id="mDonate"><div class="card donate-card">
+  <button class="close" data-close>×</button>
+  <h2>☕ 커피 한 잔 후원</h2>
+  <p style="font-size:13.5px;line-height:1.7;margin:6px 0 12px;color:#d6d9dc">SMASH ARCH는 혼자 만드는 무료 비공식 팬 게임이에요.<br>재밌게 하셨다면 커피 한 잔으로 응원해 주세요.<br><b style="color:var(--gold)">후원해도 게임 내용은 똑같고, 앞으로도 무료예요.</b></p>
+  <a class="btn-p" id="donateGo" href="https://fairy.hada.io/@smash-arch#support" target="_blank" rel="noopener" style="display:block;text-align:center;text-decoration:none;font-size:15px;padding:11px">후원하러 가기</a>
+  <div class="small">결제와 정산은 후원 플랫폼 Fairy(fairy.hada.io)에서 처리돼요. 카드·간편결제 가능.</div>
+</div></div>
 <div class="modal" id="mRank"><div class="card">
   <button class="close" data-close>×</button>
   <h2>랭킹</h2>

@@ -1851,6 +1851,7 @@ for(const k of ['Sound','Labels','Debris','Shadows','Pins','Mini']){const el=$('
 function applyMini(){document.body.classList.toggle('mini',!!opts.mini);const el=$('#optMini');if(el)el.checked=!!opts.mini;setTimeout(layoutHUD,0)}
 function toggleMini(){opts.mini=!opts.mini;lsSet('smasharch_opts',opts);applyMini();toast(opts.mini?'간단 화면 — 필요한 버튼만 남겼어요 (랭킹·정복·공유는 설정 안에)':'기본 화면으로 돌아왔어요',2200)}
 if($('#btnMini'))$('#btnMini').onclick=toggleMini;
+if($('#btnDonate'))$('#btnDonate').onclick=()=>{closeModals();$('#mDonate').classList.add('open')};
 document.querySelectorAll('#setLinks [data-go]').forEach(b=>b.onclick=()=>{closeModals();const t=$('#'+b.dataset.go);if(t)t.click()});
 document.querySelectorAll('#toolbar .tool').forEach(b=>{if(!b.title)b.title=b.textContent.trim()});
 applyMini();
