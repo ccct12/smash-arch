@@ -2844,6 +2844,17 @@ async function flushConq(){
 }
 addEventListener('pagehide',()=>{const u=rankUrl();if(u&&CONQ_Q.size&&navigator.sendBeacon){try{navigator.sendBeacon(u,new Blob([conqBody()],{type:'text/plain;charset=utf-8'}))}catch(e){}}});
 
+// ---------- 접속 집계 (탭 하나당 1번만 서버에 알림 → 시트 '접속기록'·'접속자') ----------
+(function sendVisit(){
+  const u=rankUrl();if(!u)return;
+  try{if(sessionStorage.getItem('smasharch_visited'))return;sessionStorage.setItem('smasharch_visited','1')}catch(e){}
+  let vid=lsGet('smasharch_vid'),first=false;
+  if(!vid||!/^[a-z0-9]{8,32}$/.test(vid)){vid=(Date.now().toString(36)+Math.random().toString(36).slice(2,10)).slice(0,20);lsSet('smasharch_vid',vid);first=true}
+  let ref='';try{ref=document.referrer?new URL(document.referrer).hostname:''}catch(e){}
+  const body=JSON.stringify({type:'visit',vid,first,dev:matchMedia('(pointer:coarse)').matches?'모바일':'PC',ref});
+  setTimeout(()=>{try{fetch(u,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body,keepalive:true}).catch(()=>{})}catch(e){}},1500);
+})();
+
 // 서울 25개 구 타일 지도 (열, 행)
 const SEOUL_TILES={'은평구':[2,0],'강북구':[4,0],'도봉구':[5,0],'노원구':[6,0],
   '마포구':[1,1],'서대문구':[2,1],'종로구':[3,1],'성북구':[4,1],'동대문구':[5,1],'중랑구':[6,1],
