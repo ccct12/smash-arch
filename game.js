@@ -21,7 +21,7 @@ const FIRM_GEO_COUNT = FIRMDATA.filter(r=>r[4]===0).length;
 function presetFromData(f){if(f.lat!=null&&f.dkey)return;const key=(f.addr||'').replace(/\([^)]*\)/g,'').replace(/^서울\s/,'서울특별시 ').trim();
   const row=FIRMDATA.find(r=>r[4]===0&&r[1].replace(/\s+/g,' ').startsWith(key));if(row){if(f.lat==null){f.lat=row[2];f.lng=row[3]}if(!f.dkey)f.dkey='d'+row[5]}}
 const FIRMS = [
-  {key:'map',dkey:'d5523',name:'MAP 종합건축사사무소', addr:'서울 송파구 송파대로22길 5-23 (MAP DESIGN CAMPUS)', lat:37.4884025081465, lng:127.121785337452},
+  {key:'map',dkey:'d5523',name:'(주)엠에이피건축종합건축사사무소', addr:'서울 송파구 송파대로22길 5-23 (MAP DESIGN CAMPUS)', lat:37.4884025081465, lng:127.121785337452},
   {key:'samoo',  name:'삼우종합건축사사무소', addr:'서울 강동구 천호대로 1077 (이스트센트럴타워)', lat:37.53726, lng:127.13144},
   {key:'heerim', name:'희림종합건축사사무소', addr:'서울 강동구 상일로6길 39', q:addrQueries('서울특별시 강동구 상일로6길 39'), approxLast:true},
   {key:'haeahn', name:'해안종합건축사사무소', addr:'서울 강남구 봉은사로 208 (해안빌딩)', lat:37.50736, lng:127.03483},
@@ -420,7 +420,7 @@ async function loadTiles(list,opt){
     else{WORLD.failed++;cs.forEach(c=>c.state='none');setTimeout(()=>{},0);return -1}}
   const n0=B.length,t0=T.length;
   for(const a of (data.archPois||[]))if(!OSMARCH.has(a.id))OSMARCH.set(a.id,a);
-  for(const b of data.bs){if(SEEN.b.has(b.id))continue;SEEN.b.add(b.id);b.ck=chunkAt(b.cx,b.cz,true);b.ck.blds.push(b);B.push(b);indexBuilding(b,B.length-1);b.ck.dB=true}
+  for(const b of data.bs){if(SEEN.b.has(b.id)||HIDE_BLD.has(b.id))continue;SEEN.b.add(b.id);b.ck=chunkAt(b.cx,b.cz,true);b.ck.blds.push(b);B.push(b);indexBuilding(b,B.length-1);b.ck.dB=true}
   for(const rd of data.rs){if(rd.id!=null){if(SEEN.r.has(rd.id))continue;SEEN.r.add(rd.id)}addRoad(rd)}
   const newLu=[];for(const lu of data.lus){if(lu.id!=null){if(SEEN.l.has(lu.id))continue;SEEN.l.add(lu.id)}LANDUSE.push(lu);newLu.push(lu)}
   LANDUSE.sort((a,b)=>b.area-a.area);
@@ -876,6 +876,9 @@ function buildDetMesh(b){
 // =====================================================================
 const LIT_GLASS=[1.0,0.82,0.48],LM_WHITE=[0.95,0.96,0.97],LM_FIN=[0.985,0.985,0.98],LM_GLASS=[0.40,0.54,0.66],LM_GLASS2=[0.52,0.64,0.74],LM_DARK=[0.22,0.28,0.34],LM_GREEN=[0.12,0.78,0.32];
 const LM_FH=4.2, LM_F=9;
+// OpenStreetMap 에 실제와 다르게 그려진 건물(OSM 웨이 번호) — 지도에서 빼기
+//  1067088272: MAP DESIGN CAMPUS 옆에 겹쳐 그려진 두 번째 동 (실제 사옥은 1067088271 한 동)
+const HIDE_BLD=new Set([1067088272]);
 function isMapFirmKey(k){return k==='map'||k==='d5523'}
 function applyLandmark(b){if(!b||b.custom)return;b.custom='map';b.customF=LM_F;b.h0=LM_F*LM_FH;b.h=b.h0;b.col=LM_WHITE.slice();b.col0=b.col;b.roof=[0.86,0.87,0.88];b.lm=null;freeDet(b);ensureDet(b);markB(b)}
 function applyLandmarks(){
