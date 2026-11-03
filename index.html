@@ -265,6 +265,13 @@ body.mini #btnDonate{display:none!important}
 #stopBan b{font-family:"Black Han Sans",sans-serif;font-weight:400;font-size:28px;color:#ffd84d;border-radius:8px 8px 0 0}
 #stopBan small{font-size:13px;border-radius:0 0 8px 8px;color:#f1f1f1}
 @media (max-height:500px){#stopBan b{font-size:20px}#stopBan small{font-size:11px}#dayBox{font-size:10px;padding:2px 7px}}
+/* ---- 부동산 호황 비행선 현수막 ---- */
+#shipBan{position:fixed;z-index:4;pointer-events:none;transform-origin:50% 0;text-align:center;background:#fff7e6;color:#1d1f24;border:3px solid #d8261b;border-radius:4px;padding:5px 16px 7px;box-shadow:0 6px 16px rgba(0,0,0,.35);min-width:170px;max-width:340px}
+#shipBan:before,#shipBan:after{content:'';position:absolute;top:-3px;width:10px;height:10px;border-radius:50%;background:#d8261b}#shipBan:before{left:-6px}#shipBan:after{right:-6px}
+#shipBan small{display:block;font-size:11.5px;font-weight:800;color:#b3120a;white-space:nowrap}
+#shipBan b{display:block;font-family:"Black Han Sans",sans-serif;font-weight:400;font-size:26px;line-height:1.15;word-break:keep-all}
+#shipBan i{display:block;font-style:normal;font-size:11.5px;font-weight:700;opacity:.75}
+#shipBan.mine{background:#ffe066;border-color:#ff5a1f}
 #glLost{position:fixed;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;background:rgba(10,12,14,.8)}
 #glLost>div{background:var(--panel);border-radius:10px;padding:20px 24px;text-align:center;max-width:320px}
 #glLost b{font-size:18px}#glLost p{font-size:13px;color:#c9cdd1;margin:8px 0 14px;line-height:1.6}
@@ -677,7 +684,7 @@ body.iostip #iosTip{display:flex}
   <h2>이번에 바뀐 것</h2>
   <ul>
     <li><b>🌙 낮·밤 · 야근 모드</b> — 낮 90초, 밤 60초가 번갈아 와요. 밤에는 <b>불 켜진 건물(단면에서는 층) 점수 ×2</b>, 꺼진 건물은 ×0.25. 우리 사옥은 늘 야근 중이라 불이 켜져 있어요. 설정에서 끌 수 있어요.</li>
-    <li><b>📢 부동산 호황</b> — 사장님을 검거한 뒤 점수를 더 모으면 비행선을 타고 사장님이 돌아와 사옥을 새로 지어요. 필요한 점수는 10만 → 40만 → 90만…으로 점점 늘어나요. 발주처도 다시 올 수 있어요.</li>
+    <li><b>📢 부동산 호황</b> — 사장님을 검거한 뒤 점수를 더 모으면 비행선을 타고 사장님이 돌아와 사옥을 새로 지어요. 비행선 현수막에는 최근 7일 가장 많이 무너진 사옥 1위가 걸려요. 필요한 점수는 10만 → 40만 → 90만…으로 점점 늘어나요. 발주처도 다시 올 수 있어요.</li>
     <li><b>🚧 구청 공사중지</b> — 몇 초 만에 건물을 10동 넘게 몰아서 부수면 구청이 3초 동안 공사를 멈춰요. (필살기 직후는 봐줘요)</li>
     <li><b>🎓 대학교 추가</b> — 전국 대학교·전문대학 440여 곳(보라색 핀). 대학교에선 사장님 대신 총장님이 나와요. 회사·학교 추가 버튼을 검색창 바로 아래로 옮기고, 구분은 버튼으로 고르게 바꿨어요.</li>
     <li><b>🔥 가장 많이 무너진 사옥</b> — 이제 '무너뜨린 사람 수'로 순위를 매겨요. 한 사람이 같은 사옥을 하루에 여러 번 부숴도 1명으로 세요.</li>

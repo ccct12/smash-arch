@@ -1785,7 +1785,7 @@ function makeLabels(){const box=$('#labels');box.innerHTML='';LBL=[];
   makePins();
 }
 function updateLabels(){
-  drawFloats();updateUltUI();drawGesture();drawBossUI();drawClientUI();stopUI();
+  drawFloats();updateUltUI();drawGesture();drawBossUI();drawClientUI();stopUI();shipUI();
   if(MODE==='section'){updateSecLabels();return}
   const occ=new Set();
   for(const L of LBL){const b=L.b;if(!b.alive||(L.pin?!opts.pins||b.hq:!opts.labels)){L.el.style.display='none';continue}
@@ -2811,13 +2811,13 @@ const BOOM_COLS=[[0.72,0.86,0.96],[0.96,0.84,0.55],[0.82,0.95,0.80],[0.95,0.78,0
 let BOOM={n:0,round:0,need:0,ship:null};
 function boomReset(){BOOM={n:0,round:0,need:0,ship:null}}
 function boomLeft(){return Math.max(0,Math.ceil(BOOM.need-score))}
-function boomArm(){BOOM.n++;const add=BOOM_BASE*BOOM.n*BOOM.n;BOOM.need=score+add;
+function boomArm(){try{if(!HOT.d)loadHot()}catch(e){}BOOM.n++;const add=BOOM_BASE*BOOM.n*BOOM.n;BOOM.need=score+add;
   setTimeout(()=>{if(BOSS&&BOSS.state==='caught'&&!BOOM.ship)toast(`🏗 ${fmt(add)}점 더 부수면 부동산 호황! ${BT()}이 비행선 타고 돌아와요`,4200)},4300)}
 function boomTarget(){const h=BOSS&&BOSS.home;if(h&&B.includes(h))return h;return B.find(x=>x.hq)||null}
 function boomStart(){const b=boomTarget();if(!b){BOOM.need=0;return}
   const a=Math.random()*Math.PI*2,R=900,ty=b.base+Math.max(b.h0*1.2+6,30)+70;
   BOOM.ship={b,t:0,phase:'in',T:6,x0:b.cx+Math.cos(a)*R,z0:b.cz+Math.sin(a)*R,x:b.cx+Math.cos(a)*R,y:ty+60,z:b.cz+Math.sin(a)*R,ty,dx:-Math.cos(a),dz:-Math.sin(a),follow:true};
-  boomBanner();sfx(10,0.8);toast(`📢 부동산 호황! ${BT()}이 비행선을 타고 오고 있어요`,3400)}
+  boomBanner();sfx(10,0.8);try{if(!HOT.d)loadHot()}catch(e){}const ht=shipTop();toast(`📢 부동산 호황! ${BT()}이 비행선을 타고 오고 있어요`+(ht?` · 현수막: 최다 철거 1위 ${ht.name}`:''),3600)}
 function boomBanner(){const el=$('#clientBanner');if(!el)return;
   el.innerHTML=`<b>📢 부동산 호황!</b><span>${BOOM.round+1}차 호황</span><p>${esc(BT())}이 비행선을 타고 돌아와 사옥을 새로 지어요.<br><em>다시 부수세요!</em> 다음 호황은 점수가 더 많이 필요해요</p>`;
   el.classList.remove('on');void el.offsetWidth;el.classList.add('on');clearTimeout(clientBanner._t);clientBanner._t=setTimeout(()=>el.classList.remove('on'),5200)}
@@ -2851,8 +2851,24 @@ function drawShip(m,mg){const sh=BOOM.ship;if(!sh||MODE!=='city')return;
   P(-30,0,0,8,0.8,16,[0.86,0.14,0.12]);P(-30,0,0,8,16,0.8,[0.86,0.14,0.12]);   // 꼬리 날개
   P(4,-13,0,14,4,5,[0.25,0.27,0.3]);P(4,-13,2.6,12,2,0.2,[1,0.86,0.45],CUBE,1);P(4,-13,-2.6,12,2,0.2,[1,0.86,0.45],CUBE,1);   // 곤돌라 · 창
   P(-6,-10.5,0,0.4,3.5,0.4,[0.3,0.3,0.32]);P(12,-10.5,0,0.4,3.5,0.4,[0.3,0.3,0.32]);
+  P(-4,-19,0,0.35,12,0.35,[0.85,0.85,0.8]);P(12,-19,0,0.35,12,0.35,[0.85,0.85,0.8]);   // 현수막 줄 (글자판은 shipUI 가 겹쳐 그림)
   const blink=Math.sin(now*6)>0;P(36,0,0,1.6,1.6,1.6,blink?[1,0.3,0.25]:[0.4,0.1,0.1],SPHERE,blink);P(-34,8,0,1.2,1.2,1.2,[1,0.95,0.6],SPHERE,1);
   if(sh.phase==='in'&&Math.random()<0.5)spawn(sh.x-sh.dx*38,sh.y,sh.z-sh.dz*38,0,0,0,1.5,[1,1,1],0.6,2)}
+// 비행선 현수막: 최근 7일 가장 많이 무너진 사옥 1위 (서버 '일별철거' 집계). 기록이 없으면 기본 문구
+function shipTop(){const h=HOT&&HOT.d&&HOT.d[0];if(!h)return null;const i=keyIdx(h.key),mine=!!(CUR&&CUR.dkey===h.key);
+  let nm=i!=null?FIRMDATA[i][0]:mine?CUR.name:((FIRMS.find(f=>f.dkey===h.key)||{}).name);if(!nm)return null;
+  return{name:String(nm).replace(/\(주\)|㈜|주식회사|\(유\)|유한회사|\(합\)|합자회사/g,'').trim(),kind:i!=null?(FIRMDATA[i][8]||''):(CUR&&mine?CUR.kind||'':''),people:h.people||1,mine}}
+function shipUI(){let el=$('#shipBan');const sh=BOOM.ship;const on=!!sh&&MODE==='city';
+  if(!el){if(!on)return;el=document.createElement('div');el.id='shipBan';document.body.appendChild(el)}
+  if(!on){el.style.display='none';return}
+  const K=clamp(cam.dist/450,1,2.6),bob=Math.sin(performance.now()/1000*1.6)*1.2,q=project(sh.x+sh.dx*4*K,sh.y+(bob-25)*K,sh.z+sh.dz*4*K);
+  if(!q){el.style.display='none';return}
+  const t=shipTop();let html;
+  if(t&&t.mine)html=`<small>🎉 축 · 최근 7일 가장 많이 무너진 곳 1위 🎉</small><b>${esc(t.name)}</b><i>바로 여기! 👷 ${t.people}명이 무너뜨림</i>`;
+  else if(t)html=`<small>🔥 최근 7일 가장 많이 무너진 ${t.kind==='u'?'캠퍼스':'사옥'} 1위</small><b>${esc(t.name)}</b><i>👷 ${t.people}명이 무너뜨림</i>`;
+  else html=`<small>📢 부동산 호황</small><b>다음 1위는 우리 회사?</b><i>사옥 무너뜨리면 순위에 올라가요</i>`;
+  if(el.dataset.h!==html){el.innerHTML=html;el.dataset.h=html}
+  const sc=clamp(1.15-cam.dist/2600,0.55,1);el.style.display='';el.style.left=q[0]+'px';el.style.top=q[1]+'px';el.style.transform=`translate(-50%,0) scale(${sc.toFixed(2)})`;el.classList.toggle('mine',!!(t&&t.mine))}
 
 // =====================================================================
 //  발주처(클라이언트) — "더 부술 거리를 던져주는 고급 샌드백"
