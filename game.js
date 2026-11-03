@@ -743,7 +743,6 @@ function collapseFloor(b,f){
   comboHit(1);addScore(b.area*d.fh*0.35+300);
   sfx(10+Math.min(30,Math.sqrt(b.area)));cam.shake=Math.max(cam.shake,Math.min(5,Math.sqrt(b.area)/15));
   if(BOSS&&b===BOSS.b)bossHit('floor');
-  clientMaybeSpawn(b);
   spillToNeighbors(b,f);
 }
 // 위에 남은 층이 많을수록 잔해가 멀리 튀어 바로 옆 건물 외벽·기둥을 때림 (지구 단위 연쇄 철거)
@@ -1077,8 +1076,9 @@ function spawnDozerLine(A,B){
   let dx=B.x-A.x,dz=B.z-A.z,l=Math.hypot(dx,dz);
   if(l<10){toast('불도저: 밀고 갈 방향으로 길게 그어주세요');return false}
   l=Math.min(l,400);dx/=Math.hypot(B.x-A.x,B.z-A.z);dz/=Math.hypot(B.x-A.x,B.z-A.z);
-  DOZERS.push({x:A.x-dx*14,z:A.z-dz*14,dx,dz,left:l+14,t:0,gone:0,v:4,acc:0,inB:null,hits:new Set(),shake:0});
-  toast('불도저 출동 — 경로를 밀고 지나가요!',1300);sfx(12,1.5);statTool('dozer');return true}
+  const px=-dz,pz=dx,gap=4.6*DZ_S+2;
+  for(const [o,back] of [[0,0],[-gap,8],[gap,8]])DOZERS.push({x:A.x-dx*(14+back)+px*o,z:A.z-dz*(14+back)+pz*o,dx,dz,left:l+14+back,t:0,gone:0,v:4,acc:0,inB:null,hits:new Set(),shake:0});
+  toast('불도저 3대 출동 — 나란히 밀고 지나가요!',1300);sfx(12,1.5);statTool('dozer');return true}
 function dozerBlade(d){const s=DZ_S;return[d.x+d.dx*3.0*s,d.z+d.dz*3.0*s]}
 function updateDozers(dt){
   for(let i=DOZERS.length-1;i>=0;i--){const d=DOZERS[i];d.t+=dt;
@@ -1517,9 +1517,6 @@ function drawGesture(){const svg=$('#gest');if(!svg)return;
 function gestureEnd(mx,my){const g=gesture;gesture=null;drawGesture();selectWeapon(weapon);if(!g)return;
   const A=g.A,sa=project(A.x,A.y,A.z);if(!sa)return;
   if(Math.hypot(mx-sa[0],my-sa[1])<12){toast('같은 곳을 눌러 취소했어요',1000);return}
-  if(g.kind==='sink'){if(MODE==='section'){const Bq=secPlane(mx,my);if(!Bq)return;secPushUndo();secSink(A,Bq)}
-    else{let hb=pick(mx,my);if(!hb){const q=rayGround(mx,my,groundAt(A.x,A.z));if(q)hb={x:q[0],z:q[1]}}if(!hb)return;snapshot();sinkCity(A,hb)}
-    bossTool('sink',A.x,A.z);return}
   if(MODE==='section'){const Bq=secPlane(mx,my);if(!Bq)return;secPushUndo();
     if(g.kind==='trim')secTrim(A,Bq);else if(g.kind==='dozer')secDozerLine(A,Bq);else secCraneLine(A,Bq);bossTool(g.kind,A.x,A.z);return}
   if(g.kind==='trim'){snapshot();runTrimCity({x:sa[0],y:sa[1]},{x:mx,y:my});bossTool('trim',A.x,A.z);return}
@@ -1533,13 +1530,13 @@ function gestureEnd(mx,my){const g=gesture;gesture=null;drawGesture();selectWeap
   snapshot();spawnCraneLine({x:A.x+f[0]*ins,y:Math.max(A.y,groundAt(A.x,A.z)+1.5),z:A.z+f[2]*ins},hb);bossTool('crane',A.x,A.z)}
 
 function updateTools2(dt){updatePours(dt);updateFloats(dt);updateDesign(dt);updateSinks(dt)}
-// ---------- 싱크홀 (0번) — 누른 곳 일대 지반이 약해져 몇 초 동안 무작위로 땅이 여러 번 꺼짐. 재사용 25초 ----------
-const SINK_COOL=25;let SINK_UNTIL=0,SINKS=[];
+// ---------- 싱크홀 (0번) — 누른 곳 일대 지반이 약해져 몇 초 동안 무작위로 땅이 여러 번 꺼짐. 재사용 대기 없음 ----------
+const SINK_COOL=0.8;let SINK_UNTIL=0,SINKS=[];   // 재사용 대기 없음 (연타 실수 방지 0.8초만)
 function sinkLeft(){return Math.max(0,(SINK_UNTIL-performance.now())/1000)}
-function sinkReady(){if(sinkLeft()>0){toast(`싱크홀 재충전 중 — ${Math.ceil(sinkLeft())}초 남았어요`,1400);return false}SINK_UNTIL=performance.now()+SINK_COOL*1000;statTool('sink');return true}
+function sinkReady(){if(sinkLeft()>0)return false;SINK_UNTIL=performance.now()+SINK_COOL*1000;statTool('sink');return true}
 // 동네: 탭한 곳 반경 약 50m 안에 6~9개 구멍이 0.3초 간격으로 무작위로 꺼짐
 function sinkStorm(h){if(!sinkReady())return;const x0=h.x,z0=h.z,RA=50,n=6+Math.floor(Math.random()*4);
-  toast('지반 약화! 일대 땅이 무작위로 꺼져요 (재사용 25초)',2200);floatText(x0,groundAt(x0,z0)+10,z0,'지반 약화!','boom',1.4);sfx(25,1.6);comboHit(1);
+  toast('지반 약화! 일대 땅이 무작위로 꺼져요',1600);floatText(x0,groundAt(x0,z0)+10,z0,'지반 약화!','boom',1.4);sfx(25,1.6);comboHit(1);
   for(let k=0;k<n;k++){const a=Math.random()*Math.PI*2,r=k===0?0:RA*(0.25+Math.random()*0.75),x=x0+Math.cos(a)*r,z=z0+Math.sin(a)*r,R=7+Math.random()*10,t=0.15+k*0.3+Math.random()*0.15;
     SINKS.push({x,z,R,t:-t,pre:true});later(t,()=>sinkHole(x,z,R))}}
 function sinkHole(x,z,R){const g0=groundAt(x,z);const v=carve(x,z,R,6+R*0.35);addScore(v*0.4);
@@ -1558,13 +1555,13 @@ function updateSinks(dt){if(MODE!=='city'){SINKS=[];return}for(let i=SINKS.lengt
   for(let k=0;k<2;k++){const a=Math.random()*Math.PI*2,r=s.R*(0.8+Math.random()*0.3),px=s.x+Math.cos(a)*r,pz=s.z+Math.sin(a)*r,g=groundAt(px,pz);
     spawn(px,g+1,pz,(s.x-px)*1.1,-1,(s.z-pz)*1.1,0.8+Math.random()*1.4,Math.random()<0.5?[0.45,0.4,0.34]:[0.58,0.55,0.5])}}}
 // 단면: 누른 위치 주변 지하·1층에서 3~4번 무작위로 꺼짐
-function secSinkStorm(h){if(!sinkReady())return;const n=3+Math.floor(Math.random()*2);toast('지반 약화! 지하·1층이 무작위로 꺼져요 (재사용 25초)',2200);sfx(25,1.6);
+function secSinkStorm(h){if(!sinkReady())return;const n=3+Math.floor(Math.random()*2);toast('지반 약화! 지하·1층이 무작위로 꺼져요',1600);sfx(25,1.6);
   for(let k=0;k<n;k++){const c=clamp(h.x+(Math.random()-.5)*SEC.W*0.8,-SEC.W/2,SEC.W/2),w=4+Math.random()*5;later(0.2+k*0.35,()=>{if(SEC)secSinkRange(c-w/2,c+w/2)})}}
 function secSinkRange(x0,x1){SEC_BATCH=true;
   for(const e of SEC.els){if(!e.alive||e.hp0>=1e8||e.k>0)continue;const b=elWorld(e);if(b[3]<x0||b[0]>x1)continue;secDestroy(e,true)}
   for(const e of SEC.els){if(!e.alive||e.k!==1||(e.kind!=='col'&&e.kind!=='core'))continue;const b=elWorld(e);if(b[3]<x0||b[0]>x1)continue;if(Math.random()<0.5)secDestroy(e,true)}
   SEC_BATCH=false;secBoom((x0+x1)/2,1,SEC.D*0.3,20);secDirty=true;secCheck();comboHit(1);floatText((x0+x1)/2,4,SEC.D/2,'쿵!','boom',0.8)}
-setInterval(()=>{const b=document.querySelector('.tool[data-w="9"]');if(!b)return;const l=Math.ceil(sinkLeft());const t=l>0?String(l):'';if(b.dataset.cd!==t){b.dataset.cd=t;b.classList.toggle('cool',l>0)}},300);
+setInterval(()=>{const b=document.querySelector('.tool[data-w="9"]');if(!b)return;const l=Math.ceil(sinkLeft());const t=SINK_COOL>2&&l>0?String(l):'';if(b.dataset.cd!==t){b.dataset.cd=t;b.classList.toggle('cool',l>0)}},300);
 function drawTools2(m,mg){drawDesign(m,mg);for(const p of POURS)drawPour(m,p);drawCharges(m,mg)}
 function clearTools2(){clearDesign();POURS=[];CHARGES=[];FLOATS=[];gesture=null;clearFx();updateDetBtn();$('#marks').innerHTML=''}
 
@@ -1603,8 +1600,8 @@ const ULTIMATE={id:'nuke',name:'전부 다시',fire({x,z}){
     shock={x,z,r:20,max:420,id:Math.random()};boom(x,z,60);boom(x,z,45);
     for(let k=0;k<90;k++){spawn(x+(Math.random()-.5)*30,groundAt(x,z)+5,z+(Math.random()-.5)*30,(Math.random()-.5)*26,25+Math.random()*50,(Math.random()-.5)*26,3+Math.random()*5,[1,0.5+Math.random()*0.3,0.15],1.2+Math.random()*1.2,2)}
     cam.shake=14;toast('클라이언트: "그냥 전부 다시 해와요"')}};
-const HINTS=['클릭: 철거반 인부떼 — 수십 명이 외벽을 타고 올라가 층마다 동시에 오함마질','클릭 → 클릭으로 선 긋기: 불도저 — 그 방향으로 밀고 가며 경로의 건물 저층에 구멍을 뚫어요','클릭 → 클릭으로 선 긋기: 쇠공 — 그은 선을 따라 휘두르고 되돌아오며 한 번 더','클릭: 레미콘 과타설 — 옥상에 콘크리트를 부어 과하중 붕괴','클릭: 다이너마이트 설치(최대 12개, 누른 층) → Space 또는 [기폭]으로 연쇄 폭파','클릭: 철근 빼기 — 순살 구조가 스스로 무너짐','건물을 잡고 끌어서 놓기: MOVE — 들어 올려 던지면 떨어진 곳을 덮쳐요','클릭: EXTRUDE — 무한 증축 → 용적률 초과로 쓰러지며 옆 건물들을 덮침','클릭 → 클릭으로 건물을 가로질러 선 긋기: TRIM — 잘린 윗부분이 미끄러져 떨어짐','클릭: 싱크홀 — 누른 곳 일대 지반이 약해져 몇 초 동안 무작위로 땅이 여러 번 꺼져요 (재사용 25초)'];
-const SHINTS=['클릭: 철거반 인부떼 — 외벽을 타고 각 층으로 올라가 기둥을 오함마로','클릭 → 클릭으로 좌우 선 긋기: 불도저 — 시작한 층 바닥을 따라 밀고 가며 터널','클릭 → 클릭으로 선 긋기: 쇠공 — 그은 선을 따라 휘둘러 지나간 자리를 쓸어버림','클릭: 레미콘 — 옥상에 타설, 위층부터 내려앉음','클릭: 다이너마이트 붙이기(최대 12개) → Space 또는 [기폭]으로 연쇄 폭파','클릭: 철근 빼기 (기둥이 서서히 약해짐)','층을 잡고 끌어서 던지기: MOVE — 빼낸 층은 위층이 내려앉고, 던진 층은 떨어진 곳을 부숴요','누른 채 위로 끌기: EXTRUDE — 끈 만큼 증축, 놓으면 하중 초과로 아래층부터 무너짐','클릭 → 클릭으로 선 긋기: TRIM — 선 위쪽이 잘려 미끄러져 떨어짐','클릭: 싱크홀 — 누른 곳 주변 지하·1층이 무작위로 여러 번 꺼지며 위층이 내려앉아요 (재사용 25초)'];
+const HINTS=['클릭: 철거반 인부떼 — 수십 명이 외벽을 타고 올라가 층마다 동시에 오함마질','클릭 → 클릭으로 선 긋기: 불도저 — 그 방향으로 밀고 가며 경로의 건물 저층에 구멍을 뚫어요','클릭 → 클릭으로 선 긋기: 쇠공 — 그은 선을 따라 휘두르고 되돌아오며 한 번 더','클릭: 레미콘 과타설 — 옥상에 콘크리트를 부어 과하중 붕괴','클릭: 다이너마이트 설치(최대 12개, 누른 층) → Space 또는 [기폭]으로 연쇄 폭파','클릭: 철근 빼기 — 순살 구조가 스스로 무너짐','건물을 잡고 끌어서 놓기: MOVE — 들어 올려 던지면 떨어진 곳을 덮쳐요','클릭: EXTRUDE — 무한 증축 → 용적률 초과로 쓰러지며 옆 건물들을 덮침','클릭 → 클릭으로 건물을 가로질러 선 긋기: TRIM — 잘린 윗부분이 미끄러져 떨어짐','클릭: 싱크홀 — 누른 곳 일대 지반이 약해져 몇 초 동안 무작위로 땅이 여러 번 꺼져요'];
+const SHINTS=['클릭: 철거반 인부떼 — 외벽을 타고 각 층으로 올라가 기둥을 오함마로','클릭 → 클릭으로 좌우 선 긋기: 불도저 — 시작한 층 바닥을 따라 밀고 가며 터널','클릭 → 클릭으로 선 긋기: 쇠공 — 그은 선을 따라 휘둘러 지나간 자리를 쓸어버림','클릭: 레미콘 — 옥상에 타설, 위층부터 내려앉음','클릭: 다이너마이트 붙이기(최대 12개) → Space 또는 [기폭]으로 연쇄 폭파','클릭: 철근 빼기 (기둥이 서서히 약해짐)','층을 잡고 끌어서 던지기: MOVE — 빼낸 층은 위층이 내려앉고, 던진 층은 떨어진 곳을 부숴요','누른 채 위로 끌기: EXTRUDE — 끈 만큼 증축, 놓으면 하중 초과로 아래층부터 무너짐','클릭 → 클릭으로 선 긋기: TRIM — 선 위쪽이 잘려 미끄러져 떨어짐','클릭: 싱크홀 — 누른 곳 주변 지하·1층이 무작위로 여러 번 꺼지며 위층이 내려앉아요'];
 function selectWeapon(i){if(i<0||i>=WEAPONS.length)return;if(gesture&&i!==weapon){gesture=null;drawGesture()}weapon=i;pickHQ=false;document.querySelectorAll('.tool[data-w]').forEach(b=>b.classList.toggle('on',+b.dataset.w===i));
   flashHint();
   if(TOUCH){const hd=holdOf();let t=(MODE==='section'?SHINTS:HINTS)[i].replace(/클릭/g,'탭').replace(/Space 또는 /g,'');
@@ -2745,7 +2742,7 @@ function bossGo(){if(!BOSS||MODE!=='city')return;CAMGO={t:0,dur:1.6}}
 //   · 재건축 1회 : 건물이 무너지면 "돈 줬잖아요, 다시 일하세요!" → 새 건물 + 사장님 강제 복귀. 두 번째 붕괴 때는 포기하고 도망
 //  ※ 대사·회사 이름은 CLIENT_LINES / CLIENT_NAMES 만 고치면 돼요. (실제 회사와 관계없는 가상 이름만 쓰기)
 // =====================================================================
-function clientScale(){return MODE==='section'?2.6:bossScale()*1.7}   // 사장님보다 큼직하게
+function clientScale(){return MODE==='section'?2.2:bossScale()*1.4}   // 사장님보다 큼직하게
 const CLIENT_NAMES=['(주)해줘해줘 개발','무한설변 홀딩스','느낌만 리츠','새벽회의 디벨롭먼트','마감엄수 자산운용'];
 const CLIENT_LINES={
   arrive:['잠깐만요, 이거 누가 부수라고 했어요?','발주처입니다. 이거 제 건물이에요!','제 건물에 무슨 짓이에요!'],
@@ -2851,7 +2848,7 @@ function clientBreakMass(m){m.alive=false;const y=clientMassY(m);boom3(m.x,y+m.h
 function clientRebuild(){const c=CLIENT,b=c.b;c.rebuilt=true;c.posts=[];c.tape=null;
   if(clientInSec()){const sc=score;secRestore(SEC.base);score=sc;SEC.tapeK=new Set();if(BOSS){BOSS.sec=null;BOSS.state='idle'}}
   else{if(!b.custom){if(!b.colPre)b.colPre=b.col;b.col=[0.95,0.70,0.78];b.h0=Math.min(b.h0*1.15+4,b.h0+30)}
-    freeDet(b);b.alive=true;b.lifted=false;b.h=b.h0;b.cdmg=0;b.domino=0;markB(b);bldDirty=true;
+    freeDet(b);b.alive=true;b.lifted=false;b.h=b.h0;b.cdmg=0;b.domino=0;if(b.custom)ensureDet(b);markB(b);bldDirty=true;   // MAP 사옥 모델은 구조(det)가 있어야 모양이 그려짐
     const R=Math.sqrt(b.area)/2+2;for(let i=0;i<MAXD;i++)if(D.used[i]&&Math.hypot(D.x[i]-b.cx,D.z[i]-b.cz)<R)D.used[i]=0;rubDirty=true;
     boom3(b.cx,b.base+3,b.cz,30);for(let k=0;k<30;k++)spawn(b.cx+(Math.random()-.5)*R*2,b.base+1,b.cz+(Math.random()-.5)*R*2,(Math.random()-.5)*10,4+Math.random()*8,(Math.random()-.5)*10,1+Math.random()*2,[0.85,0.83,0.8],0.9,2);
     bossRehire(b)}
@@ -2887,7 +2884,7 @@ function clientUpdate(dt){
 function drawClient(m,mg){const c=CLIENT;if(!c||!clientHere())return;
   const S=clientScale(),now=performance.now()/1000,b=c.b,sec=clientInSec(),P0=clientPos();
   // 검은 세단
-  {const car=P0.car,g=sec?0:groundAt(car.x,car.z),r=Math.atan2(car.dz,car.dx),k=S*0.55,cr=Math.cos(r),sr=Math.sin(r);
+  {const car=P0.car,g=sec?0:groundAt(car.x,car.z),r=Math.atan2(car.dz,car.dx),k=S*0.48,cr=Math.cos(r),sr=Math.sin(r);
     const P=(lx,ly,lz,sx,sy,sz,col)=>pushShape(m,CUBE,car.x+lx*cr*k-lz*sr*k,g+ly*k,car.z+lx*sr*k+lz*cr*k,sx*k,sy*k,sz*k,r,col,0);
     P(0,0.75,0,4.6,0.8,1.9,CL_CAR);P(-0.2,1.45,0,2.5,0.65,1.7,CL_GLASS);P(-0.2,1.8,0,2.4,0.08,1.6,CL_CAR);
     for(const [x,z] of [[1.5,0.95],[1.5,-0.95],[-1.5,0.95],[-1.5,-0.95]])P(x,0.4,z,0.8,0.8,0.25,[0.03,0.03,0.03]);
@@ -3108,14 +3105,14 @@ $('#bossArrow').onclick=bossGo;
 const TUT=[
   ['회사를 고르고 돌아다니세요','전국 건축사사무소 9천여 곳 중 하나를 고르면 그 동네로 날아가요. WASD(또는 방향키)로 이동하면 주변 지도가 계속 이어서 만들어져요. 빈 곳을 드래그하면 회전, 우클릭(또는 Shift) 드래그로 이동, 휠로 확대해요.'],
   ['시공팀 도구 (1~6)','철거반: 인부 수십 명이 외벽을 타고 올라가 층마다 오함마질. 불도저·쇠공: 클릭으로 시작점, 다시 클릭으로 끝점을 찍으면 그 선을 따라 밀고 가거나 휘둘러요 (드래그는 화면 회전, Esc 취소). 레미콘: 옥상 과하중. 다이너마이트: 여러 곳에 붙이고 Space(기폭)로 연쇄 폭파. 철근 빼기: 순살 구조.'],
-  ['설계팀 도구 (7~0) · 사장님','MOVE: 건물을 잡아 끌어서 던지기. EXTRUDE: 무한 증축 → 쓰러짐. TRIM: 클릭-클릭으로 건물을 가로질러 선을 그으면 윗부분이 잘려 떨어져요. 싱크홀(0): 누른 곳 일대 지반이 약해져 무작위로 땅이 여러 번 꺼져요(재사용 25초). Q: 필살기. 사옥 옥상의 사장님은 부술 때마다 한마디씩 하고, 사옥이 무너지면 근처 건축사무소로 도망쳐요. 끝까지 쫓아가 잡으면 큰 보너스!'],
+  ['설계팀 도구 (7~0) · 사장님','MOVE: 건물을 잡아 끌어서 던지기. EXTRUDE: 무한 증축 → 쓰러짐. TRIM: 클릭-클릭으로 건물을 가로질러 선을 그으면 윗부분이 잘려 떨어져요. 싱크홀(0): 누른 곳 일대 지반이 약해져 무작위로 땅이 여러 번 꺼져요 Q: 필살기. 사옥 옥상의 사장님은 부술 때마다 한마디씩 하고, 사옥이 무너지면 근처 건축사무소로 도망쳐요. 끝까지 쫓아가 잡으면 큰 보너스!'],
   ['구조대로 무너져요','외벽이 떨어지면 기둥·슬래브가 드러나고, 한 층의 기둥이 절반 넘게 부러지면 그 층이 주저앉아요. 1층 기둥을 노리면 빨리 무너지고, 잔해가 옆 건물까지 덮쳐요. Ctrl+Z 되돌리기.'],
   ['단면 · 랭킹 · 정복','[단면](C 키)으로 사옥을 잘라 우리 층만 정밀 철거해요. 단면에서는 장비와 인부가 화면에 그대로 보이고, 층을 통째로 빼서 던지거나(MOVE) 위로 끌어 증축(EXTRUDE)할 수 있어요. F 키로 우리 층 확대. 철거 일보로 랭킹 등록, [정복]에서 구별 진행도를 확인하세요.'],
 ];
 if(TOUCH){   // 휴대폰용 설명 (키보드·마우스 대신 손가락)
   TUT[0][1]='전국 건축사사무소 9천여 곳 중 하나를 고르면 그 동네로 날아가요. 한 손가락으로 빈 곳을 밀면 회전, 두 손가락으로 벌리거나 오므리면 확대·축소, 두 손가락을 같이 밀면 이동해요. 파란 사무소 이름표는 두 번 누르면 그 건물 단면으로 들어가요.';
   TUT[1][1]='철거반: 인부 수십 명이 외벽을 타고 올라가 층마다 오함마질. 불도저·쇠공: 시작점을 탭, 끝점을 한 번 더 탭하면 그 선을 따라 밀고 가거나 휘둘러요 (같은 곳을 다시 탭하면 취소). 레미콘: 옥상 과하중. 다이너마이트: 여러 곳에 붙이고 [기폭] 버튼으로 연쇄 폭파. 철근 빼기: 순살 구조.';
-  TUT[2][1]='MOVE: 건물을 꾹 눌렀다가 끌어서 던지기. EXTRUDE: 무한 증축 → 쓰러짐. TRIM: 탭-탭으로 건물을 가로질러 선을 그으면 윗부분이 잘려 떨어져요. 싱크홀(0): 누른 곳 일대 지반이 약해져 무작위로 땅이 여러 번 꺼져요(재사용 25초). 오른쪽 아래 원: 필살기. 사옥 옥상의 사장님은 부술 때마다 한마디씩 하고, 사옥이 무너지면 근처 건축사무소로 도망쳐요. 끝까지 쫓아가 잡으면 큰 보너스!';
+  TUT[2][1]='MOVE: 건물을 꾹 눌렀다가 끌어서 던지기. EXTRUDE: 무한 증축 → 쓰러짐. TRIM: 탭-탭으로 건물을 가로질러 선을 그으면 윗부분이 잘려 떨어져요. 싱크홀(0): 누른 곳 일대 지반이 약해져 무작위로 땅이 여러 번 꺼져요 오른쪽 아래 원: 필살기. 사옥 옥상의 사장님은 부술 때마다 한마디씩 하고, 사옥이 무너지면 근처 건축사무소로 도망쳐요. 끝까지 쫓아가 잡으면 큰 보너스!';
   TUT[3][1]=TUT[3][1].replace('Ctrl+Z 되돌리기.','[되돌리기] 버튼으로 되돌릴 수 있어요.');
   TUT[4][1]='[단면]으로 사옥을 잘라 우리 층만 정밀 철거해요. 단면에서는 장비와 인부가 화면에 그대로 보이고, 층을 꾹 눌러 빼서 던지거나(MOVE) 위로 끌어 증축(EXTRUDE)할 수 있어요. 위쪽 [확대해서 보기]로 우리 층 확대. 철거 일보로 랭킹 등록, [정복]에서 구별 진행도를 확인하세요.';
 }
