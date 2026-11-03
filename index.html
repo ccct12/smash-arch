@@ -224,6 +224,24 @@ a.donate small{font-size:11px;opacity:.8}
 .report a.donate{border-color:#ccc;color:#666}
 #btnDonate{color:var(--gold)}
 body.mini #btnDonate{display:none!important}
+/* ---- 콤보 · 싱크홀 · 건설사 핀 · 패치 노트 ---- */
+#combo{position:fixed;left:calc(12px + env(safe-area-inset-left));top:70px;z-index:6;pointer-events:none;opacity:0;transition:opacity .3s;display:flex;flex-direction:column;align-items:flex-start;line-height:1}
+#combo.on{opacity:1}
+#combo b{font-family:"Black Han Sans",sans-serif;font-weight:400;font-size:30px;color:var(--gold);-webkit-text-stroke:1.5px #1a1a1a;text-shadow:2px 2px 0 #1a1a1a}
+#combo small{font-size:11.5px;font-weight:800;color:#1a1a1a;background:rgba(255,255,255,.8);border-radius:4px;padding:1px 6px;margin-top:3px}
+#combo.pop b{animation:cpop .25s ease-out}
+@keyframes cpop{0%{transform:scale(1.5)}100%{transform:scale(1)}}
+.tool.cool{opacity:.55}
+.tool.cool::after{content:attr(data-cd);position:absolute;right:4px;bottom:3px;font-size:10px;font-weight:900;color:var(--gold)}
+#gest.sink line{stroke:#c47a2c;stroke-width:4;stroke-dasharray:3 5;filter:drop-shadow(0 0 3px #000)}
+.lbl.pin.cons{background:#c2410c;border-color:#7c2d12}
+.lbl.pin.cons:hover{background:#ea580c}
+.card.patch ul{margin:6px 0 0 18px;font-size:13px;line-height:1.65;color:#d6d9dc}
+.card.patch li{margin-bottom:5px}
+.client-in{margin:0 0 10px;padding:9px 10px;border-radius:7px;background:#2a1b22;border:1px solid #5a0d24}
+.client-in label{display:block;font-size:12.5px;font-weight:700;margin-bottom:5px;color:#f6c6d2}
+.client-in label small{font-weight:400;color:var(--muted);font-size:11px}
+.cn-input{width:100%;background:#0e0f11;border:1px solid var(--line);border-radius:6px;color:#fff;padding:7px 10px;font:inherit;font-size:13px;-webkit-user-select:text;user-select:text}
 /* ---- 발주처 ---- */
 #clientUI{position:fixed;z-index:4;pointer-events:none;transform:translate(-18%,-100%);display:flex;flex-direction:column;align-items:center;gap:6px}
 #clientUI .bubble{position:relative;max-width:240px;background:#fff;color:#111;font-weight:800;font-size:13.5px;line-height:1.35;padding:7px 12px;border-radius:12px;border:2px solid #d8261b;box-shadow:0 3px 10px rgba(0,0,0,.35);text-align:center;word-break:keep-all}
@@ -301,6 +319,8 @@ body.mini #btnMini{background:var(--accent);border-color:#ff8a5a}
   #bossUI .tag{font-size:13px;padding:1px 10px}
   #bossArrow{font-size:11px}
   .mark{font-size:34px;border-width:4px}
+  #combo{top:56px;left:calc(8px + env(safe-area-inset-left))}
+  #combo b{font-size:20px}
   .boom{font-size:52px}
   .count{font-size:48px}
   .modal{padding:6px calc(6px + env(safe-area-inset-right)) 6px calc(6px + env(safe-area-inset-left))}
@@ -346,7 +366,7 @@ body.iostip #iosTip{display:flex}
   <h2>시공팀 무기</h2>
   <p>철거반 인부떼, 불도저, 타워크레인 쇠공, 레미콘 과타설, 다이너마이트 연쇄 발파, 철근 빼기.</p>
   <h2>설계팀 무기</h2>
-  <p>MOVE로 건물 던지기, EXTRUDE로 무한 증축 후 붕괴, TRIM으로 건물 자르기, 심의 보류 도장.</p>
+  <p>MOVE로 건물 던지기, EXTRUDE로 무한 증축 후 붕괴, TRIM으로 건물 자르기, 싱크홀로 땅 꺼뜨리기.</p>
   <h2>단면 모드와 사장님</h2>
   <p>단면 모드에서는 사옥을 잘라 우리 층만 정밀 철거할 수 있고, 기둥이 부러지면 층이 주저앉는 연쇄 붕괴가 일어납니다. 옥상의 사장님은 부술 때마다 한마디씩 하고, 사옥이 무너지면 근처 건축사무소로 도망칩니다.</p>
   <p>철거 공사 일보, 주간 랭킹, 서울 25개 구 정복 지도를 제공합니다. 실제 회사·인물과 무관한 비공식 팬 게임입니다.</p>
@@ -388,7 +408,7 @@ body.iostip #iosTip{display:flex}
 <div id="toolbar" class="panel">
   <div class="grp"><span class="glbl">시공팀</span><button class="tool on" data-w="0"><span class="num">1</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="5" r="1.6"/><path d="M6 7v6M6 13l-2 5M6 13l2 5M4 9h4"/><circle cx="13" cy="5" r="1.6"/><path d="M13 7v6M13 13l-2 5M13 13l2 5M11 9h4"/><path d="M17 4l4 4M19 6l-3 3"/></svg>철거반</button><button class="tool" data-w="1"><span class="num">2</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="8" width="9" height="6" rx="1"/><path d="M7 8V5h4v3"/><rect x="4" y="15" width="12" height="4" rx="2"/><path d="M16 11h3l1 8"/><path d="M19 10v10"/></svg>불도저</button><button class="tool" data-w="2"><span class="num">3</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 21V4M5 4h15M5 8l4-4"/><path d="M15 4l2 7" /><circle cx="17.5" cy="14" r="3" fill="currentColor"/><path d="M2 21h7"/><path d="M10 16c2 3 6 4 10 3" stroke-dasharray="2 2"/></svg>쇠공</button><button class="tool" data-w="3"><span class="num">4</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="13" width="10" height="5" rx="1"/><ellipse cx="16" cy="12" rx="5" ry="3.5"/><circle cx="5" cy="19" r="1.5"/><circle cx="16" cy="19" r="1.5"/></svg>레미콘</button><button class="tool" data-w="4"><span class="num">5</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="10" width="3.5" height="10" rx="1"/><rect x="10" y="10" width="3.5" height="10" rx="1"/><rect x="15" y="10" width="3.5" height="10" rx="1"/><path d="M12 10V6c0-2 3-2 4-4"/><path d="M18 2l1 1M20 4h1"/></svg>다이너마이트</button><button class="tool" data-w="5"><span class="num">6</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 21V9M12 21V3M17 21V9"/><path d="M10 6l2-3 2 3"/><path d="M4 21h16"/></svg>철근 빼기</button></div>
   <div class="sep"></div>
-  <div class="grp"><span class="glbl">설계팀</span><button class="tool" data-w="6"><span class="num">7</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M2 12h20M12 2l-3 3M12 2l3 3M12 22l-3-3M12 22l3-3M2 12l3-3M2 12l3 3M22 12l-3-3M22 12l-3 3"/></svg>MOVE</button><button class="tool" data-w="7"><span class="num">8</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="7" y="13" width="10" height="8"/><path d="M7 13V5h10v8" stroke-dasharray="2 2"/><path d="M12 11V2M9 5l3-3 3 3"/></svg>EXTRUDE</button><button class="tool" data-w="8"><span class="num">9</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="4" width="14" height="17"/><path d="M2 15L22 7" stroke-dasharray="3 2"/><path d="M14 2l3 3-3 3"/></svg>TRIM</button><button class="tool" data-w="9"><span class="num">0</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 3h4v6l3 3H7l3-3z"/><rect x="5" y="13" width="14" height="4" rx="1"/><path d="M4 21h16"/></svg>심의 보류</button></div>
+  <div class="grp"><span class="glbl">설계팀</span><button class="tool" data-w="6"><span class="num">7</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M2 12h20M12 2l-3 3M12 2l3 3M12 22l-3-3M12 22l3-3M2 12l3-3M2 12l3 3M22 12l-3-3M22 12l-3 3"/></svg>MOVE</button><button class="tool" data-w="7"><span class="num">8</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="7" y="13" width="10" height="8"/><path d="M7 13V5h10v8" stroke-dasharray="2 2"/><path d="M12 11V2M9 5l3-3 3 3"/></svg>EXTRUDE</button><button class="tool" data-w="8"><span class="num">9</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="4" width="14" height="17"/><path d="M2 15L22 7" stroke-dasharray="3 2"/><path d="M14 2l3 3-3 3"/></svg>TRIM</button><button class="tool" data-w="9"><span class="num">0</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 14h5M17 14h5"/><ellipse cx="12" cy="15" rx="5" ry="2.2"/><path d="M12 4v7M9 8l3 3 3-3"/><path d="M7 15l2 5h6l2-5"/></svg>싱크홀</button></div>
   <div class="sep"></div>
   <button class="tool sm" id="btnSection"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 21V8l8-5 8 5v13"/><path d="M4 12h16M4 16h16M9 21v-5"/><path d="M14 3v18" stroke-dasharray="2 2"/></svg>단면</button>
   <div class="sep"></div>
@@ -439,6 +459,7 @@ body.iostip #iosTip{display:flex}
   <a class="donate" href="https://fairy.hada.io/@smash-arch#support" target="_blank" rel="noopener">☕ 만든 사람에게 커피 한 잔 <small>(선택 · 게임은 계속 무료)</small></a>
 </div></div>
 <div id="toast"></div>
+<div id="combo"></div>
 <div id="loading"><div id="loadingMsg">불러오는 중…</div></div>
 <div id="boot"><div><b>SMASH <span>ARCH</span></b><br><span id="bootMsg">건축사사무소 목록을 불러오는 중…</span></div></div>
 
@@ -446,7 +467,9 @@ body.iostip #iosTip{display:flex}
   <button class="close" data-close>×</button>
   <h2>어느 회사를 부술까요?</h2>
   <p class="sub">사옥 주변 건물을 OpenStreetMap에서 불러옵니다.</p>
-  <div class="row" style="margin:0 0 4px"><input id="customQ" placeholder="전국 건축사사무소 검색 (이름·주소·좌표)" autocomplete="off"></div>
+  <div class="client-in"><label for="clientNames">😤 우리 발주처 이름 <small>(선택 · 쉼표로 최대 5개 · 이 브라우저에만 저장, 서버·랭킹·공유에는 안 나가요)</small></label>
+    <input id="clientNames" class="cn-input" maxlength="80" placeholder="예: 해줘해줘개발, 무한설변홀딩스 — 비우면 가상 이름으로 나와요" autocomplete="off"></div>
+  <div class="row" style="margin:0 0 4px"><input id="customQ" placeholder="전국 건축사사무소·건설사 검색 (이름·주소·좌표)" autocomplete="off"></div>
   <div class="small" style="margin:2px 0 8px">전국 건축사사무소 <b id="firmCount">0</b> · 출처: 공공데이터포털 전국건축사사무소표준데이터</div>
   <div id="searchRes" style="display:none"></div>
   <div class="small" style="margin:10px 0 6px;color:#ccc">대형 설계사무소</div>
@@ -463,6 +486,9 @@ body.iostip #iosTip{display:flex}
   <label class="opt">잔해 많이 (느리면 끄기) <input type="checkbox" id="optDebris" checked></label>
   <label class="opt">그림자 (느리면 끄기) <input type="checkbox" id="optShadows" checked></label>
   <label class="opt">간단 화면 — 필요한 버튼만 작게 (H) <input type="checkbox" id="optMini"></label>
+  <label class="opt">화면 흔들림 (멀미 나면 끄기) <input type="checkbox" id="optShake"></label>
+  <div class="small" style="margin-top:10px">발주처 이름 (쉼표로 최대 5개 · 이 브라우저에만 저장)</div>
+  <div class="row"><input id="clientNames2" class="cn-input" maxlength="80" placeholder="비우면 가상 이름"></div>
   <div class="row" id="setLinks" style="margin-top:10px"><button class="btn-s" data-go="btnRank">랭킹</button><button class="btn-s" data-go="btnConq">정복</button><button class="btn-s" data-go="btnShare">공유</button><button class="btn-s" data-go="btnReport">철거 일보</button></div>
   <a class="donate" href="https://fairy.hada.io/@smash-arch#support" target="_blank" rel="noopener">☕ 만든 사람에게 커피 한 잔 <small>(선택 · 게임은 계속 무료)</small></a>
   <button class="btn-p" id="btnPickHQ" style="width:100%;margin-top:12px">사옥 건물 직접 지정</button>
@@ -541,6 +567,20 @@ body.iostip #iosTip{display:flex}
   }
 })();
 </script>
+<div class="modal" id="mPatch"><div class="card patch">
+  <div class="small" style="margin:0 0 4px">업데이트 · 2026.11.03</div>
+  <h2>이번에 바뀐 것</h2>
+  <ul>
+    <li><b>발주처 난입</b> — 사옥이 꽤 부서지면 검은 차를 타고 나타나 빨간 임시 철골·빨간펜 테이프·매스를 마구 갖다 놓아요. 전부 부술 거리! 건물이 무너지면 한 번은 새로 지어 사장님을 복귀시켜요.</li>
+    <li><b>우리 발주처 이름 넣기</b> — 회사 고르기 창(또는 설정)에서 발주처 이름을 최대 5개까지 정할 수 있어요. 이 브라우저에만 저장돼요.</li>
+    <li><b>건설사 추가</b> — 시공능력평가 상위 100곳과 종합건설사 1,300여 곳. 주황색 핀으로 보여요.</li>
+    <li><b>0번 도구 싱크홀</b> — 심의 보류 도장 대신, 클릭-클릭한 범위의 땅이 꺼져요 (재사용 25초).</li>
+    <li><b>연속 콤보</b> — 쉬지 않고 부수면 n COMBO, 점수 최대 ×2.</li>
+    <li><b>화면 흔들림 기본 끔</b> — 멀미 방지. 설정에서 다시 켤 수 있어요.</li>
+    <li><b>휴대폰</b> — 가로 전용 화면, 안드로이드 전체 화면, 간단 화면(H)·[UI] 버튼.</li>
+  </ul>
+  <button class="btn-p" id="patchOk" style="width:100%;margin-top:12px">확인하고 시작</button>
+</div></div>
 <script src="config.js"></script>
 <script>
 /* 부트스트랩: 구글 시트(Apps Script 웹앱)에서 사무소 목록을 받아 FIRMDATA_BOOT 로 넘긴 뒤 game.js 실행
