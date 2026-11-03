@@ -701,7 +701,7 @@ body.iostip #iosTip{display:flex}
    - 이 브라우저에 저장된 목록이 있으면 바로 시작하고, 뒤에서 새 목록을 받아 다음 접속 때 반영
    - 서버가 안 되면 data/firms.json(저장된 스냅샷)으로 시작 */
 (function(){
-  var CK='smasharch_firms_v2';
+  var CK='smasharch_firms_v3';   // 목록 형식이 바뀌면 숫자를 올려 예전 저장본을 안 쓰게 함
   function api(){var u='';try{u=JSON.parse(localStorage.getItem('smasharch_rank_url')||'null')||''}catch(e){}return String(u||(window.SMASH_CONFIG&&SMASH_CONFIG.API_URL)||'').trim()}
   function getT(url,ms){var c=new AbortController(),t=setTimeout(function(){c.abort()},ms);return fetch(url,{signal:c.signal}).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}).finally(function(){clearTimeout(t)})}
   function ok(d){return d&&Array.isArray(d.rows)&&d.rows.length>0}

@@ -1861,7 +1861,7 @@ function fakeCity(seed,ox,oz){
 }
 function setHQ(b,save){for(const o of B){if(o.hq){o.hq=false;o.col=o.col0||o.col}}
   b.hq=true;b.hqName=CUR.name;b.col0=b.col;b.col=[0.98,0.92,0.66];bldDirty=true;markB(b);
-  if(save){const [la,ln]=unproj(b.cx,b.cz);lsSet('smasharch_hq_'+CUR.id,[la,ln])}
+  if(save){const [la,ln]=unproj(b.cx,b.cz);lsSet('smasharch_hq_'+CUR.id,[la,ln]);hqFixSend(la,ln)}
   makeLabels();if(BOSS&&!BOSS.flees&&BOSS.state==='idle')bossSpawn();if(BASE){BASE=takeState()}}
 function chooseHQ(){
   const saved=lsGet('smasharch_hq_'+CUR.id);let px=0,pz=0;if(saved){[px,pz]=proj(saved[0],saved[1])}
@@ -1897,7 +1897,8 @@ async function loadFirm(f){
   cam.theta=0.75;cam.phi=0.62;cam.dist=2400;camFly={t:0,from:{dist:2400,phi:0.62,theta:0.75},to:{dist:Math.min(1600,560*Math.max(1,1.15*innerHeight/innerWidth)),phi:0.95,theta:1.25}};
   clearTimeout(slowMsg);setLoading(false);
   if(!lsGet('smasharch_tut_v2'))setTimeout(()=>showTut(0),400);
-  if(!fake&&!B.some(b=>b.hq))toast('사옥 건물을 못 찾았어요. 설정 → "사옥 건물 직접 지정"으로 골라주세요.',4500);
+  if(HQFIX&&f.dkey==='d'+HQFIX.kid)hqFixAsk();
+  else if(!fake&&!B.some(b=>b.hq))toast('사옥 건물을 못 찾았어요. 설정 → "사옥 건물 직접 지정"으로 골라주세요.',4500);
   else if(!fake&&!f.tenant&&parseFloor(f.addr)==null&&B.some(b=>b.hq))toast('레이드 보스 · 사옥 전체를 쓰는 회사예요. 사옥 기둥이 2배 단단해요',3500);
   else if(!fake&&f.tenant&&!approx)toast(f.name+'은(는) 이 건물 일부 층에 입주한 사무소예요.',3500);
   else if(!fake&&approx&&!lsGet('smasharch_hq_'+f.id))toast('정확한 번지를 못 찾아 도로 기준으로 표시했어요. 설정에서 사옥을 직접 지정할 수 있어요.',4500);
@@ -3136,6 +3137,14 @@ function showHot(list){const box=$('#hotList'),big=$('#bigFirms'),head=$('#hotHe
 // 서버가 방금 추가한 회사 한 줄을 이 화면 목록에도 바로 넣기
 function addFirmRow(r){const kid=+r[5];if(!isFinite(kid))return null;let i=FKI.get(kid);if(i!=null)return i;
   FIRMDATA.push(r);i=FIRMDATA.length-1;FIDX.push(norm(r[0])+'|'+norm(r[1]));FKI.set(kid,i);return i}
+// 근사 좌표로 자동 추가된 회사: 추가한 사람이 30분 안에 지도에서 건물을 눌러 위치를 바로잡음 (서버 'fix')
+let HQFIX=null;
+function hqFixAsk(){if(!HQFIX||HQFIX.asked||!CUR||CUR.dkey!=='d'+HQFIX.kid)return;HQFIX.asked=true;
+  setTimeout(()=>{pickHQ=true;$('#hint').textContent='우리 건물을 눌러주세요 — 위치가 바로 고쳐져요';toast('📍 주소로 정확한 건물을 못 찾았어요. 지도를 돌려보며 우리 건물을 눌러주세요 (30분 안에 1번, 모두에게 반영)',7000)},2600)}
+async function hqFixSend(la,ln){if(!HQFIX||!CUR||CUR.dkey!=='d'+HQFIX.kid||performance.now()>HQFIX.until)return;const kid=HQFIX.kid;HQFIX=null;const u=rankUrl();if(!u)return;
+  try{const r=await fetchT(u,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({type:'fix',kid,lat:la,lng:ln,vid:lsGet('smasharch_vid')||''})},15000);
+    if(r&&r.ok){const i=FKI.get(kid);if(i!=null){FIRMDATA[i][2]=la;FIRMDATA[i][3]=ln;FIRMDATA[i][4]=0}if(CUR){CUR.lat=la;CUR.lng=ln;CUR.approx=false}toast('위치를 고쳤어요! 다음부터 모두 이 건물로 가요 👍',3500)}
+    else toast('위치 수정 실패: '+((r&&r.error)||'알 수 없는 오류'),4000)}catch(e){toast('위치 수정을 보내지 못했어요 — 설정 → 문의함으로 알려주세요',4000)}}
 function openReq(kind,name){closeModals();const m=$('#mReq');if(!m)return;
   setReqKind(kind||'회사 추가');if(name!=null)$('#rqName').value=name;if(name&&/대학/.test(name))setReqCat('대학교');$('#rqMsg2').textContent='';m.classList.add('open');
   setTimeout(()=>{const fk=kind==='회사 추가'||kind==='정보 수정'||!kind;const el=fk?($('#rqName').value?$('#rqAddr'):$('#rqName')):$('#rqMsg');try{el.focus()}catch(e){}},60)}
@@ -3156,7 +3165,7 @@ async function sendReq(){const k=$('#mReq').dataset.kind||'회사 추가',u=rank
   const btn=$('#rqSend');btn.disabled=true;say('보내는 중…');
   try{const r=await fetchT(u,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(d)},15000);
     if(r&&r.ok){['#rqName','#rqAddr','#rqFloor','#rqMsg'].forEach(s=>$(s).value='');say('');closeModals();
-      if(r.row&&Array.isArray(r.row)&&r.row.length>=8){const i=addFirmRow(r.row);toast(r.dup?'이미 목록에 있는 회사예요 — 바로 가요':'목록에 추가됐어요! 바로 부수러 가요 🏗'+(r.note?' ('+r.note+')':''),3600);if(i!=null)setTimeout(()=>loadFirm(firmFromData(i)),600)}
+      if(r.row&&Array.isArray(r.row)&&r.row.length>=8){const i=addFirmRow(r.row);if(r.approx&&!r.dup&&r.kid!=null)HQFIX={kid:r.kid,until:performance.now()+29*60000,asked:false};toast(r.dup?'이미 목록에 있는 회사예요 — 바로 가요':'목록에 추가됐어요! 바로 부수러 가요 🏗'+(r.note?' ('+r.note+')':''),3600);if(i!=null)setTimeout(()=>loadFirm(firmFromData(i)),600)}
       else toast(k==='회사 추가'?(r.auto===false?'요청을 받았어요 — 확인 후 넣을게요 🙏':'요청을 보냈어요 🙏'):'보냈어요! 고마워요 🙏',3400)}
     else say('보내기 실패: '+((r&&r.error)||'알 수 없는 오류'))}
   catch(e){say('보내기 실패 — 잠시 뒤에 다시 시도해주세요')}
