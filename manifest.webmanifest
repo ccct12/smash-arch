@@ -1,7 +1,7 @@
 {
-  "name": "SMASH ARCH — 건축사무소 사옥 부수기",
+  "name": "SMASH ARCH — 우리 회사·우리 학교 부수기",
   "short_name": "SMASH ARCH",
-  "description": "전국 건축사사무소 사옥을 3D 지도에서 부수는 웹 게임",
+  "description": "건축사사무소·건설사·대학교 1만 1천여 곳을 3D 지도에서 부수는 웹 게임",
   "lang": "ko",
   "start_url": "./",
   "scope": "./",

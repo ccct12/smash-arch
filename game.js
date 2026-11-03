@@ -41,9 +41,33 @@ function addrQueries(addr){
 
 // ---------- 설정 ----------
 const FLOOR_Y = -60, BOTTOM_Y = -75;
-const GAME_VER='2026.11.03';   // 패치 노트 버전 — 바꾸면 재방문자에게 업데이트 창이 한 번 뜸 (index.html #mPatch 내용도 같이 수정)
-const opts = {sound:true, labels:true, debris:true, shadows:true, pins:true, mini:false, shake:false};
+const GAME_VER='2026.11.03b';   // 패치 노트 버전 — 바꾸면 재방문자에게 업데이트 창이 한 번 뜸 (index.html #mPatch 내용도 같이 수정)
+const opts = {sound:true, labels:true, debris:true, shadows:true, pins:true, mini:false, shake:false, night:true};
 try{ const s = JSON.parse(localStorage.getItem('smasharch_opts')||'null'); if(s) Object.assign(opts,s);}catch(e){}
+// ---------- 낮·밤 (야근 모드) ----------
+//  낮 DAY_SEC초 → 밤 NIGHT_SEC초 반복. 밤에는 불 켜진 건물(층) 점수 ×NIGHT_X, 꺼진 건물 ×NIGHT_OFF
+//  불 켜짐은 밤마다 새로 정함 (사옥은 늘 야근 중이라 항상 켜짐). 설정 '낮·밤 바뀜'으로 끌 수 있음
+const DAY_SEC=90,NIGHT_SEC=60,NIGHT_LIT=0.45,NIGHT_X=2,NIGHT_OFF=0.25;
+let DAY={t:0,night:false,k:0,n:0};
+function litHash(a,b){const v=Math.sin(a*12.9898+b*78.233)*43758.5453;return v-Math.floor(v)}
+function bLit(b){return !!b&&(!!b.hq||litHash((b.id||0)%100003+0.5,DAY.n*1.37+0.21)<NIGHT_LIT)}
+function litFloor(b,f){return litHash((b.id||0)%100003+f*0.37,DAY.n+5.3)<0.7}
+function litSt(b,st){return st>=0&&DAY.night&&bLit(b)?st+10:st}
+function nightK(b){return DAY.night&&MODE==='city'?(bLit(b)?NIGHT_X:NIGHT_OFF):1}
+function secLitK(k){return !!SEC&&(k===SEC.ourK||(k>=0&&litHash(k+0.5,DAY.n*1.37+(SEC.b&&SEC.b.id||0)%997)<0.5))}
+function secNightK(k){return DAY.night&&MODE==='section'&&SEC?(secLitK(k)?NIGHT_X:NIGHT_OFF):1}
+function dayRemesh(all){if(all)bldDirty=true;for(const b of DETS)if(b.det)b.det.dirty=true;if(SEC)secDirty=true}
+function nightStart(){DAY.night=true;DAY.t=0;DAY.n++;dayRemesh(true);
+  toast(`🌙 야근 타임 ${NIGHT_SEC}초! 불 켜진 건물 점수 ×${NIGHT_X} · 꺼진 건물 ×${NIGHT_OFF}`,3200);sfx(6,0.4);
+  if(BOSS&&BOSS.state==='idle')bossSay(pickL(['오늘 야근이다. 불 끄지 마!','저녁은 컵라면으로 시켜.','퇴근? 도면 다 끝나면.']),3)}
+function dayStart(){DAY.night=false;DAY.t=0;dayRemesh(false);toast('☀ 아침이 밝았어요 — 점수 배율이 원래대로 돌아와요',2200)}
+function dayReset(){const was=DAY.night;DAY.t=0;DAY.night=false;DAY.k=0;if(was)dayRemesh(false)}
+function dayUpdate(dt){
+  if(opts.night&&CUR){DAY.t+=dt;if(DAY.t>=(DAY.night?NIGHT_SEC:DAY_SEC)){if(DAY.night)dayStart();else nightStart()}}
+  else if(DAY.night)dayStart();
+  const tg=DAY.night?1:0;DAY.k+=clamp(tg-DAY.k,-dt/2.5,dt/2.5);
+  for(let i=0;i<3;i++)FOG[i]=FOG_DAY[i]+(FOG_NIGHT[i]-FOG_DAY[i])*DAY.k;
+  const dk=DAY.k>0.5;if(document.body.classList.contains('night')!==dk)document.body.classList.toggle('night',dk)}
 
 // ---------- 유틸 ----------
 const $ = s => document.querySelector(s);
@@ -76,7 +100,7 @@ void main(){
   vF=clamp((length(aP.xz-uTgt.xz)-uFogR.x)/uFogR.y,0.0,1.0);
 }`;
 const FS=(DERIV?'#extension GL_OES_standard_derivatives : enable\n':'')+PREC+`
-uniform sampler2D uSh;uniform vec3 uFog;uniform vec3 uSun;uniform vec3 uCam;uniform float uShOn;uniform float uTexel;
+uniform sampler2D uSh;uniform vec3 uFog;uniform vec3 uSun;uniform vec3 uCam;uniform float uShOn;uniform float uTexel;uniform float uNight;
 varying vec3 vC;varying vec3 vN;varying vec3 vW;varying vec2 vX;varying vec4 vL;varying float vF;varying float vE;
 float unpack(vec4 c){return dot(c,vec4(1.0,1.0/255.0,1.0/65025.0,1.0/16581375.0));}
 float shadowAt(float nd){
@@ -91,9 +115,10 @@ float shadowAt(float nd){
 }
 void main(){
   if(vE>0.5){gl_FragColor=vec4(mix(vC,uFog,vF),1.0);return;}
-  vec3 n=normalize(vN);vec3 c=vC;float glass=0.0;
+  vec3 n=normalize(vN);vec3 c=vC;float glass=0.0;float em=0.0;vec3 ec=vec3(0.0);
+  if(vX.x<-1.5){em=uNight;ec=vC;}   // 밤에 불 켜진 유리 (단면·MAP 사옥)
   if(vX.x>=0.0){
-    float u=vX.x,st=vX.y,y=vW.y;
+    float u=vX.x,st=vX.y,y=vW.y;float lit=step(9.5,st);st-=lit*10.0;   // style+10 = 야근 중(불 켜진) 건물
     float fy=fract((y-0.4)/3.4);float fx;float win=0.0;float avg=0.3;
     if(st<0.5){fx=fract(u/3.2);win=step(0.2,fx)*step(fx,0.8)*step(0.3,fy)*step(fy,0.8);avg=0.3;}
     else if(st<1.5){fx=fract(u/1.8);win=step(0.40,fy)*step(fy,0.88)*step(0.08,fx);avg=0.44;}
@@ -106,12 +131,14 @@ void main(){
     float pn=fract(sin(floor(u/1.7)*12.9898+floor(y/3.4)*78.233)*43758.5453);
     vec3 gc=mix(vec3(0.20,0.28,0.37),vec3(0.50,0.61,0.72),clamp(0.25+pn*0.25+clamp(y*0.004,0.0,0.35),0.0,1.0));
     c=mix(c,gc,win);glass=win;
+    float on=lit*step(0.22,pn);em=win*on*uNight;ec=vec3(1.0,0.80,0.46)*(0.8+0.4*pn);
   }
   float nd=max(dot(n,uSun),0.0);
   float sh=nd>0.0?shadowAt(nd):0.0;
   float hemi=0.50+0.16*n.y;
-  vec3 col=c*(hemi+0.60*nd*sh);
-  if(glass>0.0){vec3 v=normalize(uCam-vW);vec3 r=reflect(-uSun,n);col+=vec3(0.9,0.92,0.95)*pow(max(dot(r,v),0.0),30.0)*0.55*glass*sh+vec3(0.05,0.07,0.09)*glass*(1.0-abs(n.y));}
+  vec3 col=c*(hemi+0.60*nd*sh*(1.0-0.8*uNight));
+  if(glass>0.0){vec3 v=normalize(uCam-vW);vec3 r=reflect(-uSun,n);col+=(vec3(0.9,0.92,0.95)*pow(max(dot(r,v),0.0),30.0)*0.55*glass*sh+vec3(0.05,0.07,0.09)*glass*(1.0-abs(n.y)))*(1.0-uNight);}
+  col*=mix(vec3(1.0),vec3(0.30,0.34,0.52),uNight);col=mix(col,ec,clamp(em,0.0,1.0));
   gl_FragColor=vec4(mix(col,uFog,vF),1.0);
 }`;
 const SVS=`precision highp float;attribute vec3 aP;uniform mat4 uLVP;void main(){gl_Position=uLVP*vec4(aP,1.0);}`;
@@ -122,7 +149,7 @@ function mkProg(v,f){const p=gl.createProgram();gl.attachShader(p,sh(gl.VERTEX_S
   gl.bindAttribLocation(p,0,'aP');gl.bindAttribLocation(p,1,'aN');gl.bindAttribLocation(p,2,'aC');gl.bindAttribLocation(p,3,'aX');gl.linkProgram(p);
   if(!gl.getProgramParameter(p,gl.LINK_STATUS))throw new Error(gl.getProgramInfoLog(p));return p}
 const prog=mkProg(VS,FS), sprog=mkProg(SVS,SFS);
-const U={};for(const n of['uVP','uLVP','uCam','uFog','uSun','uSh','uShOn','uTexel','uTgt','uFogR'])U[n]=gl.getUniformLocation(prog,n);
+const U={};for(const n of['uVP','uLVP','uCam','uFog','uSun','uSh','uShOn','uTexel','uTgt','uFogR','uNight'])U[n]=gl.getUniformLocation(prog,n);
 const SU={uLVP:gl.getUniformLocation(sprog,'uLVP')};
 gl.enable(gl.DEPTH_TEST);gl.disable(gl.CULL_FACE);
 for(let i=0;i<4;i++)gl.enableVertexAttribArray(i);
@@ -168,7 +195,7 @@ let camFly=null;
 function moveCam(dt){
   if(camFly){camFly.t=Math.min(1,camFly.t+dt/1.6);const e=1-Math.pow(1-camFly.t,3);for(const k of ['dist','phi','theta'])cam[k]=camFly.from[k]+(camFly.to[k]-camFly.from[k])*e;if(camFly.t>=1)camFly=null}
   let fx=0,fz=0;const k=KEYS;if(k.has('w')||k.has('arrowup'))fz+=1;if(k.has('s')||k.has('arrowdown'))fz-=1;if(k.has('d')||k.has('arrowright'))fx+=1;if(k.has('a')||k.has('arrowleft'))fx-=1;
-  if(!fx&&!fz)return;camFly=null;CAMGO=null;const sp=cam.dist*0.75*(k.has('shift')?2.2:1)*dt,st=Math.sin(cam.theta),ct=Math.cos(cam.theta);
+  if(!fx&&!fz)return;camFly=null;CAMGO=null;if(BOOM.ship)BOOM.ship.follow=false;const sp=cam.dist*0.75*(k.has('shift')?2.2:1)*dt,st=Math.sin(cam.theta),ct=Math.cos(cam.theta);
   cam.tx+=(-st*fz+ct*fx)*sp;cam.tz+=(-ct*fz-st*fx)*sp;
 }
 function updateCam(){
@@ -492,8 +519,8 @@ function buildChunkBuildings(c){
   for(const b of c.blds){
     if(!b.alive||b.h<0.5||b.det||b.lifted)continue;
     const intact=b.h>=b.h0-0.3;
-    const y0=b.base-1.5,y1=b.base+b.h,p=b.pts,c=b.col,cb=[c[0]*0.80,c[1]*0.80,c[2]*0.82],st=b.style;
-    const par=intact&&st!==3?0.9:0;
+    const y0=b.base-1.5,y1=b.base+b.h,p=b.pts,c=b.col,cb=[c[0]*0.80,c[1]*0.80,c[2]*0.82],st=litSt(b,b.style);
+    const par=intact&&b.style!==3?0.9:0;
     m.grow(p.length*12+b.tris.length+b.units.length*36);
     let u=0;
     for(let i=0;i<p.length;i++){const a=p[i],q=p[(i+1)%p.length];let nx=q[1]-a[1],nz=-(q[0]-a[0]);const l=Math.hypot(nx,nz)||1;nx/=l;nz/=l;
@@ -601,7 +628,7 @@ function wakeRubble(x,z,r){for(let i=0;i<MAXD;i++){if(D.used[i]&&D.rest[i]&&Math
 // ---------- 점수 & 랭크 ----------
 let score=0;
 // 한 판 = 회사 하나 불러와서(또는 [전부 복구]부터) 다시 불러올 때까지. 랭킹은 한 판에 닉네임 하나, 기록 한 줄(점수만 갱신)
-let GAME_ID='',RANK_LOCK=null;function newGame(){GAME_ID=(Date.now().toString(36)+Math.random().toString(36).slice(2,10)).slice(0,20);RANK_LOCK=null}
+let GAME_ID='',RANK_LOCK=null;function newGame(){GAME_ID=(Date.now().toString(36)+Math.random().toString(36).slice(2,10)).slice(0,20);RANK_LOCK=null;if(typeof boomReset==='function')boomReset();if(typeof dayReset==='function')dayReset()}
 const RANKS=[[0,'F','인턴'],[3000,'E','사원'],[15000,'D','대리'],[50000,'C','과장'],[150000,'B','소장'],[450000,'A','대표 건축사'],[1500000,'S','ANNIHILATOR']];
 function addScore(v){v*=comboMult();score+=v;chargeUlt(v)}
 // ---- 연속 콤보: 2.5초 안에 계속 부수면 n COMBO, 점수 배율 최대 ×2 (화면 흔들림 대신 글자로만)
@@ -617,6 +644,8 @@ function updateHUD(){
   const nx=RANKS[k+1];$('#rankBar i').style.width=(nx?((score-RANKS[k][0])/(nx[0]-RANKS[k][0])*100):100)+'%';
   $('#depth').textContent=depthText(maxDepth);
   {const n=nbStats();const el=$('#nbBox');if(n.t){el.style.display='';el.textContent=`${districtName()} 지구 · 건축사무소 철거 ${n.d} / ${n.t}`;checkStage(n)}else el.style.display='none'}
+  {const el=$('#dayBox');if(el){if(!opts.night||!CUR)el.style.display='none';else{el.style.display='';const left=Math.max(0,Math.ceil((DAY.night?NIGHT_SEC:DAY_SEC)-DAY.t));
+    const t=DAY.night?`🌙 야근 타임 ${left}초 · 불 켜진 곳 ×${NIGHT_X} · 꺼진 곳 ×${NIGHT_OFF}`:`☀ 낮 · 야근까지 ${left}초`;if(el.textContent!==t)el.textContent=t;el.classList.toggle('night',DAY.night)}}}
   if(MODE==='section')updateSecPanel();
 }
 function depthText(m){if(m>=12742000)return '지구 관통! 반대편 도착';if(m>=1000)return '지하 '+fmt(m/1000)+' km';return '지하 '+fmt(m)+' m'}
@@ -629,8 +658,9 @@ function damageBuilding(b,amt,x,z,force=1){
   structDamage(b,x,y,z,4+Math.min(8,amt*0.1),amt/22);
 }
 function killBuilding(b){
-  if(!b.alive||b.lifted)return;freeDet(b);STATS.kills++;
-  addScore(Math.max(b.h,0)*b.area*0.35+b.area*2+(b.hq?50000:0));
+  if(!b.alive||b.lifted)return;freeDet(b);STATS.kills++;stopNote(b);
+  addScore((Math.max(b.h,0)*b.area*0.35+b.area*2+(b.hq?50000:0))*nightK(b));
+  if(DAY.night&&MODE==='city'){const L=bLit(b);floatText(b.cx,b.base+Math.max(b.h,3)+6,b.cz,L?'🌙 야근 ×2':'소등 ×0.25','cad',1.1)}
   const n=Math.min(opts.debris?60:20,Math.floor(Math.sqrt(b.area)*1.2)+6);
   for(let k=0;k<n;k++){const p=b.pts[Math.floor(Math.random()*b.pts.length)];const t=Math.random();
     spawn(b.cx+(p[0]-b.cx)*t,b.base+Math.random()*Math.max(b.h,3),b.cz+(p[1]-b.cz)*t,(Math.random()-.5)*6,Math.random()*5,(Math.random()-.5)*6,1.5+Math.random()*3,Math.random()<0.5?b.col:[0.52,0.51,0.49])}
@@ -714,7 +744,7 @@ function structDamage(b,x,y,z,r,power,opt){
         for(let k=0;k<2;k++)spawn(cx,y0+Math.random()*d.fh,cz,(Math.random()-.5)*5,2+Math.random()*3,(Math.random()-.5)*5,0.6+Math.random()*0.8,CONC_D)}}}
   }
   if(!changed)return;
-  addScore(pan*60+cols*400);clientDamage(b,pan+cols*3);
+  addScore((pan*60+cols*400)*nightK(b));clientDamage(b,pan+cols*3);
   if(BOSS&&b===BOSS.b)bossHit(cols?'col':'facade');
   d.dirty=true;detCheck(b);
 }
@@ -725,7 +755,7 @@ function facadeStrip(b,x,z,strength){
     const a=d.nodes[j];const facing=(a[0]-x)*n2[0]+(a[1]-z)*n2[1]<0;   // 폭심 쪽을 향한 면
     if(Math.random()<strength*(facing?0.9:0.25)){d.panel[f*d.M+j]=0;n++;if(Math.random()<0.25)spawn(a[0],b.base+d.fy[f]+d.fh*0.5,a[1],n2[0]*6,3,n2[1]*6,0.8+Math.random(),[0.55,0.68,0.78])}}
     for(let j=0;j<d.C;j++)if(Math.random()<strength*0.35)d.hp[f*d.C+j]-=strength*1.2*Math.random()}
-  addScore(n*40);d.dirty=true;detCheck(b);
+  addScore(n*40*nightK(b));d.dirty=true;detCheck(b);
 }
 function floorSupport(d,f){let a=0;for(let j=0;j<d.C;j++)if(d.hp[f*d.C+j]>0)a++;return a/d.C}
 function detCheck(b){
@@ -742,7 +772,7 @@ function collapseFloor(b,f){
   for(let k=0;k<n;k++){const p=b.pts[Math.floor(Math.random()*b.pts.length)],t=Math.random();const x=b.cx+(p[0]-b.cx)*t,z=b.cz+(p[1]-b.cz)*t;
     const r=Math.random();const c=r<0.55?CONC:r<0.75?b.col:r<0.9?[0.55,0.68,0.78]:REBAR;
     spawn(x,y+Math.random()*d.fh,z,(x-b.cx)*0.25+(Math.random()-.5)*5,1+Math.random()*4,(z-b.cz)*0.25+(Math.random()-.5)*5,r<0.55?2.2+Math.random()*2.4:0.8+Math.random()*1.4,c)}
-  comboHit(1);addScore(b.area*d.fh*0.35+300);
+  comboHit(1);addScore((b.area*d.fh*0.35+300)*nightK(b));
   sfx(10+Math.min(30,Math.sqrt(b.area)));cam.shake=Math.max(cam.shake,Math.min(5,Math.sqrt(b.area)/15));
   if(BOSS&&b===BOSS.b)bossHit('floor');
   spillToNeighbors(b,f);
@@ -795,7 +825,7 @@ function prismCol(m,x,z,y0,y1,w,c){const h=w/2;m.grow(24);
 function rebars(m,x,z,y,R){for(let k=0;k<4;k++){const ox=(k%2?0.18:-0.18)+(R()-.5)*0.1,oz=(k<2?0.18:-0.18)+(R()-.5)*0.1,hh=0.8+R()*1.0;pushShape(m,CUBE,x+ox+(R()-.5)*0.3,y+hh/2,z+oz+(R()-.5)*0.3,0.07,hh,0.07,0,REBAR,0)}}
 function buildDetMesh(b){
   if(b.custom==='map'){buildMapMesh(b);return}
-  const d=b.det,m=d.mb;m.reset();const st=b.style,c=b.col,base=b.base,R=mulberry(b.id%9973+5);
+  const d=b.det,m=d.mb;m.reset();const st=litSt(b,b.style),c=b.col,base=b.base,R=mulberry(b.id%9973+5);
   const dark=d.weak?[c[0]*0.7,c[1]*0.66,c[2]*0.62]:c;
   let topF=-1;for(let f=d.F-1;f>=0;f--)if(d.fl[f]){topF=f;break}
   const collapsedAbove=topF>=0&&topF<d.F-1;   // 위층이 날아간 상태 → 철근이 삐죽
@@ -835,7 +865,7 @@ function buildDetMesh(b){
 //  외관: 흰 세로 루버, 가운데 유리 커튼월, 9층 테라스 정원, 높은 남쪽 타워(루버 스크린 + 초록 지그재그 계단), MAP GROUP 글자
 //  구조(층·기둥·외피)는 일반 건물과 같아서 똑같이 부서짐
 // =====================================================================
-const LM_WHITE=[0.95,0.96,0.97],LM_FIN=[0.985,0.985,0.98],LM_GLASS=[0.40,0.54,0.66],LM_GLASS2=[0.52,0.64,0.74],LM_DARK=[0.22,0.28,0.34],LM_GREEN=[0.12,0.78,0.32];
+const LIT_GLASS=[1.0,0.82,0.48],LM_WHITE=[0.95,0.96,0.97],LM_FIN=[0.985,0.985,0.98],LM_GLASS=[0.40,0.54,0.66],LM_GLASS2=[0.52,0.64,0.74],LM_DARK=[0.22,0.28,0.34],LM_GREEN=[0.12,0.78,0.32];
 const LM_FH=4.2, LM_F=9;
 function isMapFirmKey(k){return k==='map'||k==='d5523'}
 function applyLandmark(b){if(!b||b.custom)return;b.custom='map';b.customF=LM_F;b.h0=LM_F*LM_FH;b.h=b.h0;b.col=LM_WHITE.slice();b.col0=b.col;b.roof=[0.86,0.87,0.88];b.lm=null;freeDet(b);ensureDet(b);markB(b)}
@@ -868,6 +898,7 @@ function buildMapMesh(b){
   const off=(p,n,k)=>[p[0]+n[0]*k,p[1]+n[1]*k];
   for(let f=0;f<F;f++){
     if(!d.fl[f]){const y=base+t[f]+0.6;m.grow(b.tris.length);for(let q=0;q<b.tris.length;q+=3)for(let k=0;k<3;k++){const P=b.pts[b.tris[q+k]];m.v(P[0],y,P[1],0,1,0,...RUBBLE)}continue}
+    const NL=DAY.night&&bLit(b)&&litFloor(b,f);   // 밤: 불 켜진 층
     const y0=base+d.fy[f],y1=y0+d.fh,ys=y1-0.45,top=f===F-1;
     let intact=true;for(let j=0;j<d.M;j++)if(!d.panel[f*d.M+j]){intact=false;break}
     if(intact)for(let j=0;j<d.C;j++)if(d.hp[f*d.C+j]<d.hp0){intact=false;break}
@@ -880,9 +911,9 @@ function buildMapMesh(b){
       const L=Math.hypot(e[0]-a[0],e[1]-a[1]),longSide=Math.abs(((e[0]-a[0])*fr.ca+(e[1]-a[1])*fr.sa)/(L||1))>0.7;
       if(zone==='B'){
         if(top){// 9층 테라스: 안쪽으로 물러난 유리벽 + 낮은 유리 난간
-          const ia=off(a,n,-2.6),ie=off(e,n,-2.6);quad(m,[ia[0],y0,ia[1]],[ie[0],y0,ie[1]],[ie[0],ys,ie[1]],[ia[0],ys,ia[1]],N3,LM_GLASS2,-1,-1,0);
+          const ia=off(a,n,-2.6),ie=off(e,n,-2.6);quad(m,[ia[0],y0,ia[1]],[ie[0],y0,ie[1]],[ie[0],ys,ie[1]],[ia[0],ys,ia[1]],N3,NL?LIT_GLASS:LM_GLASS2,NL?-2:-1,-1,0);
           quad(m,[a[0],y0,a[1]],[e[0],y0,e[1]],[e[0],y0+1.1,e[1]],[a[0],y0+1.1,a[1]],N3,[0.72,0.82,0.88],-1,-1,0);continue}
-        quad(m,[a[0],y0,a[1]],[e[0],y0,e[1]],[e[0],ys,e[1]],[a[0],ys,a[1]],N3,LM_GLASS,-1,-1,0);
+        quad(m,[a[0],y0,a[1]],[e[0],y0,e[1]],[e[0],ys,e[1]],[a[0],ys,a[1]],N3,NL?LIT_GLASS:LM_GLASS,NL?-2:-1,-1,0);
         // 사무실 조명 줄 · 멀리언
         const dx=(e[0]-a[0])/L,dz=(e[1]-a[1])/L,rot=Math.atan2(-dz,dx);
         for(let k=0.9;k<L;k+=1.8){const x=a[0]+dx*k-n[0]*0.35,z=a[1]+dz*k-n[1]*0.35;pushShape(m,CUBE,x,ys-0.15,z,1.1,0.06,0.12,rot,[1,1,0.96],1)}
@@ -893,7 +924,7 @@ function buildMapMesh(b){
         let wall=zone==='A'?LM_WHITE:LM_GLASS;
         const win=zone==='A'&&longSide&&(f===F-2||f===F-3);   // 7·8층 큰 창 (사진의 MAP GROUP 아래)
         if(win)wall=LM_DARK;
-        quad(m,[a[0],y0,a[1]],[e[0],y0,e[1]],[e[0],ys,e[1]],[a[0],ys,a[1]],N3,wall,-1,-1,0);
+        const wl=NL&&wall!==LM_WHITE;quad(m,[a[0],y0,a[1]],[e[0],y0,e[1]],[e[0],ys,e[1]],[a[0],ys,a[1]],N3,wl?LIT_GLASS:wall,wl?-2:-1,-1,0);
         if(!win)fins(m,a,e,n,y0+0.05,y1,0.85,(f%2)*0.42,0.55,0.16,LM_FIN);
       }
     }
@@ -1039,11 +1070,11 @@ function updateCrews(dt){
           let bj=-1,bd=1e9;for(let j=0;j<d.C;j++){if(d.hp[w.f*d.C+j]<=0)continue;const [x,z]=colPos(d,j);const dd=Math.hypot(x-w.x,z-w.z);if(dd<bd){bd=dd;bj=j}}
           if(bj<0){// 이 층 기둥이 다 부러짐 → 한 층 위로
             if(w.f+1<d.F&&d.fl[w.f+1]){w.f++;w.state='climb'}else{w.state='fall';w.vy=3}}
-          else{const ii=w.f*d.C+bj;d.hp[ii]-=0.38;addScore(90);
+          else{const ii=w.f*d.C+bj;d.hp[ii]-=0.38;addScore(90*nightK(b));
             for(let q=-1;q<=1;q++){const pj=(Math.floor(Math.random()*d.M));if(Math.hypot(d.nodes[pj][0]-w.x,d.nodes[pj][1]-w.z)<5)d.panel[w.f*d.M+pj]=0}
             spawn(w.x,w.y+1.6,w.z,w.nx*4+(Math.random()-.5)*3,3,w.nz*4+(Math.random()-.5)*3,0.5,[0.72,0.71,0.68]);
             if(Math.random()<0.25)spawn(w.x,w.y+1.8,w.z,(Math.random()-.5)*3,2,(Math.random()-.5)*3,0.25,[1,0.85,0.4],0.25,1);
-            if(d.hp[ii]<=0)addScore(320);d.dirty=true;detCheck(b)}}}
+            if(d.hp[ii]<=0)addScore(320*nightK(b));d.dirty=true;detCheck(b)}}}
       else if(w.state==='fall'){w.vy-=30*dt;w.y+=w.vy*dt;w.x+=w.nx*4*dt;w.z+=w.nz*4*dt;w.dir+=dt*8;
         const g=groundAt(w.x,w.z);if(w.y<=g){w.y=g;w.t=-0.4;
           // 살아남은 인부는 남은 가장 낮은 층으로 다시 달려듦
@@ -1167,14 +1198,14 @@ function drawStamp(m,s){
 function boom3(x,y,z,size){const n=Math.min(40,Math.floor(size*2.5));
   for(let k=0;k<n;k++){const a=Math.random()*Math.PI*2,s=Math.random()*size*0.6;spawn(x,y,z,Math.cos(a)*s,2+Math.random()*size*0.6,Math.sin(a)*s,0.6+Math.random()*size*0.08,Math.random()<0.5?[0.8,0.78,0.74]:[0.62,0.6,0.57],0.5+Math.random()*0.5,1)}
   sfx(size)}
-function updateTools(dt){bossUpdate(dt);clientUpdate(dt);updateCranes(dt);updateCrews(dt);updateDozers(dt);updateRebar(dt);updateStamps(dt);updateTools2(dt)}
+function updateTools(dt){bossUpdate(dt);boomUpdate(dt);clientUpdate(dt);updateCranes(dt);updateCrews(dt);updateDozers(dt);updateRebar(dt);updateStamps(dt);updateTools2(dt)}
 function drawTools(m,mg){
   for(const c of CRANES)drawCrane(m,mg,c);
   for(const c of CREWS)for(const w of c.ws)drawWorker(m,w,TOY);
   for(const d of DOZERS)drawDozer(m,d);
   for(const r of REBARFX)drawRebarFx(m,r);
   for(const s of STAMPS)drawStamp(m,s);
-  drawTools2(m,mg);drawBoss(m,mg);drawClient(m,mg);
+  drawTools2(m,mg);drawBoss(m,mg);drawClient(m,mg);drawShip(m,mg);drawStopFence(m);
   if(dozerPath&&dozerPath.b){const a=dozerPath.a,b=dozerPath.b,l=Math.hypot(b.x-a.x,b.z-a.z);const n=Math.max(1,Math.floor(l/4));
     for(let k=0;k<=n;k+=1){const x=a.x+(b.x-a.x)*k/n,z=a.z+(b.z-a.z)*k/n;pushShape(mg,CUBE,x,groundAt(x,z)+0.6,z,1.6,0.3,1.6,0,[1,0.8,0.1],1)}}
 }
@@ -1256,6 +1287,7 @@ function placeDynCity(h){
   toast(`다이너마이트 ${CHARGES.length}개 설치 (${floorName(f)}) — Space 또는 [기폭] 버튼`,1800);
 }
 function detonate(){
+  if(stopOn()){stopNag();return}
   if(!CHARGES.length){toast('먼저 다이너마이트를 붙여주세요');return}
   if(MODE==='section')secPushUndo();else snapshot();
   const list=CHARGES;CHARGES=[];updateDetBtn();statTool('blast');
@@ -1307,8 +1339,8 @@ function runTrimCity(sa,sb){
     const ob=obbOf(b),Hup=b.h-cut;
     SLICES.push({col:b.col,style:b.style,roof:b.roof,ob,H:Hup,x:b.cx+ob.ox,y:b.base+cut,z:b.cz+ob.oz,dir:[right[0]*sg,right[1]*sg],v:0,vy:0,tum:0,w:0,t:0,phase:'slide',src:b,mass:Math.sqrt(b.area*Hup)/20});
     CUTFX.push({b,y:b.base+cut,t:0.7});
-    freeDet(b);addScore(b.area*Hup*0.3+1500);
-    if(cut<3){b.alive=false;b.h=0;markB(b);STATS.kills++;firmsKilled(b)}else{b.h0=cut;b.h=cut;markB(b)}}
+    freeDet(b);addScore((b.area*Hup*0.3+1500)*nightK(b));
+    if(cut<3){b.alive=false;b.h=0;markB(b);STATS.kills++;stopNote(b);firmsKilled(b)}else{b.h0=cut;b.h=cut;markB(b)}}
   for(let k=0;k<20;k++){const c=sel[Math.floor(Math.random()*sel.length)];spawn(c.b.cx+(Math.random()-.5)*Math.sqrt(c.b.area),c.y,c.b.cz+(Math.random()-.5)*Math.sqrt(c.b.area),(Math.random()-.5)*6,3,(Math.random()-.5)*6,0.35,[0.5,0.85,1],0.5,1)}
   sfx(14,0.5);hitStop(0.08);flashScreen(0.25,'#9fd8ff');statTool('trim');
   floatText(sel[0].b.cx,sel[0].y+6,sel[0].b.cz,'TRIM','cad',1.4);
@@ -1367,7 +1399,7 @@ function drawOBB(m,C,A,U,N,a,u,n,col,style,roof){
   face(P(-1,1,1),P(1,1,1),P(1,1,-1),P(-1,1,-1),U,roof||col,-1,-1,0);face(P(-1,-1,-1),P(1,-1,-1),P(1,-1,1),P(-1,-1,1),neg(U),cb,-1,-1,0);
 }
 function detach(b){freeDet(b);b.lifted=true;markB(b);b.ob=b.ob||obbOf(b)}
-function finishBuilding(b,pts){b.alive=false;b.lifted=false;b.h=0;markB(b);STATS.kills++;addScore(pts);firmsKilled(b)}
+function finishBuilding(b,pts){stopNote(b);b.alive=false;b.lifted=false;b.h=0;markB(b);STATS.kills++;addScore(pts*nightK(b));firmsKilled(b)}
 function chunkRain(x,y,z,n,s,col,spd){for(let k=0;k<n;k++)spawn(x+(Math.random()-.5)*s,y+Math.random()*s*0.5,z+(Math.random()-.5)*s,(Math.random()-.5)*spd,2+Math.random()*spd*0.6,(Math.random()-.5)*spd,1.2+Math.random()*2.2,Math.random()<0.4?CONC:col)}
 
 // ---------- MOVE: 건물을 잡아 들어 올려 던지기 ----------
@@ -1458,7 +1490,7 @@ function clearDesign(){if(HELD)HELD.b.lifted=false;HELD=null;for(const t of THRO
 // ---------- 필살기 게이지 ----------
 function chargeUlt(v){if(v>0&&!ultArmed){ULT=Math.min(1,ULT+v/150000);}}
 function updateUltUI(){const el=$('#ult');if(!el)return;el.style.setProperty('--p',(ULT*100).toFixed(1)+'%');el.classList.toggle('ready',ULT>=1);el.classList.toggle('armed',ultArmed)}
-function armUlt(){if(ULT<1){toast(`필살기 게이지 ${Math.floor(ULT*100)}% — 더 부수면 차올라요`);return}ultArmed=!ultArmed;
+function armUlt(){if(stopOn()){stopNag();return}if(ULT<1){toast(`필살기 게이지 ${Math.floor(ULT*100)}% — 더 부수면 차올라요`);return}ultArmed=!ultArmed;
   $('#hint').textContent=ultArmed?'클릭: 클라이언트 전화 — "그냥 전부 다시 해와요"':'';if(ultArmed)toast('필살기 준비! 부술 곳을 클릭하세요',1800)}
 
 // =====================================================================
@@ -1546,7 +1578,7 @@ function sinkHole(x,z,R){const g0=groundAt(x,z);const v=carve(x,z,R,6+R*0.35);ad
     if(b.area<90&&b.h0<9){killBuilding(b);return}
     const inside=pip(x,z,b.pts)||Math.hypot(b.cx-x,b.cz-z)<R*0.85,d=ensureDet(b),nf=inside?Math.min(d.F,3):1;
     for(let f=0;f<nf;f++){for(let j=0;j<d.C;j++){const [cx,cz]=colPos(d,j);if(inside||Math.hypot(cx-x,cz-z)<R)d.hp[f*d.C+j]=0}for(let j=0;j<d.M;j++)if(Math.random()<0.6)d.panel[f*d.M+j]=0}
-    d.dirty=true;addScore(2000);detCheck(b)});
+    d.dirty=true;addScore(2000*nightK(b));detCheck(b)});
   forTreesNear(x,z,R,t=>{if(t.alive&&Math.hypot(t.x-x,t.z-z)<R)killTree(t)});
   if(CLIENT)clientHitAt(x,g0+2,z,R,5);
   SINKS.push({x,z,R,t:0});sfxBoom(0.7);hitStop(0.03);cam.shake=Math.max(cam.shake,4);comboHit(1);floatText(x,g0+5,z,'쿵!','boom',0.7)}
@@ -1665,6 +1697,7 @@ canvas.addEventListener('pointerdown',e=>{
   if(ptrs.size===2){firing=false;clearHold(drag);cancelHolds();const [a,b]=[...ptrs.values()];pinch={d:Math.hypot(a.x-b.x,a.y-b.y),cx:(a.x+b.x)/2,cy:(a.y+b.y)/2,lx:(a.x+b.x)/2,ly:(a.y+b.y)/2,dist:cam.dist,theta:cam.theta,phi:cam.phi};drag=null;return}
   drag={x:e.clientX,y:e.clientY,sx:e.clientX,sy:e.clientY,btn:e.button,moved:false,shift:e.shiftKey,pt:e.pointerType,t0:performance.now()};
   if(e.button!==0||pickHQ||ultArmed||e.shiftKey||gesture)return;
+  if(stopOn())return;
   const hold=holdOf(),mx=e.clientX,my=e.clientY;
   const d=drag;let go=null;
   if(MODE==='city'){
@@ -1704,6 +1737,8 @@ function endPtr(e){
   const click=drag&&!drag.moved&&!(drag.pt==='touch'&&performance.now()-drag.t0>650),mx=e.clientX,my=e.clientY;
   // 우클릭(드래그 없이) = 선 긋기 취소
   if(click&&drag.btn===2&&gesture){gestureCancel();drag=null;return}
+  // 구청 공사중지 중에는 도구를 못 씀 (화면 이동·회전은 됨)
+  if(click&&drag.btn===0&&!pickHQ&&stopOn()){stopNag();drag=null;return}
   // 선 긋기 도구: 클릭 = 시작점 / 끝점, 드래그 = 화면 회전
   if(click&&drag.btn===0&&!ultArmed&&!pickHQ&&holdOf()==='line'){if(gesture)gestureEnd(mx,my);else gestureStart(mx,my);drag=null;return}
   if(click&&drag.btn===0&&bossClick(mx,my)){drag=null;return}
@@ -1714,7 +1749,7 @@ function endPtr(e){
     drag=null;return}
   if(click&&drag.btn===0){const h=pick(mx,my);
     if(pickHQ){pickHQ=false;selectWeapon(weapon);if(h&&h.b){setHQ(h.b,true);toast('사옥으로 지정했어요 (이 브라우저에 저장)')}else toast('건물을 눌러주세요')}
-    else if(h&&ultArmed){snapshot();ULTIMATE.fire(h);ULT=0;ultArmed=false;statTool('nuke');selectWeapon(weapon);bossTool('nuke',h.x,h.z)}
+    else if(h&&ultArmed){snapshot();STOP.grace=performance.now()+8000;ULTIMATE.fire(h);ULT=0;ultArmed=false;statTool('nuke');selectWeapon(weapon);bossTool('nuke',h.x,h.z)}
     else if(h&&!holdOf()){const w=WEAPONS[weapon];if(!w.nosnap)snapshot();w.fire(h);if(w.id!=='blast')statTool(w.id);bossTool(w.id,h.x,h.z)}}
   drag=null;
 }
@@ -1750,7 +1785,7 @@ function makeLabels(){const box=$('#labels');box.innerHTML='';LBL=[];
   makePins();
 }
 function updateLabels(){
-  drawFloats();updateUltUI();drawGesture();drawBossUI();drawClientUI();
+  drawFloats();updateUltUI();drawGesture();drawBossUI();drawClientUI();stopUI();
   if(MODE==='section'){updateSecLabels();return}
   const occ=new Set();
   for(const L of LBL){const b=L.b;if(!b.alive||(L.pin?!opts.pins||b.hq:!opts.labels)){L.el.style.display='none';continue}
@@ -1879,10 +1914,11 @@ function firmButton(name,addr,onclick,firm){const b=document.createElement('butt
   if(firm){b.addEventListener('pointerenter',()=>{clearTimeout(prefT);prefT=setTimeout(()=>prefetchFirm(firm,true),350)});b.addEventListener('pointerleave',()=>clearTimeout(prefT));b.addEventListener('pointerdown',()=>prefetchFirm(firm,true))}b.className='firm';b.innerHTML='<b></b><span></span>';b.querySelector('b').textContent=name;b.querySelector('span').textContent=addr;b.onclick=onclick;return b}
 FIRMS.forEach(presetFromData);
 const fl=$('#firmList');for(const f of FIRMS)fl.appendChild(firmButton(f.name,f.addr,()=>loadFirm(f),f));
-$('#firmCount').textContent=FIRMDATA.length?fmt(FIRMDATA.length)+'곳 (좌표 확정 '+fmt(FIRM_GEO_COUNT)+')'+(window.FIRMDATA_SRC==='snapshot'?' · 저장된 목록':''):'목록을 불러오지 못했어요 (주소 검색은 가능)';
+{const kc={'':0,c:0,g:0,u:0};for(const r of FIRMDATA)kc[r[8]in kc?r[8]:'']++;
+  $('#firmCount').textContent=FIRMDATA.length?`건축사사무소 ${fmt(kc[''])} · 건설사 ${fmt(kc.c)} · 일반 회사 ${fmt(kc.g)} · 대학교 ${fmt(kc.u)}곳 (좌표 확정 ${fmt(FIRM_GEO_COUNT)})`+(window.FIRMDATA_SRC==='snapshot'?' · 저장된 목록':''):'목록을 불러오지 못했어요 (주소 검색은 가능)'}
 const norm=s=>s.toLowerCase().replace(/\(주\)|㈜|주식회사|\(유\)|\(합\)|유한회사|합자회사|[\s·.,\-()]/g,'');
 const FIDX=FIRMDATA.map(([n,a])=>norm(n)+'|'+norm(a));
-function firmFromData(i){const [n,a,la,ln,st,kid,sido,sgg]=FIRMDATA[i];const f={key:'d'+kid,dkey:'d'+kid,sido,sgg,name:n,addr:a,q:addrQueries(a),approxLast:true,tenant:/\d+\s*층|\d+\s*호|지층|지하/.test(a)};
+function firmFromData(i){const [n,a,la,ln,st,kid,sido,sgg,kd]=FIRMDATA[i];const f={key:'d'+kid,dkey:'d'+kid,sido,sgg,name:n,addr:a,q:addrQueries(a),approxLast:true,kind:kd||'',tenant:kd!=='u'&&/\d+\s*층|\d+\s*호|지층|지하/.test(a)};
   if(st!==2&&la!=null){f.lat=la;f.lng=ln;f.approx=st===1}return f}
 const GEO_TAG=['','  · 위치 확인 필요(이름검색)','  · 좌표 준비 중(주소 검색으로 찾기)'];
 function runSearch(){const q=$('#customQ').value.trim();const box=$('#searchRes');box.innerHTML='';
@@ -1891,15 +1927,15 @@ function runSearch(){const q=$('#customQ').value.trim();const box=$('#searchRes'
   box.style.display='';
   if(m){box.appendChild(firmButton('좌표로 이동',`${m[1]}, ${m[2]}`,()=>loadFirm({name:'좌표 '+(+m[1]).toFixed(4)+', '+(+m[2]).toFixed(4),addr:'',lat:+m[1],lng:+m[2]})));return}
   const nq=norm(q);const hits=[];for(let i=0;i<FIDX.length&&hits.length<40;i++)if(FIDX[i].includes(nq))hits.push(i);
-  hits.forEach((i,n)=>{const f=firmFromData(i);box.appendChild(firmButton(({c:'🏗 ',g:'🏢 '}[FIRMDATA[i][8]]||'')+FIRMDATA[i][0],FIRMDATA[i][1]+GEO_TAG[FIRMDATA[i][4]]+({c:' · 건설사',g:' · 일반 회사'}[FIRMDATA[i][8]]||''),()=>loadFirm(f),f));if(n<3)setTimeout(()=>{if($('#customQ').value.trim()===q)prefetchFirm(f,false)},400)});
+  hits.forEach((i,n)=>{const f=firmFromData(i);box.appendChild(firmButton(({c:'🏗 ',g:'🏢 ',u:'🎓 '}[FIRMDATA[i][8]]||'')+FIRMDATA[i][0],FIRMDATA[i][1]+GEO_TAG[FIRMDATA[i][4]]+({c:' · 건설사',g:' · 일반 회사',u:' · 대학교'}[FIRMDATA[i][8]]||''),()=>loadFirm(f),f));if(n<3)setTimeout(()=>{if($('#customQ').value.trim()===q)prefetchFirm(f,false)},400)});
   box.appendChild(firmButton('“'+q+'” 주소로 직접 찾기','목록에 없으면 주소나 건물 이름으로 검색',()=>loadFirm({name:q,addr:q,q:addrQueries(q)})));
-  if(hits.length<3)box.appendChild(firmButton('📮 “'+q+'” 우리 회사로 바로 추가하기','목록에 없으면 주소·층수만 넣어주세요. 위치를 찾아 바로 추가돼요 (일반 회사도 OK)',()=>openReq('회사 추가',q)));
+  if(hits.length<3)box.appendChild(firmButton('📮 “'+q+'” 바로 추가하기','목록에 없으면 주소만 넣어주세요. 위치를 찾아 바로 추가돼요 (건축사사무소·건설사·일반 회사·대학교)',()=>openReq('회사 추가',q)));
 }
 $('#customQ').addEventListener('input',runSearch);
 $('#customQ').addEventListener('keydown',e=>{if(e.key==='Enter'){const f=$('#searchRes .firm');if(f)f.click()}});
 $('#btnShare').onclick=()=>openShare('result');
 $('#btnPickHQ').onclick=()=>{closeModals();pickHQ=true;$('#hint').textContent='사옥 건물을 눌러주세요';toast('사옥으로 쓸 건물을 눌러주세요')};
-for(const k of ['Sound','Labels','Debris','Shadows','Pins','Mini','Shake']){const el=$('#opt'+k);if(!el)continue;const key=k.toLowerCase();el.checked=!!opts[key];el.onchange=()=>{opts[key]=el.checked;lsSet('smasharch_opts',opts);if(key==='sound'&&!el.checked)humStop();if(key==='mini')applyMini()}}
+for(const k of ['Sound','Labels','Debris','Shadows','Pins','Mini','Shake','Night']){const el=$('#opt'+k);if(!el)continue;const key=k.toLowerCase();el.checked=!!opts[key];el.onchange=()=>{opts[key]=el.checked;lsSet('smasharch_opts',opts);if(key==='sound'&&!el.checked)humStop();if(key==='mini')applyMini();if(key==='night'){if(!el.checked&&DAY.night)dayStart();DAY.t=0}}}
 // ---- 간단 화면: H 키 · 왼쪽 위 [UI] 버튼 · 설정 체크 ----
 function applyMini(){document.body.classList.toggle('mini',!!opts.mini);const el=$('#optMini');if(el)el.checked=!!opts.mini;setTimeout(layoutHUD,0)}
 function toggleMini(){opts.mini=!opts.mini;lsSet('smasharch_opts',opts);applyMini();toast(opts.mini?'간단 화면 — 필요한 버튼만 남겼어요 (랭킹·정복·공유는 설정 안에)':'기본 화면으로 돌아왔어요',2200)}
@@ -2102,7 +2138,7 @@ function secUpdate(dt){
   secUpdateTools(dt);if(BOSS)bossUpdate(dt);clientUpdate(dt);
   if(SEC.rebar){SEC.rebarT=(SEC.rebarT||0)+dt;if(SEC.rebarT>0.2){SEC.rebarT=0;const c=SEC.els.filter(e=>e.alive&&(e.kind==='col'||e.kind==='core')&&e.k>=0);if(c.length)secDamage(c[Math.floor(Math.random()*Math.min(c.length,c.length*0.5+3))],0.5)}}
   // 레드펜
-  if(sBeam&&firing){humStart();const h=sBeam.hit;if(h&&h.el&&h.el.alive){secDamage(h.el,3.5*dt);addScore(60*dt)}
+  if(sBeam&&firing){humStart();const h=sBeam.hit;if(h&&h.el&&h.el.alive){secDamage(h.el,3.5*dt);addScore(60*dt*secNightK(h.el.k))}
     if(Math.random()<0.5)spawn(sBeam.x,sBeam.y,sBeam.z,(Math.random()-.5)*8,4+Math.random()*6,2+Math.random()*6,0.3+Math.random()*0.4,[1,0.4,0.1],0.3,1)}
   // 쇠공·도면 (앞쪽에서 날아옴)
   for(let i=SFALL.length-1;i>=0;i--){const o=SFALL[i];o.t-=dt;if(o.t>0)continue;o.z+=o.vz*dt;o.rot=(o.rot||0)+dt*5;
@@ -2133,7 +2169,7 @@ function elWorld(e){const s=SEC.S(e.k),b=e.box;return[b[0],b[1]+s.y,b[2],b[3],b[
 function secDamage(e,d){if(!e.alive||e.hp0>=1e8)return;if(SEC.tapeK&&SEC.tapeK.size&&!e.cx&&SEC.tapeK.has(e.k)&&d<1.2)d*=0.35;e.hp-=d;if(BOSS&&SEC.b===BOSS.b&&Math.random()<0.3)bossHit(e.kind==='col'||e.kind==='core'?'col':'facade');if(e.hp<=0)secDestroy(e);secDirty=true;if(!SEC_BATCH)secCheck()}
 function secDestroy(e,quiet){
   if(!e.alive)return;e.alive=false;secDirty=true;
-  if(e.cx){clientSecBroke(e)}else addScore(e.w*400);
+  if(e.cx){clientSecBroke(e)}else addScore(e.w*400*secNightK(e.k));
   const it=e.name&&ITEMS[e.name];if(it){addScore(it.pts);if(!SEC.shown[e.name]){SEC.shown[e.name]=1;toast(it.msg+' +'+fmt(it.pts))}
     const [a0,b0,c0,a1,b1,c1]=elWorld(e),cx=(a0+a1)/2,cy=b1,cz=(c0+c1)/2;
     if(e.name==='plotter'||e.name==='rolls'){   // 롤지·청사진이 사방으로 터져 날림
@@ -2221,7 +2257,7 @@ function updateSecCrew(dt){const W=SEC.W;
       const dx=tx-w.x,dz=tz-w.z,l=Math.hypot(dx,dz);if(l<0.25){w.state='hit';w.t=Math.random()*0.3;w.dir=sg>0?0:Math.PI}
       else{const sp=Math.min(l,5*dt);w.x+=dx/l*sp;w.z+=dz/l*sp;w.dir=Math.atan2(dz,dx)}}
     else if(w.state==='hit'){w.y=s.y+SLAB_T;if(!w.el||!w.el.alive){w.state='walk';continue}
-      if(w.t>0.45){w.t=0;secDamage(w.el,w.el.kind==='core'?0.35:0.5);addScore(90);
+      if(w.t>0.45){w.t=0;secDamage(w.el,w.el.kind==='core'?0.35:0.5);addScore(90*secNightK(w.el.k));
         spawn(w.x+Math.cos(w.dir)*0.5,w.y+1.1,w.z,(Math.random()-.5)*3,2,1+Math.random()*2,0.18,[0.72,0.71,0.68]);
         if(Math.random()<0.3)spawn(w.x+Math.cos(w.dir)*0.5,w.y+1.2,w.z+0.2,(Math.random()-.5)*2,2,1,0.1,[1,0.85,0.4],0.25,1)}}
     else if(w.state==='fall'){w.vy-=30*dt;w.y+=w.vy*dt;w.x+=w.side*1.5*dt;w.dir+=dt*8;const g=surfaceAt(w.x,w.y,w.z);if(w.y<=g&&g>-300){w.y=g;w.state='leave';w.t=0}else if(w.y<-60)w.gone=true}
@@ -2448,8 +2484,8 @@ function surfaceAt(x,y,z){
 }
 
 // ---------- 메시 ----------
-function secBox(m,x0,y0,z0,x1,y1,z1,top,side,front){
-  m.grow(36);const q=(a,b,c,d,n,col)=>{m.v(...a,...n,...col);m.v(...b,...n,...col);m.v(...c,...n,...col);m.v(...a,...n,...col);m.v(...c,...n,...col);m.v(...d,...n,...col)};
+function secBox(m,x0,y0,z0,x1,y1,z1,top,side,front,u=-1){
+  m.grow(36);const q=(a,b,c,d,n,col)=>{m.v(...a,...n,...col,u);m.v(...b,...n,...col,u);m.v(...c,...n,...col,u);m.v(...a,...n,...col,u);m.v(...c,...n,...col,u);m.v(...d,...n,...col,u)};
   q([x0,y1,z0],[x1,y1,z0],[x1,y1,z1],[x0,y1,z1],[0,1,0],top);q([x0,y0,z0],[x1,y0,z0],[x1,y0,z1],[x0,y0,z1],[0,-1,0],side);
   q([x0,y0,z1],[x1,y0,z1],[x1,y1,z1],[x0,y1,z1],[0,0,1],front);q([x0,y0,z0],[x1,y0,z0],[x1,y1,z0],[x0,y1,z0],[0,0,-1],side);
   q([x1,y0,z0],[x1,y0,z1],[x1,y1,z1],[x1,y1,z0],[1,0,0],side);q([x0,y0,z0],[x0,y0,z1],[x0,y1,z1],[x0,y1,z0],[-1,0,0],side);
@@ -2466,7 +2502,7 @@ function buildSection(){
   for(const e of SEC.els){if(!e.alive)continue;const b=elWorld(e),c=e.col;
     if(e.kind==='slab'||e.kind==='roof'){const ours=SEC.ourK!=null&&e.k===SEC.ourK;secBox(m,b[0],b[1],b[2],b[3],b[4],b[5],c,[c[0]*0.85,c[1]*0.85,c[2]*0.85],ours?[0.95,0.65,0.1]:POCHE)}
     else if(e.kind==='wall'&&e.glass){const sp=b[1]+1.1;const cs=[c[0]*0.95,c[1]*0.95,c[2]*0.95];
-      secBox(m,b[0],b[1],b[2],b[3],sp,b[5],cs,cs,POCHE);secBox(m,b[0],sp,b[2],b[3],b[4],b[5],C_GLASS,C_GLASS,C_GLASS)}
+      secBox(m,b[0],b[1],b[2],b[3],sp,b[5],cs,cs,POCHE);if(DAY.night&&secLitK(e.k))secBox(m,b[0],sp,b[2],b[3],b[4],b[5],LIT_GLASS,LIT_GLASS,LIT_GLASS,-2);else secBox(m,b[0],sp,b[2],b[3],b[4],b[5],C_GLASS,C_GLASS,C_GLASS)}
     else if(e.kind==='col'||e.kind==='core'){const h=HL[e.k];let st=h.core?0:clamp((0.75-h.r)/0.41,0,1);if(e.kind==='core')st=1-h.coreHp;if(e.hp<e.hp0)st=Math.max(st,0.6);
       const hot=[0.93,0.36,0.16],cc=[c[0]+(hot[0]-c[0])*st,c[1]+(hot[1]-c[1])*st,c[2]+(hot[2]-c[2])*st];secBox(m,b[0],b[1],b[2],b[3],b[4],b[5],cc,cc,e.kind==='core'?POCHE:cc)}
     else secBox(m,b[0],b[1],b[2],b[3],b[4],b[5],c,c,c);
@@ -2549,7 +2585,7 @@ function buildNeighborhood(){
     const [x,z]=proj(r[2],r[3]);const c=chunkAt(x,z);if(!c||c.state!=='ready')continue;
     let bb=null,bd=1e9;forBuildingsNear(x,z,25,b=>{const d=pip(x,z,b.pts)?0:distToBuilding(b,x,z);if(d<bd){bd=d;bb=b}});
     if(bd>25)bb=null;
-    const f={i,name:r[0],short:shortName(r[0]),addr:r[1],x,z,b:bb,approx:r[4]===1,cons:r[8]==='c',gen:r[8]==='g'};
+    const f={i,name:r[0],short:shortName(r[0]),addr:r[1],x,z,b:bb,approx:r[4]===1,cons:r[8]==='c',gen:r[8]==='g',univ:r[8]==='u'};
     NB.push(f);if(bb){if(!bb.firms){bb.firms=[];NBB.push(bb)}bb.firms.push(f)}
   }
   // 공공데이터에 없는 지역(송파구 등)은 OpenStreetMap에 등록된 건축사무소로 보충
@@ -2562,7 +2598,7 @@ function buildNeighborhood(){
 function makePins(){
   const box=$('#labels');
   for(const b of NBB){
-    const fs=b.firms;const el=document.createElement('div');el.className='lbl pin'+(fs[0].cons?' cons':fs[0].gen?' gen':'');
+    const fs=b.firms;const el=document.createElement('div');el.className='lbl pin'+(fs[0].cons?' cons':fs[0].gen?' gen':fs[0].univ?' univ':'');
     el.textContent=fs[0].short+(fs.length>1?` 외 ${fs.length-1}`:'');
     el.title=fs.map(f=>f.name).join('\n')+'\n\n클릭: 이 건물 단면 보기';
     el.addEventListener('pointerdown',e=>e.stopPropagation());
@@ -2574,7 +2610,7 @@ function firmsKilled(b){
   conqRecord(b);
   if(!b.firms||!b.firms.length)return;
   const now=performance.now();combo.n=now-combo.t<3500?combo.n+1:1;combo.t=now;
-  const k=b.firms.length,bonus=5000*k*combo.n;addScore(bonus);
+  const k=b.firms.length,bonus=Math.round(5000*k*combo.n*nightK(b));addScore(bonus);
   toast(`${b.firms[0].short}${k>1?` 외 ${k-1}곳`:''} 철거! +${fmt(bonus)}${combo.n>1?` · 콤보 x${combo.n}`:''}`,2200);
 }
 function districtName(){const a=(CUR&&CUR.addr)||'';let m=a.match(/\(([가-힣0-9]+(?:동|가|읍|면|리))[,)]/);if(m)return m[1].replace(/\d+(?=동$)/,'');
@@ -2656,6 +2692,7 @@ function bossFlee(){const from=BOSS.b;let best=null,bd=1e9;
   toast(`${BT()}이 ${best.firms&&best.firms[0]?best.firms[0].short:'빈 건물'}(으)로 도망쳐요! 쫓아가세요`,2400);sfx(6,0.4)}
 function bossLand(){const b=BOSS.jump.b;BOSS.b=b;BOSS.state='idle';BOSS.sayT=6;
   if(BOSS.rehire){BOSS.rehire=false;BOSS.firm=(b.firms&&b.firms[0]?b.firms[0].short:BOSS.firm);const top=bTop(b);boom3(BOSS.x,top+1,BOSS.z,10);sfx(14,0.4);
+    if(BOSS.boom){BOSS.boom=false;bossSay(pickL(BOOM_LINES),3);floatText(BOSS.x,top+14,BOSS.z,`${BOOM.round}차 부동산 호황 · ${BT()} 컴백`,'count',2.6);return}
     bossSay(pickL(['돈 받았으니 다시 일한다!','재계약이다! 다들 자리로!','이번엔 진짜 끝까지 간다!']),3);floatText(BOSS.x,top+14,BOSS.z,BT()+' 재고용','cad',2.2);return}
   BOSS.flees++;const n=BOSS.flees;
   BOSS.firm=b.firms&&b.firms[0]?b.firms[0].short:'임시 사무실';
@@ -2664,7 +2701,7 @@ function bossLand(){const b=BOSS.jump.b;BOSS.b=b;BOSS.state='idle';BOSS.sayT=6;
   floatText(BOSS.x,top+14,BOSS.z,`${BOSS.firm} 대표 취임`,'cad',2.2);toast(`${BT()}이 ${BOSS.firm}에 새로 자리 잡았어요 · 도주 ${n}회 · +${fmt(bonus)}`,2600)}
 function bossCaught(){BOSS.state='caught';BOSS.t=0;const bonus=50000+20000*BOSS.flees;addScore(bonus);
   bossSay(pickL(BOSS_LINES.caught),3);floatText(BOSS.x,BOSS.y+12,BOSS.z,'사장님 검거!','count',2.6);
-  toast(`더 도망칠 곳이 없어요 — ${BT()} 검거! 도주 ${BOSS.flees}회 · +${fmt(bonus)}`,4000);sfx(20,1);flashScreen(0.3,'#fff3c4')}
+  toast(`더 도망칠 곳이 없어요 — ${BT()} 검거! 도주 ${BOSS.flees}회 · +${fmt(bonus)}`,4000);sfx(20,1);flashScreen(0.3,'#fff3c4');boomArm()}
 // 발주처가 새로 지은 건물로 사장님 재고용 (검거 상태에서도 풀려나 점프)
 function bossRehire(b){if(!BOSS)return;const y0=BOSS.y,d=Math.hypot(b.cx-BOSS.x,b.cz-BOSS.z);
   BOSS.rehire=true;BOSS.flees=0;BOSS.visited=new Set([b]);BOSS.stun=0;BOSS.lastSay=0;
@@ -2726,8 +2763,8 @@ function drawBossUI(){const ui=$('#bossUI'),ar=$('#bossArrow'),bx=$('#bossBox');
   if(!BOSS||!bossHere()){ui.style.display='none';ar.style.display='none';bx.style.display=BOSS&&MODE==='city'?'':'none';return}
   const p=bossPos(),S=bossScale(),q=project(p.x,p.y+2.35*S,p.z);
   bx.style.display=MODE==='city'?'':'none';
-  {const tg=ui.querySelector('.tag'),nm=bossName()||'사장님';if(tg.textContent!==nm)tg.textContent=nm;const an=ar.lastChild;if(an&&an.nodeType===3&&an.textContent!==nm)an.textContent=nm}
-  const t=`${BT()} · ${BOSS.state==='caught'?'검거됨':BOSS.firm}${BOSS.flees?` · 도주 ${BOSS.flees}회`:''}`;if(bx.textContent!==t)bx.textContent=t;
+  {const tg=ui.querySelector('.tag'),nm=bossName()||bossTitle();if(tg.textContent!==nm)tg.textContent=nm;const an=ar.lastChild;if(an&&an.nodeType===3&&an.textContent!==nm)an.textContent=nm}
+  const t=`${BOOM.round?BOOM.round+'차 호황 · ':''}${BT()} · ${BOSS.state==='caught'?(BOOM.ship?'비행선 도착 중!':BOOM.need?`검거됨 · 호황까지 ${fmt(boomLeft())}점`:'검거됨'):BOSS.firm}${BOSS.flees&&BOSS.state!=='caught'?` · 도주 ${BOSS.flees}회`:''}`;if(bx.textContent!==t)bx.textContent=t;
   const W=innerWidth,H=innerHeight,f=project(p.x,p.y+0.5*S,p.z);const on=q&&f&&f[0]>10&&f[0]<W-10&&f[1]>10&&f[1]<H-60;
   if(on){ui.style.display='';ui.style.left=q[0]+'px';ui.style.top=Math.max(q[1],100)+'px';const bb=ui.querySelector('.bubble');
     const txt=BOSS.textT>0?BOSS.text:'';if(bb.textContent!==txt)bb.textContent=txt;bb.style.display=txt?'':'none';ar.style.display='none'}
@@ -2735,7 +2772,86 @@ function drawBossUI(){const ui=$('#bossUI'),ar=$('#bossArrow'),bx=$('#bossBox');
     let v=q?[q[0]-W/2,q[1]-H/2]:null;if(!v){const dx=p.x-cam.tx,dz=p.z-cam.tz,ct=Math.cos(cam.theta),st=Math.sin(cam.theta);v=[dx*ct-dz*st,-(dx*st+dz*ct)]}
     const k=Math.min((W/2-60)/Math.abs(v[0]||1e-6),(H/2-90)/Math.abs(v[1]||1e-6));
     ar.style.display='';ar.style.left=(W/2+v[0]*k)+'px';ar.style.top=(H/2+v[1]*k)+'px';ar.querySelector('i').style.transform=`rotate(${Math.atan2(v[1],v[0])}rad)`}}
-function bossGo(){if(!BOSS||MODE!=='city')return;CAMGO={t:0,dur:1.6}}
+function bossGo(){if(!BOSS||MODE!=='city')return;if(BOOM.ship){BOOM.ship.follow=true;return}CAMGO={t:0,dur:1.6}}
+
+// =====================================================================
+//  구청 공사중지 명령 — 짧은 시간에 건물을 몰아서 무너뜨리면 3초 동안 도구 사용 금지 (동네 모드)
+//   · 기준: 최근 STOP_WIN초 안에 STOP_N동 이상 철거 → STOP_SEC초 정지, 끝나고 STOP_IMMUNE초는 다시 안 걸림
+//   · 필살기를 쓴 직후 8초는 세지 않음 (필살기는 원래 한 번에 많이 부숨)
+// =====================================================================
+const STOP_N=10,STOP_WIN=3,STOP_SEC=3,STOP_IMMUNE=15;
+let STOP={log:[],until:0,immune:0,grace:0,x:0,z:0,nag:0};
+function stopOn(){return MODE==='city'&&performance.now()<STOP.until}
+function stopNote(b){if(MODE!=='city'||!b)return;const now=performance.now();if(now<STOP.grace||now<STOP.until)return;
+  STOP.log.push({t:now,x:b.cx,z:b.cz});while(STOP.log.length&&now-STOP.log[0].t>STOP_WIN*1000)STOP.log.shift();
+  if(STOP.log.length>=STOP_N&&now>STOP.immune){let x=0,z=0;for(const k of STOP.log){x+=k.x;z+=k.z}STOP.x=x/STOP.log.length;STOP.z=z/STOP.log.length;STOP.log=[];
+    STOP.until=now+STOP_SEC*1000;STOP.immune=STOP.until+STOP_IMMUNE*1000;
+    if(gesture)gestureCancel();if(ultArmed){ultArmed=false;selectWeapon(weapon)}
+    sfx(10,0.5);flashScreen(0.18,'#ffe066');if(BOSS&&BOSS.state==='idle')bossSay('구청에서 나왔다! 다들 손 멈춰!',3)}}
+function stopNag(){const now=performance.now();if(now-STOP.nag<900)return;STOP.nag=now;toast(`🚧 공사중지 중이에요 — ${Math.ceil((STOP.until-now)/1000)}초 뒤에 다시 부술 수 있어요`,1200)}
+function stopUI(){let el=$('#stopBan');const on=stopOn();
+  if(!el){if(!on)return;el=document.createElement('div');el.id='stopBan';document.body.appendChild(el)}
+  el.style.display=on?'':'none';if(!on)return;
+  const left=Math.ceil((STOP.until-performance.now())/1000),t=`<b>🚧 구청 공사중지 명령 · ${left}초</b><small>너무 몰아서 부쉈어요! 잠깐 손 떼세요 (화면 이동은 돼요)</small>`;if(el.innerHTML!==t)el.innerHTML=t}
+function drawStopFence(m){if(!stopOn())return;const n=36,R=75;
+  for(let i=0;i<n;i++){const a=i/n*Math.PI*2,x=STOP.x+Math.cos(a)*R,z=STOP.z+Math.sin(a)*R,g=groundAt(x,z);
+    pushShape(m,CUBE,x,g+2.2,z,R*2*Math.PI/n*0.96,4.4,0.5,a+Math.PI/2,i%2?[0.98,0.80,0.10]:[0.12,0.12,0.12],0);
+    pushShape(m,CUBE,x,g+5,z,0.5,1.2,0.5,0,[0.95,0.2,0.1],1)}}
+
+// =====================================================================
+//  부동산 호황 — 사장님을 검거한 뒤 점수를 더 모으면 비행선을 타고 사장님이 돌아와 사옥을 새로 지음 (무한 반복)
+//   · 필요 점수 = 검거 시점 점수 + BOOM_BASE × n²  (n = 지금까지 검거 횟수 → 10만 · 40만 · 90만 · 160만 …)
+//   · 호황이 오면 발주처도 다시 한 번 등장할 수 있음
+//  ※ 대사는 BOOM_LINES 만 고치면 돼요
+// =====================================================================
+const BOOM_BASE=100000;
+const BOOM_LINES=['부동산 호황이야! 다시 시작한다!','분양 완판이다! 사옥 새로 올려!','금리 내렸대! 다들 출근해!','호황엔 야근이지. 자리로!'];
+const BOOM_COLS=[[0.72,0.86,0.96],[0.96,0.84,0.55],[0.82,0.95,0.80],[0.95,0.78,0.86]];
+let BOOM={n:0,round:0,need:0,ship:null};
+function boomReset(){BOOM={n:0,round:0,need:0,ship:null}}
+function boomLeft(){return Math.max(0,Math.ceil(BOOM.need-score))}
+function boomArm(){BOOM.n++;const add=BOOM_BASE*BOOM.n*BOOM.n;BOOM.need=score+add;
+  setTimeout(()=>{if(BOSS&&BOSS.state==='caught'&&!BOOM.ship)toast(`🏗 ${fmt(add)}점 더 부수면 부동산 호황! ${BT()}이 비행선 타고 돌아와요`,4200)},4300)}
+function boomTarget(){const h=BOSS&&BOSS.home;if(h&&B.includes(h))return h;return B.find(x=>x.hq)||null}
+function boomStart(){const b=boomTarget();if(!b){BOOM.need=0;return}
+  const a=Math.random()*Math.PI*2,R=900,ty=b.base+Math.max(b.h0*1.2+6,30)+70;
+  BOOM.ship={b,t:0,phase:'in',T:6,x0:b.cx+Math.cos(a)*R,z0:b.cz+Math.sin(a)*R,x:b.cx+Math.cos(a)*R,y:ty+60,z:b.cz+Math.sin(a)*R,ty,dx:-Math.cos(a),dz:-Math.sin(a),follow:true};
+  boomBanner();sfx(10,0.8);toast(`📢 부동산 호황! ${BT()}이 비행선을 타고 오고 있어요`,3400)}
+function boomBanner(){const el=$('#clientBanner');if(!el)return;
+  el.innerHTML=`<b>📢 부동산 호황!</b><span>${BOOM.round+1}차 호황</span><p>${esc(BT())}이 비행선을 타고 돌아와 사옥을 새로 지어요.<br><em>다시 부수세요!</em> 다음 호황은 점수가 더 많이 필요해요</p>`;
+  el.classList.remove('on');void el.offsetWidth;el.classList.add('on');clearTimeout(clientBanner._t);clientBanner._t=setTimeout(()=>el.classList.remove('on'),5200)}
+// 새 사옥 짓기 (발주처 재건축과 같은 방식, 호황이라 더 높고 반짝이게)
+function boomRebuild(b){
+  if(!b.custom){if(!b.colPre)b.colPre=b.col;b.col=BOOM_COLS[(BOOM.round-1)%BOOM_COLS.length];b.h0=Math.min(b.h0*1.2+6,b.h0+40)}
+  freeDet(b);b.alive=true;b.lifted=false;b.h=b.h0;b.cdmg=0;b.domino=0;if(b.custom)ensureDet(b);markB(b);bldDirty=true;
+  const R=Math.sqrt(b.area)/2+2;for(let i=0;i<MAXD;i++)if(D.used[i]&&Math.hypot(D.x[i]-b.cx,D.z[i]-b.cz)<R)D.used[i]=0;rubDirty=true;
+  boom3(b.cx,b.base+3,b.cz,30);for(let k=0;k<30;k++)spawn(b.cx+(Math.random()-.5)*R*2,b.base+1,b.cz+(Math.random()-.5)*R*2,(Math.random()-.5)*10,4+Math.random()*8,(Math.random()-.5)*10,1+Math.random()*2,[0.85,0.83,0.8],0.9,2)}
+function boomUpdate(dt){
+  if(MODE!=='city'||!BOSS)return;const sh=BOOM.ship;
+  if(!sh){if(BOSS.state==='caught'&&BOOM.need&&score>=BOOM.need&&!(CLIENT&&CLIENT.wind))boomStart();return}
+  sh.t+=dt;const b=sh.b;
+  if(sh.phase==='in'){const u=Math.min(1,sh.t/sh.T),e=1-Math.pow(1-u,3);
+    sh.x=sh.x0+(b.cx-sh.x0)*e;sh.z=sh.z0+(b.cz-sh.z0)*e;sh.y=sh.ty+60*(1-e);
+    if(u>=1){sh.phase='drop';sh.t=0;BOOM.round++;BOOM.need=0;boomRebuild(b);
+      if(CLIENT&&CLIENT.state!=='leave')clientLeave('boom');CLIENT_USED=false;
+      BOSS.x=sh.x;BOSS.z=sh.z;BOSS.y=sh.ty-8;BOSS.boom=true;bossRehire(b);
+      const bonus=20000*BOOM.round;addScore(bonus);hitStop(0.08);sfxBoom(0.8);flashScreen(0.22,'#fff2c2');
+      floatText(sh.x,sh.ty+16,sh.z,'🏗 부동산 호황!','count',3);toast(`${BOOM.round}차 부동산 호황! 사옥이 새로 올라갔어요 · +${fmt(bonus)}`,3600)}}
+  else if(sh.phase==='drop'){if(sh.t>3){sh.phase='out';sh.t=0}}
+  else{sh.x+=sh.dx*40*sh.t*dt*2;sh.z+=sh.dz*40*sh.t*dt*2;sh.y+=12*dt;if(sh.t>7)BOOM.ship=null}
+  if(sh.follow&&sh.phase!=='out'){const k=Math.min(1,dt*1.8);cam.tx+=(sh.x-cam.tx)*k;cam.tz+=(sh.z-cam.tz)*k}}
+// 비행선 그리기
+function drawShip(m,mg){const sh=BOOM.ship;if(!sh||MODE!=='city')return;
+  const r=Math.atan2(sh.dz,sh.dx),cr=Math.cos(r),sr=Math.sin(r),now=performance.now()/1000,bob=Math.sin(now*1.6)*1.2;
+  const K=clamp(cam.dist/450,1,2.6);   // 멀리서 봐도 보이게 크기 키움
+  const P=(lx,ly,lz,sx,sy,sz,c,shape,g)=>pushShape(g?mg:m,shape||CUBE,sh.x+(lx*cr-lz*sr)*K,sh.y+(ly+bob)*K,sh.z+(lx*sr+lz*cr)*K,sx*K,sy*K,sz*K,r,c,g?1:0);
+  P(0,0,0,36,11,11,[0.93,0.93,0.95],SPHERE);                        // 기구
+  P(0,0,0,30,11.4,1.2,[0.86,0.14,0.12]);                              // 빨간 띠 (현수막 자리)
+  P(-30,0,0,8,0.8,16,[0.86,0.14,0.12]);P(-30,0,0,8,16,0.8,[0.86,0.14,0.12]);   // 꼬리 날개
+  P(4,-13,0,14,4,5,[0.25,0.27,0.3]);P(4,-13,2.6,12,2,0.2,[1,0.86,0.45],CUBE,1);P(4,-13,-2.6,12,2,0.2,[1,0.86,0.45],CUBE,1);   // 곤돌라 · 창
+  P(-6,-10.5,0,0.4,3.5,0.4,[0.3,0.3,0.32]);P(12,-10.5,0,0.4,3.5,0.4,[0.3,0.3,0.32]);
+  const blink=Math.sin(now*6)>0;P(36,0,0,1.6,1.6,1.6,blink?[1,0.3,0.25]:[0.4,0.1,0.1],SPHERE,blink);P(-34,8,0,1.2,1.2,1.2,[1,0.95,0.6],SPHERE,1);
+  if(sh.phase==='in'&&Math.random()<0.5)spawn(sh.x-sh.dx*38,sh.y,sh.z-sh.dz*38,0,0,0,1.5,[1,1,1],0.6,2)}
 
 // =====================================================================
 //  발주처(클라이언트) — "더 부술 거리를 던져주는 고급 샌드백"
@@ -2773,7 +2889,8 @@ function clientBanner(name){const el=$('#clientBanner');if(!el)return;
 // ---- 사용자가 정한 발주처 이름 (회사 고르기 창 · 설정) — 이 브라우저에만 저장, 서버·랭킹·공유로 보내지 않음
 // ---- 사용자가 정한 사장님 이름 — 이 브라우저에만 저장. 철거 일보·공유·랭킹에는 넣지 않음
 function bossName(){const v=lsGet('smasharch_boss');return typeof v==='string'?v:''}
-function BT(){const n=bossName();return n?n+' 사장님':'사장님'}
+function bossTitle(){return CUR&&CUR.kind==='u'?'총장님':'사장님'}   // 대학교는 총장님
+function BT(){const n=bossName();return n?n+' '+bossTitle():bossTitle()}
 (function(){const ins=[$('#bossName'),$('#bossName2')].filter(Boolean);
   const fill=()=>{ins.forEach(el=>{if(document.activeElement!==el)el.value=bossName()})};
   const save=el=>{lsSet('smasharch_boss',el.value.replace(/[<>\u0000-\u001f]/g,'').trim().slice(0,12));fill()};
@@ -3012,7 +3129,7 @@ function showHot(list){const box=$('#hotList'),big=$('#bigFirms'),head=$('#hotHe
   if(!items.length){head.style.display='none';box.style.display='none';big.style.display='';return}
   head.style.display='';box.style.display='';big.style.display='none';
   items.forEach((it,n)=>{const r=FIRMDATA[it.i];const medal=['🥇','🥈','🥉'][n]||(n+1)+'.';
-    box.appendChild(firmButton(`${medal} ${({c:'🏗 ',g:'🏢 '}[r[8]]||'')}${it.f.name}`,`${r[1]} · 🔥 ${fmt(it.h.count)}번 무너짐`,()=>loadFirm(it.f),it.f))})}
+    box.appendChild(firmButton(`${medal} ${({c:'🏗 ',g:'🏢 ',u:'🎓 '}[r[8]]||'')}${it.f.name}`,`${r[1]} · 👷 ${fmt(it.h.people||1)}명이 무너뜨림${it.h.count>(it.h.people||1)?` (총 ${fmt(it.h.count)}번)`:''}`,()=>loadFirm(it.f),it.f))})}
 // =====================================================================
 // 회사 추가 요청 · 문의함 → Apps Script '요청함' 시트로
 // =====================================================================
@@ -3020,8 +3137,11 @@ function showHot(list){const box=$('#hotList'),big=$('#bigFirms'),head=$('#hotHe
 function addFirmRow(r){const kid=+r[5];if(!isFinite(kid))return null;let i=FKI.get(kid);if(i!=null)return i;
   FIRMDATA.push(r);i=FIRMDATA.length-1;FIDX.push(norm(r[0])+'|'+norm(r[1]));FKI.set(kid,i);return i}
 function openReq(kind,name){closeModals();const m=$('#mReq');if(!m)return;
-  setReqKind(kind||'회사 추가');if(name!=null)$('#rqName').value=name;$('#rqMsg2').textContent='';m.classList.add('open');
+  setReqKind(kind||'회사 추가');if(name!=null)$('#rqName').value=name;if(name&&/대학/.test(name))setReqCat('대학교');$('#rqMsg2').textContent='';m.classList.add('open');
   setTimeout(()=>{const fk=kind==='회사 추가'||kind==='정보 수정'||!kind;const el=fk?($('#rqName').value?$('#rqAddr'):$('#rqName')):$('#rqMsg');try{el.focus()}catch(e){}},60)}
+function setReqCat(c){$('#rqCat').value=c;document.querySelectorAll('#rqCats button').forEach(b=>b.classList.toggle('on',b.dataset.c===c));
+  const u=c==='대학교';$('#rqName').placeholder=u?'예: OO대학교 (캠퍼스가 여럿이면 OO대학교 OO캠퍼스)':c==='건설사'?'예: OO건설(주)':c==='일반 회사'?'예: (주)OO':'예: OO종합건축사사무소';
+  $('#rqFloor').placeholder=u?'예: 건물 전체 (본관 기준)':'예: 3층 · 3~5층 · 건물 전체';$('#rqNameL').firstChild.textContent=u?'학교 이름 ':'회사 이름 '}
 function setReqKind(k){document.querySelectorAll('#rqKinds button').forEach(b=>b.classList.toggle('on',b.dataset.k===k));$('#mReq').dataset.kind=k;
   const firm=k==='회사 추가'||k==='정보 수정';$('#rqFirmBox').style.display=firm?'':'none';
   $('#rqMsg').placeholder=k==='회사 추가'?'(선택) 덧붙일 말 — 예: 사옥이 2동이에요, 지도에서 위치가 달라요':k==='정보 수정'?'무엇이 틀렸는지 알려주세요 — 예: 이사했어요, 층수가 달라요':'문의·버그·아이디어를 자유롭게 적어주세요 (기기/브라우저도 적어주면 좋아요)'}
@@ -3043,6 +3163,7 @@ async function sendReq(){const k=$('#mReq').dataset.kind||'회사 추가',u=rank
   finally{setTimeout(()=>btn.disabled=false,2500)}}
 (function(){if(!$('#mReq'))return;
   document.querySelectorAll('#rqKinds button').forEach(b=>b.onclick=()=>setReqKind(b.dataset.k));
+  document.querySelectorAll('#rqCats button').forEach(b=>b.onclick=()=>setReqCat(b.dataset.c));
   $('#rqSend').onclick=sendReq;
   document.querySelectorAll('[data-req]').forEach(b=>b.onclick=()=>openReq(b.dataset.req,b.dataset.req==='회사 추가'?($('#customQ').value.trim()||null):null));
   $('#mReq').addEventListener('keydown',e=>e.stopPropagation())})();
@@ -3059,10 +3180,10 @@ function shareUrl(withVs){const u=shareBase();
 function curRank(){let k=0;for(let i=0;i<RANKS.length;i++)if(score>=RANKS[i][0])k=i;return RANKS[k]}
 function shareText(){const vs=$('#shVs')&&$('#shVs').checked,url=shareUrl(vs);
   if(SHARE_MODE==='rank'){const d=RANK_LAST||{};const f=(d.firms||[]).slice(0,5).map((r,i)=>`${i+1}. ${shortName(r.name)} (${fmt(r.total)}점)`).join('\n');
-    return `🏆 SMASH ARCH 이번 주 가장 많이 부서진 건축사무소\n${f||'(아직 기록 없음)'}\n\n우리 회사도 순위에 올려보자 👇\n${url}`}
-  if(!CUR||score<1)return `💥 전국 건축사무소 사옥 부수기 게임 SMASH ARCH\n우리 회사 사옥 찾아서 같이 부숴요 👇\n${url}`;
+    return `🏆 SMASH ARCH 이번 주 가장 많이 부서진 사옥\n${f||'(아직 기록 없음)'}\n\n우리 회사·학교도 순위에 올려보자 👇\n${url}`}
+  if(!CUR||score<1)return `💥 SMASH ARCH — 우리 회사·우리 학교 부수기 게임\n건축사사무소·건설사·대학교 1만 1천여 곳 중 우리 사옥 찾아서 같이 부숴요 🌙 밤엔 야근 모드, 사장님은 비행선 타고 컴백 👇\n${url}`;
   const tot=B.length,dead=B.filter(b=>!b.alive).length,pct=tot?Math.round(dead/tot*100):0;
-  return `💥 ${shortName(CUR.name)} 사옥을 ${fmt(score)}점어치 부쉈어요! (직급: ${curRank()[2]} · 파괴율 ${pct}%)\n${vs?'이 점수 넘을 수 있어? 👇':'같이 부수러 가기 👇'}\n${url}`}
+  return `💥 ${shortName(CUR.name)} ${CUR.kind==='u'?'캠퍼스':'사옥'}을 ${fmt(score)}점어치 부쉈어요! (직급: ${curRank()[2]} · 파괴율 ${pct}%)\n${vs?'이 점수 넘을 수 있어? 👇':'같이 부수러 가기 👇'}\n${url}`}
 function rr(c,x,y,w,h,r){c.beginPath();c.moveTo(x+r,y);c.arcTo(x+w,y,x+w,y+h,r);c.arcTo(x+w,y+h,x,y+h,r);c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath()}
 function fitText(c,t,maxW){if(c.measureText(t).width<=maxW)return t;while(t.length>1&&c.measureText(t+'…').width>maxW)t=t.slice(0,-1);return t+'…'}
 function makeCard(shot){const W=1200,H=630,cv=document.createElement('canvas');cv.width=W;cv.height=H;const c=cv.getContext('2d');
@@ -3081,12 +3202,12 @@ function makeCard(shot){const W=1200,H=630,cv=document.createElement('canvas');c
     c.fillStyle='#f2b134';c.font=`800 24px ${F}`;c.fillText('개인 최고 점수',800,150);
     c.font=`600 22px ${F}`;pl.forEach((r,i)=>{const y=195+i*42;c.fillStyle='#fff';c.fillText(fitText(c,`${i+1}. ${r.nick}`,230),800,y);c.fillStyle='rgba(255,255,255,.7)';c.textAlign='right';c.fillText(fmt(r.score),W-40,y);c.textAlign='left'})}
   else if(CUR&&score>=1){const rk=curRank(),tot=B.length,dead=B.filter(b=>!b.alive).length,pct=tot?Math.round(dead/tot*100):0;
-    c.fillStyle='#fff';c.font=`800 46px ${F}`;c.fillText(fitText(c,shortName(CUR.name)+' 사옥',760),40,H-150);
+    c.fillStyle='#fff';c.font=`800 46px ${F}`;c.fillText(fitText(c,shortName(CUR.name)+(CUR.kind==='u'?' 캠퍼스':' 사옥'),760),40,H-150);
     c.font=`900 74px ${F}`;c.fillStyle='#f2b134';const st=fmt(score)+'점';c.fillText(st,40,H-70);const w1=c.measureText(st).width;
     c.font=`700 28px ${F}`;c.fillStyle='#fff';c.fillText(`어치 부숨 · 파괴율 ${pct}%`,52+w1,H-78);
     rr(c,W-250,H-210,210,150,14);c.fillStyle='rgba(242,177,52,.95)';c.fill();c.fillStyle='#1d2126';c.textAlign='center';c.font=`900 76px ${F}`;c.fillText(rk[1],W-145,H-112);c.font=`800 26px ${F}`;c.fillText(rk[2],W-145,H-76);c.textAlign='left';
-    if(BOSS&&BOSS.state==='caught'){c.font=`800 22px ${F}`;rr(c,40,H-236,190,40,8);c.fillStyle='#8f1d16';c.fill();c.fillStyle='#fff';c.fillText('🚨 사장님 검거',54,H-208)}}
-  else{c.fillStyle='#fff';c.font=`800 48px ${F}`;c.fillText('우리 회사 사옥, 같이 부숴요',40,H-110);c.font=`600 26px ${F}`;c.fillStyle='rgba(255,255,255,.8)';c.fillText('전국 건축사무소·건설사 1만 곳 · 무료 · 설치 없음',40,H-66)}
+    if(BOSS&&BOSS.state==='caught'){c.font=`800 22px ${F}`;rr(c,40,H-236,190,40,8);c.fillStyle='#8f1d16';c.fill();c.fillStyle='#fff';c.fillText('🚨 '+bossTitle()+' 검거',54,H-208)}}
+  else{c.fillStyle='#fff';c.font=`800 48px ${F}`;c.fillText('우리 회사·우리 학교, 같이 부숴요',40,H-110);c.font=`600 26px ${F}`;c.fillStyle='rgba(255,255,255,.8)';c.fillText('건축사사무소·건설사·대학교 1만 1천여 곳 · 무료 · 설치 없음',40,H-66)}
   c.font=`600 19px ${F}`;c.fillStyle='rgba(255,255,255,.65)';c.textAlign='right';c.fillText(shareBase().host+shareBase().pathname.replace(/\/$/,''),W-36,H-24);c.textAlign='left';
   return cv}
 function shareRefresh(){const cv=makeCard(SHARE_SHOT);SHARE_IMG=cv;$('#shImg').src=cv.toDataURL('image/jpeg',0.88);$('#shText').value=shareText();
@@ -3160,7 +3281,7 @@ function isCompact(){return matchMedia('(pointer:coarse) and (max-height:500px)'
 addEventListener('resize',()=>{resize();layoutHUD()});resize();setTimeout(layoutHUD,0);
 addEventListener('orientationchange',()=>setTimeout(()=>{resize();layoutHUD()},300));
 let last=performance.now(),hudT=0;
-const FOG=[0.902,0.914,0.922];
+const FOG=[0.902,0.914,0.922],FOG_DAY=FOG.slice(),FOG_NIGHT=[0.055,0.07,0.12];
 function drawScene(shadowPass){
   if(MODE==='section'){mSec.draw();mRub.draw();mDyn.draw();if(!shadowPass)mGlow.draw();return}
   if(!shadowPass)mGround.draw();
@@ -3173,7 +3294,7 @@ function drawScene(shadowPass){
 function frameBody(now){
   let dt=Math.min(0.05,(now-last)/1000);last=now;const rdt=dt;
   if(HSTOP>0){HSTOP=Math.max(0,HSTOP-rdt);dt*=0.05}   // 히트스톱: 순간 멈춤
-  updateLater(dt);updateRings(dt);
+  updateLater(dt);updateRings(dt);dayUpdate(rdt);
   if(MODE==='section'){secUpdate(dt);updateFloats(dt)}
   else{
   for(let i=FALL.length-1;i>=0;i--){const o=FALL[i];o.vy-=60*dt;o.y+=o.vy*dt;if(o.tx!=null){const k=Math.min(1,dt*1.2);o.x+=(o.tx-o.x)*k;o.z+=(o.tz-o.z)*k;o.rot+=dt*4}
@@ -3216,7 +3337,7 @@ function frameBody(now){
   gl.viewport(0,0,canvas.width,canvas.height);
   gl.clearColor(FOG[0],FOG[1],FOG[2],1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
   gl.useProgram(prog);
-  gl.uniformMatrix4fv(U.uVP,false,VP);gl.uniformMatrix4fv(U.uLVP,false,LVPcur);gl.uniform3fv(U.uCam,eye);gl.uniform3fv(U.uTgt,[cam.tx,cam.ty,cam.tz]);gl.uniform2fv(U.uFogR,MODE==='city'?[Math.max(420,cam.dist*0.6),Math.max(320,cam.dist*0.45)]:[9000,1000]);gl.uniform3fv(U.uFog,FOG);gl.uniform3fv(U.uSun,SUN);
+  gl.uniformMatrix4fv(U.uVP,false,VP);gl.uniformMatrix4fv(U.uLVP,false,LVPcur);gl.uniform3fv(U.uCam,eye);gl.uniform3fv(U.uTgt,[cam.tx,cam.ty,cam.tz]);gl.uniform2fv(U.uFogR,MODE==='city'?[Math.max(420,cam.dist*0.6),Math.max(320,cam.dist*0.45)]:[9000,1000]);gl.uniform3fv(U.uFog,FOG);gl.uniform3fv(U.uSun,SUN);gl.uniform1f(U.uNight,DAY.k*(MODE==='section'?0.6:1));   // 단면은 속이 보여야 해서 덜 어둡게
   gl.uniform1f(U.uShOn,useSh?1:0);gl.uniform1f(U.uTexel,1/SHSIZE);
   gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,shTex);gl.uniform1i(U.uSh,0);
   drawScene(false);
@@ -3263,7 +3384,7 @@ function openReport(){
   const pct=tot?Math.round(dead/tot*100):0;
   $('#repBody').innerHTML=`<div class="rep-head"><div>철거 공사 일보</div><small>${date} · ${esc(CUR?CUR.name:'')}</small></div>
   <table class="rep"><tr><th>공정률(파괴율)</th><td>${pct}%</td></tr><tr><th>철거 동수</th><td>${dead}동 / ${tot}동</td></tr>
-  <tr><th>철거한 건축사무소</th><td>${n.d} / ${n.t}곳</td></tr>${BOSS?`<tr><th>사장님</th><td>${BOSS.state==='caught'?'검거 완료':'도주 중'} · 도주 ${BOSS.flees}회</td></tr>`:''}<tr><th>투입 장비·도구</th><td>${esc(tools)}</td></tr>
+  <tr><th>철거한 건축사무소</th><td>${n.d} / ${n.t}곳</td></tr>${BOSS?`<tr><th>사장님</th><td>${BOSS.state==='caught'?'검거 완료':'도주 중'} · 도주 ${BOSS.flees}회</td></tr>`:''}${BOOM.round?`<tr><th>부동산 호황</th><td>${BOOM.round}차까지</td></tr>`:''}<tr><th>투입 장비·도구</th><td>${esc(tools)}</td></tr>
   <tr><th>공사 기간</th><td>${Math.floor(sec/60)}분 ${sec%60}초</td></tr><tr><th>점수</th><td>${fmt(score)}점</td></tr><tr><th>최종 직급</th><td><b>${RANKS[k][2]}</b></td></tr></table>
   <div class="rep-sign"><span>감리 확인</span><span class="stamp">철거<br>완료</span></div>`;
   $('#mReport').classList.add('open');
@@ -3277,19 +3398,21 @@ $('#bossArrow').onclick=bossGo;
 
 // ---------- 튜토리얼 ----------
 const TUT=[
-  ['회사를 고르고 돌아다니세요','전국 건축사사무소 9천여 곳 중 하나를 고르면 그 동네로 날아가요. WASD(또는 방향키)로 이동하면 주변 지도가 계속 이어서 만들어져요. 빈 곳을 드래그하면 회전, 우클릭(또는 Shift) 드래그로 이동, 휠로 확대해요.'],
+  ['회사를 고르고 돌아다니세요','전국 건축사사무소·건설사·대학교 1만 1천여 곳 중 하나를 고르면 그 동네로 날아가요. WASD(또는 방향키)로 이동하면 주변 지도가 계속 이어서 만들어져요. 빈 곳을 드래그하면 회전, 우클릭(또는 Shift) 드래그로 이동, 휠로 확대해요.'],
   ['시공팀 도구 (1~6)','철거반: 인부 수십 명이 외벽을 타고 올라가 층마다 오함마질. 불도저·쇠공: 클릭으로 시작점, 다시 클릭으로 끝점을 찍으면 그 선을 따라 밀고 가거나 휘둘러요 (드래그는 화면 회전, Esc 취소). 레미콘: 옥상 과하중. 다이너마이트: 여러 곳에 붙이고 Space(기폭)로 연쇄 폭파. 철근 빼기: 순살 구조.'],
   ['설계팀 도구 (7~0) · 사장님','MOVE: 건물을 잡아 끌어서 던지기. EXTRUDE: 무한 증축 → 쓰러짐. TRIM: 클릭-클릭으로 건물을 가로질러 선을 그으면 윗부분이 잘려 떨어져요. 싱크홀(0): 누른 곳 일대 지반이 약해져 무작위로 땅이 여러 번 꺼져요 Q: 필살기. 사옥 옥상의 사장님은 부술 때마다 한마디씩 하고, 사옥이 무너지면 근처 건축사무소로 도망쳐요. 끝까지 쫓아가 잡으면 큰 보너스!'],
   ['구조대로 무너져요','외벽이 떨어지면 기둥·슬래브가 드러나고, 한 층의 기둥이 절반 넘게 부러지면 그 층이 주저앉아요. 1층 기둥을 노리면 빨리 무너지고, 잔해가 옆 건물까지 덮쳐요. Ctrl+Z 되돌리기.'],
   ['단면 · 랭킹 · 정복','[단면](C 키)으로 사옥을 잘라 우리 층만 정밀 철거해요. 단면에서는 장비와 인부가 화면에 그대로 보이고, 층을 통째로 빼서 던지거나(MOVE) 위로 끌어 증축(EXTRUDE)할 수 있어요. F 키로 우리 층 확대. 철거 일보로 랭킹 등록, [정복]에서 구별 진행도를 확인하세요.'],
 ];
 if(TOUCH){   // 휴대폰용 설명 (키보드·마우스 대신 손가락)
-  TUT[0][1]='전국 건축사사무소 9천여 곳 중 하나를 고르면 그 동네로 날아가요. 한 손가락으로 빈 곳을 밀면 회전, 두 손가락으로 벌리거나 오므리면 확대·축소, 두 손가락을 같이 밀면 이동해요. 파란 사무소 이름표는 두 번 누르면 그 건물 단면으로 들어가요.';
+  TUT[0][1]='전국 건축사사무소·건설사·대학교 1만 1천여 곳 중 하나를 고르면 그 동네로 날아가요. 한 손가락으로 빈 곳을 밀면 회전, 두 손가락으로 벌리거나 오므리면 확대·축소, 두 손가락을 같이 밀면 이동해요. 파란 사무소 이름표는 두 번 누르면 그 건물 단면으로 들어가요.';
   TUT[1][1]='철거반: 인부 수십 명이 외벽을 타고 올라가 층마다 오함마질. 불도저·쇠공: 시작점을 탭, 끝점을 한 번 더 탭하면 그 선을 따라 밀고 가거나 휘둘러요 (같은 곳을 다시 탭하면 취소). 레미콘: 옥상 과하중. 다이너마이트: 여러 곳에 붙이고 [기폭] 버튼으로 연쇄 폭파. 철근 빼기: 순살 구조.';
   TUT[2][1]='MOVE: 건물을 꾹 눌렀다가 끌어서 던지기. EXTRUDE: 무한 증축 → 쓰러짐. TRIM: 탭-탭으로 건물을 가로질러 선을 그으면 윗부분이 잘려 떨어져요. 싱크홀(0): 누른 곳 일대 지반이 약해져 무작위로 땅이 여러 번 꺼져요 오른쪽 아래 원: 필살기. 사옥 옥상의 사장님은 부술 때마다 한마디씩 하고, 사옥이 무너지면 근처 건축사무소로 도망쳐요. 끝까지 쫓아가 잡으면 큰 보너스!';
   TUT[3][1]=TUT[3][1].replace('Ctrl+Z 되돌리기.','[되돌리기] 버튼으로 되돌릴 수 있어요.');
   TUT[4][1]='[단면]으로 사옥을 잘라 우리 층만 정밀 철거해요. 단면에서는 장비와 인부가 화면에 그대로 보이고, 층을 꾹 눌러 빼서 던지거나(MOVE) 위로 끌어 증축(EXTRUDE)할 수 있어요. 위쪽 [확대해서 보기]로 우리 층 확대. 철거 일보로 랭킹 등록, [정복]에서 구별 진행도를 확인하세요.';
 }
+TUT[2][1]+=' 대학교를 고르면 사장님 대신 총장님이 나와요.';
+TUT[2][1]+=' 사장님을 검거한 뒤 점수를 더 모으면 부동산 호황! 비행선을 타고 돌아와 사옥을 새로 지어요. 밤(야근 타임)에는 불 켜진 건물 점수 ×2, 꺼진 건물 ×0.25예요. 너무 몰아서 부수면 구청이 3초 공사중지를 걸어요.';
 TUT[2][1]+=' 사옥이 꽤 부서지면 발주처가 난입해서 빨간 임시 철골·빨간펜 테이프·매스를 마구 갖다 놓아요. 전부 부술 거리예요! 건물이 무너지면 한 번은 새로 지어 사장님을 복귀시키고, 또 무너지면 포기하고 도망가요. 발주처 이름은 회사 고르기 창이나 설정에서 직접 정할 수 있어요.';
 let tutI=0;
 function showTut(i){tutI=clamp(i,0,TUT.length-1);$('#tutStep').textContent=`${tutI+1} / ${TUT.length}`;$('#tutTitle').textContent=TUT[tutI][0];$('#tutText').textContent=TUT[tutI][1];
@@ -3316,7 +3439,7 @@ function updateWorld(dt){
 //  '나': 이 브라우저에 저장 / '모두 함께': Apps Script 웹앱 '철거' 탭
 // =====================================================================
 const CONQ=new Set(lsGet('smasharch_conq')||[]);
-let CONQ_Q=new Set(), conqTimer=0, CONQ_ALL=null, conqView={who:'all',scope:'seoul',open:null};
+let CONQ_Q=new Set(), HOT_Q=new Set(), conqTimer=0, CONQ_ALL=null, conqView={who:'all',scope:'seoul',open:null};
 const FKI=new Map(FIRMDATA.map((r,i)=>[r[5],i]));
 function keyIdx(k){return /^d\d+$/.test(k||'')?FKI.get(+k.slice(1)):undefined}
 function regionOfRow(r){return r&&r[6]?(r[6]+' '+r[7]).trim():''}
@@ -3329,17 +3452,18 @@ function myDone(reg){let n=0;for(const i of reg.idx)if(CONQ.has('d'+FIRMDATA[i][
 function allDone(reg){return CONQ_ALL&&CONQ_ALL.done?(CONQ_ALL.done[reg.key]||0):0}
 function conqRecord(b){
   const ks=conqKeysOf(b);if(!ks.length)return;let fresh=[];
+  if(b&&b.hq&&CUR&&CUR.dkey)HOT_Q.add(CUR.dkey);   // '가장 많이 무너진 사옥'은 고른 사옥만 (같은 건물에 든 다른 회사는 정복에만 반영)
   for(const k of ks){CONQ_Q.add(k);if(!CONQ.has(k)){CONQ.add(k);fresh.push(k)}}
   if(fresh.length){lsSet('smasharch_conq',[...CONQ]);
     const i=keyIdx(fresh[0]);const reg=i!=null?REG.get(regionOfRow(FIRMDATA[i])):null;
     if(reg){const d=myDone(reg),t=reg.idx.length;setTimeout(()=>toast(`${reg.sgg} 정복 ${d} / ${t}곳 (${Math.floor(d/t*100)}%)${d===t?' · 완전 정복!':''}`,2600),2400)}}
   clearTimeout(conqTimer);conqTimer=setTimeout(flushConq,6000);
 }
-function conqBody(){return JSON.stringify({type:'kill',keys:[...CONQ_Q].slice(0,200),nick:lsGet('smasharch_nick')||'익명'})}
+function conqBody(){return JSON.stringify({type:'kill',keys:[...CONQ_Q].slice(0,200),hot:[...HOT_Q].slice(0,5),vid:lsGet('smasharch_vid')||'',nick:lsGet('smasharch_nick')||'익명'})}
 async function flushConq(){
-  const u=rankUrl();if(!u||!CONQ_Q.size)return;const body=conqBody();const sent=[...CONQ_Q].slice(0,200);
+  const u=rankUrl();if(!u||!CONQ_Q.size)return;const body=conqBody();const sent=[...CONQ_Q].slice(0,200),sentH=[...HOT_Q];
   try{const r=await fetchT(u,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body},15000);
-    if(r&&r.ok){for(const k of sent)CONQ_Q.delete(k);if(CONQ_ALL)CONQ_ALL=null}}catch(e){}
+    if(r&&r.ok){for(const k of sent)CONQ_Q.delete(k);for(const k of sentH)HOT_Q.delete(k);if(CONQ_ALL)CONQ_ALL=null}}catch(e){}
   if(CONQ_Q.size){clearTimeout(conqTimer);conqTimer=setTimeout(flushConq,20000)}
 }
 addEventListener('pagehide',()=>{const u=rankUrl();if(u&&CONQ_Q.size&&navigator.sendBeacon){try{navigator.sendBeacon(u,new Blob([conqBody()],{type:'text/plain;charset=utf-8'}))}catch(e){}}});
