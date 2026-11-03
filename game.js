@@ -41,8 +41,8 @@ function addrQueries(addr){
 
 // ---------- 설정 ----------
 const FLOOR_Y = -60, BOTTOM_Y = -75;
-const GAME_VER='2026.11.03b';   // 패치 노트 버전 — 바꾸면 재방문자에게 업데이트 창이 한 번 뜸 (index.html #mPatch 내용도 같이 수정)
-const opts = {sound:true, labels:true, debris:true, shadows:true, pins:true, mini:false, shake:false, night:true};
+const GAME_VER='2026.11.03c';   // 패치 노트 버전 — 바꾸면 재방문자에게 업데이트 창이 한 번 뜸 (index.html #mPatch 내용도 같이 수정)
+const opts = {sound:true, labels:true, debris:true, shadows:true, pins:true, mini:false, shake:false, night:true, patch:true};
 try{ const s = JSON.parse(localStorage.getItem('smasharch_opts')||'null'); if(s) Object.assign(opts,s);}catch(e){}
 // ---------- 낮·밤 (야근 모드) ----------
 //  낮 DAY_SEC초 → 밤 NIGHT_SEC초 반복. 밤에는 불 켜진 건물(층) 점수 ×NIGHT_X, 꺼진 건물 ×NIGHT_OFF
@@ -1907,7 +1907,7 @@ async function loadFirm(f){
   // 하늘에서 사옥으로 날아 들어오기
   cam.theta=0.75;cam.phi=0.62;cam.dist=2400;camFly={t:0,from:{dist:2400,phi:0.62,theta:0.75},to:{dist:Math.min(1600,560*Math.max(1,1.15*innerHeight/innerWidth)),phi:0.95,theta:1.25}};
   clearTimeout(slowMsg);setLoading(false);
-  if(!lsGet('smasharch_tut_v2'))setTimeout(()=>showTut(0),400);
+  if(!lsGet('smasharch_tut_v2'))setTimeout(showWelcome,400);
   if(HQFIX&&f.dkey==='d'+HQFIX.kid)hqFixAsk();
   else if(!fake&&!B.some(b=>b.hq))toast('사옥 건물을 못 찾았어요. 설정 → "사옥 건물 직접 지정"으로 골라주세요.',4500);
   else if(!fake&&!f.tenant&&parseFloor(f.addr)==null&&B.some(b=>b.hq))toast('레이드 보스 · 사옥 전체를 쓰는 회사예요. 사옥 기둥이 2배 단단해요',3500);
@@ -1947,7 +1947,7 @@ $('#customQ').addEventListener('input',runSearch);
 $('#customQ').addEventListener('keydown',e=>{if(e.key==='Enter'){const f=$('#searchRes .firm');if(f)f.click()}});
 $('#btnShare').onclick=()=>openShare('result');
 $('#btnPickHQ').onclick=()=>{closeModals();pickHQ=true;$('#hint').textContent='사옥 건물을 눌러주세요';toast('사옥으로 쓸 건물을 눌러주세요')};
-for(const k of ['Sound','Labels','Debris','Shadows','Pins','Mini','Shake','Night']){const el=$('#opt'+k);if(!el)continue;const key=k.toLowerCase();el.checked=!!opts[key];el.onchange=()=>{opts[key]=el.checked;lsSet('smasharch_opts',opts);if(key==='sound'&&!el.checked)humStop();if(key==='mini')applyMini();if(key==='night'){if(!el.checked&&DAY.night)dayStart();DAY.t=0}}}
+for(const k of ['Sound','Labels','Debris','Shadows','Pins','Mini','Shake','Night','Patch']){const el=$('#opt'+k);if(!el)continue;const key=k.toLowerCase();el.checked=!!opts[key];el.onchange=()=>{opts[key]=el.checked;lsSet('smasharch_opts',opts);if(key==='sound'&&!el.checked)humStop();if(key==='mini')applyMini();if(key==='night'){if(!el.checked&&DAY.night)dayStart();DAY.t=0}}}
 // ---- 간단 화면: H 키 · 왼쪽 위 [UI] 버튼 · 설정 체크 ----
 function applyMini(){document.body.classList.toggle('mini',!!opts.mini);const el=$('#optMini');if(el)el.checked=!!opts.mini;setTimeout(layoutHUD,0)}
 function toggleMini(){opts.mini=!opts.mini;lsSet('smasharch_opts',opts);applyMini();toast(opts.mini?'간단 화면 — 필요한 버튼만 남겼어요 (랭킹·정복·공유는 설정 안에)':'기본 화면으로 돌아왔어요',2200)}
@@ -2693,7 +2693,7 @@ function bossScale(){return MODE==='section'?1.8:clamp(cam.dist*0.026,4,18)}   /
 function bossClick(mx,my){if(!bossHere()||BOSS.state==='jump'||BOSS.state==='caught')return false;const p=bossPos(),S=bossScale();
   const a=project(p.x,p.y+0.2,p.z),c=project(p.x,p.y+2.1*S,p.z);if(!a||!c)return false;const h=Math.abs(a[1]-c[1]),w=Math.max(18,h*0.5);
   if(mx<a[0]-w||mx>a[0]+w||my<c[1]-6||my>a[1]+4)return false;
-  BOSS.stun=1.4;bossSay(pickL(BOSS_LINES.stun),2);addScore(800);sfx(8,0.25);cam.shake=Math.max(cam.shake,2);
+  BOSS.stun=1.4;if(MS)MS.boss++;bossSay(pickL(BOSS_LINES.stun),2);addScore(800);sfx(8,0.25);cam.shake=Math.max(cam.shake,2);
   for(let k=0;k<8;k++)spawn(p.x,p.y+2*S,p.z,(Math.random()-.5)*4,3,(Math.random()-.5)*4,0.15*S,[1,0.9,0.3],0.6,1);return true}
 
 function bossFlee(){const from=BOSS.b;let best=null,bd=1e9;
@@ -3403,9 +3403,13 @@ canvas.addEventListener('webglcontextrestored',()=>location.reload());
   requestAnimationFrame(frame);
   if(f){loadFirm(f);if(vs>0&&vs<1e10)challengeStart(vs)}else{resetWorld();$('#firmName').textContent='회사를 골라주세요';$('#mFirm').classList.add('open');loadHot()}
   if(!lsGet('smasharch_tut_v2'))lsSet('smasharch_ver',GAME_VER);                       // 처음 온 사람은 튜토리얼만
-  else if(lsGet('smasharch_ver')!==GAME_VER&&$('#mPatch'))$('#mPatch').classList.add('open');   // 다시 온 사람은 업데이트 내역
+  else if(lsGet('smasharch_ver')!==GAME_VER&&$('#mPatch')){if(opts.patch===false)lsSet('smasharch_ver',GAME_VER);else $('#mPatch').classList.add('open')}   // 설정에서 끌 수 있음   // 다시 온 사람은 업데이트 내역
 })();
-if($('#patchOk'))$('#patchOk').onclick=()=>{$('#mPatch').classList.remove('open');lsSet('smasharch_ver',GAME_VER)};
+if($('#patchOk'))$('#patchOk').onclick=()=>{$('#mPatch').classList.remove('open');lsSet('smasharch_ver',GAME_VER);
+  const no=$('#patchNo');if(no){opts.patch=!no.checked;lsSet('smasharch_opts',opts);const o=$('#optPatch');if(o)o.checked=opts.patch}};
+if($('#patchNo'))$('#patchNo').checked=opts.patch===false;
+function openPatch(){closeModals();const no=$('#patchNo');if(no)no.checked=opts.patch===false;$('#mPatch').classList.add('open')}
+if($('#setPatch'))$('#setPatch').onclick=openPatch;
 
 $('#btnSection').onclick=()=>enterSection();
 
@@ -3436,31 +3440,112 @@ $('#ult').onclick=armUlt;
 $('#btnDet').onclick=detonate;
 $('#bossArrow').onclick=bossGo;
 
-// ---------- 튜토리얼 ----------
-const TUT=[
-  ['회사를 고르고 돌아다니세요','전국 건축사사무소·건설사·대학교 1만 1천여 곳 중 하나를 고르면 그 동네로 날아가요. WASD(또는 방향키)로 이동하면 주변 지도가 계속 이어서 만들어져요. 빈 곳을 드래그하면 회전, 우클릭(또는 Shift) 드래그로 이동, 휠로 확대해요.'],
-  ['시공팀 도구 (1~6)','철거반: 인부 수십 명이 외벽을 타고 올라가 층마다 오함마질. 불도저·쇠공: 클릭으로 시작점, 다시 클릭으로 끝점을 찍으면 그 선을 따라 밀고 가거나 휘둘러요 (드래그는 화면 회전, Esc 취소). 레미콘: 옥상 과하중. 다이너마이트: 여러 곳에 붙이고 Space(기폭)로 연쇄 폭파. 철근 빼기: 순살 구조.'],
-  ['설계팀 도구 (7~0) · 사장님','MOVE: 건물을 잡아 끌어서 던지기. EXTRUDE: 무한 증축 → 쓰러짐. TRIM: 클릭-클릭으로 건물을 가로질러 선을 그으면 윗부분이 잘려 떨어져요. 싱크홀(0): 누른 곳 일대 지반이 약해져 무작위로 땅이 여러 번 꺼져요 Q: 필살기. 사옥 옥상의 사장님은 부술 때마다 한마디씩 하고, 사옥이 무너지면 근처 건축사무소로 도망쳐요. 끝까지 쫓아가 잡으면 큰 보너스!'],
-  ['구조대로 무너져요','외벽이 떨어지면 기둥·슬래브가 드러나고, 한 층의 기둥이 절반 넘게 부러지면 그 층이 주저앉아요. 1층 기둥을 노리면 빨리 무너지고, 잔해가 옆 건물까지 덮쳐요. Ctrl+Z 되돌리기.'],
-  ['단면 · 랭킹 · 정복','[단면](C 키)으로 사옥을 잘라 우리 층만 정밀 철거해요. 단면에서는 장비와 인부가 화면에 그대로 보이고, 층을 통째로 빼서 던지거나(MOVE) 위로 끌어 증축(EXTRUDE)할 수 있어요. F 키로 우리 층 확대. 철거 일보로 랭킹 등록, [정복]에서 구별 진행도를 확인하세요.'],
+// ---------- 게임 가이드 (? 버튼) · 처음 온 사람 환영 · 따라하기 미션 ----------
+//  ※ 도구 설명은 GUIDE_TOOLS 만 고치면 돼요. 사진은 img/guide/*.jpg (번호 동그라미 = 누르는 순서)
+const K=TOUCH?'탭':'클릭';
+const GUIDE_TOOLS=[
+  {w:0,img:'crew',name:'철거반',team:'시공',one:'인부 수십 명이 외벽을 타고 올라가 층마다 기둥을 오함마로 부숴요.',
+    steps:[`아래 도구막대에서 <b>1 철거반</b>을 골라요`,`부수고 싶은 건물을 <b>${K}</b> ①`,'인부들이 달려가서 알아서 부숴요. 기다리면 끝!'],tip:'아래층 기둥이 부러지면 위층이 통째로 내려앉아요.'},
+  {w:1,img:'dozer',name:'불도저',team:'시공',one:'선을 그으면 불도저 3대가 나란히 그 길을 밀고 지나가요.',
+    steps:[`<b>2 불도저</b>를 골라요`,`출발점(건물 앞 땅)을 <b>${K}</b> ①`,`도착점(건물 뒤쪽)을 한 번 더 <b>${K}</b> ②`],tip:`누르고 끄는 게 아니라 <b>${K} → ${K}</b> 두 번이에요. 같은 곳을 두 번 누르면 취소.`},
+  {w:2,img:'crane',name:'쇠공',team:'시공',one:'타워크레인이 세워지고, 쇠공이 그은 선을 따라 휘둘러져요.',
+    steps:[`<b>3 쇠공</b>을 골라요`,`건물 한쪽 옆을 <b>${K}</b> ①`,`반대쪽 옆을 <b>${K}</b> ② — 그 사이를 쇠공이 지나가요`],tip:'건물 허리 높이를 가로지르게 그으면 가장 잘 부서져요.'},
+  {w:3,img:'pour',name:'레미콘',team:'시공',one:'옥상에 콘크리트를 계속 부어서, 무게를 못 이긴 위층부터 내려앉아요.',
+    steps:[`<b>4 레미콘</b>을 골라요`,`건물 <b>옥상</b>을 ${K} ①`,'레미콘 차가 와서 계속 붓는 걸 지켜봐요'],tip:'높고 가는 건물일수록 빨리 무너져요.'},
+  {w:4,img:'blast1',img2:'blast2',name:'다이너마이트',team:'시공',one:'여러 곳에 붙여 두었다가 한 번에 연쇄 폭파해요.',
+    steps:[`<b>5 다이너마이트</b>를 골라요`,`건물 벽 여러 곳을 ${K} ①②③ — 붙이기만 하고 아직 안 터져요`,TOUCH?'오른쪽 아래 <b>[기폭]</b> 버튼을 눌러 쾅!':'<b>Space</b> 키(또는 [기폭] 버튼)를 눌러 쾅!'],tip:'1층 기둥 쪽에 여러 개 붙이면 건물 전체가 무너져요.'},
+  {w:5,img:'rebar',name:'철근 빼기',team:'시공',one:'기둥 속 철근을 몰래 빼서 건물이 서서히 약해져요. (순살 구조)',
+    steps:[`<b>6 철근 빼기</b>를 골라요`,`건물을 ${K} ①`,'조금 기다리면 기둥이 하나씩 버티지 못하고 꺾여요'],tip:'바로 안 무너져요. 다른 도구랑 같이 쓰면 효과 만점.'},
+  {w:6,img:'move',name:'MOVE',team:'설계',one:'건물을 통째로 들어 올려 끌고 가서 던져요.',
+    steps:[`<b>7 MOVE</b>를 골라요`,TOUCH?'건물을 <b>꾹 누른 채로</b> ① (살짝 기다리면 들려요)':'건물을 <b>누른 채로</b> ①',TOUCH?'손가락을 떼지 말고 끌어서 ② 에서 놓으면 던져져요':'마우스를 끌어서 ② 에서 놓으면 던져져요'],tip:'빨리 끌수록 멀리 날아가요. 아주 큰 건물은 못 들어요.'},
+  {w:7,img:'extrude',name:'EXTRUDE',team:'설계',one:'층을 계속 쌓아 올려서, 하중을 못 이기고 쓰러지게 해요.',
+    steps:[`<b>8 EXTRUDE</b>를 골라요`,`건물 옥상을 ${K} ①`,'층이 쑥쑥 올라가다가 기울어지며 옆 건물을 덮쳐요'],tip:'쓰러지는 쪽에 있는 건물까지 같이 부서져요.'},
+  {w:8,img:'trim',name:'TRIM',team:'설계',one:'CAD의 TRIM처럼, 그은 선 위쪽을 잘라내서 떨어뜨려요.',
+    steps:[`<b>9 TRIM</b>을 골라요`,`건물 왼쪽 바깥을 ${K} ①`,`건물을 가로질러 오른쪽 바깥을 ${K} ② — 선 위쪽이 잘려 미끄러져요`],tip:'건물 <b>바깥에서 바깥으로</b> 완전히 가로질러야 잘려요. 비스듬히 그으면 비스듬히 잘려요.'},
+  {w:9,img:'sink',name:'싱크홀',team:'설계',one:'누른 곳 일대 땅이 몇 초 동안 여기저기 꺼져요.',
+    steps:[`<b>0 싱크홀</b>을 골라요`,`건물 근처 땅을 ${K} ①`,'땅이 꺼지면서 주변 건물이 기울고 빠져요'],tip:'한 번에 여러 채가 무너져요. 너무 몰아서 부수면 구청이 3초 공사중지를 걸어요!'},
 ];
-if(TOUCH){   // 휴대폰용 설명 (키보드·마우스 대신 손가락)
-  TUT[0][1]='전국 건축사사무소·건설사·대학교 1만 1천여 곳 중 하나를 고르면 그 동네로 날아가요. 한 손가락으로 빈 곳을 밀면 회전, 두 손가락으로 벌리거나 오므리면 확대·축소, 두 손가락을 같이 밀면 이동해요. 파란 사무소 이름표는 두 번 누르면 그 건물 단면으로 들어가요.';
-  TUT[1][1]='철거반: 인부 수십 명이 외벽을 타고 올라가 층마다 오함마질. 불도저·쇠공: 시작점을 탭, 끝점을 한 번 더 탭하면 그 선을 따라 밀고 가거나 휘둘러요 (같은 곳을 다시 탭하면 취소). 레미콘: 옥상 과하중. 다이너마이트: 여러 곳에 붙이고 [기폭] 버튼으로 연쇄 폭파. 철근 빼기: 순살 구조.';
-  TUT[2][1]='MOVE: 건물을 꾹 눌렀다가 끌어서 던지기. EXTRUDE: 무한 증축 → 쓰러짐. TRIM: 탭-탭으로 건물을 가로질러 선을 그으면 윗부분이 잘려 떨어져요. 싱크홀(0): 누른 곳 일대 지반이 약해져 무작위로 땅이 여러 번 꺼져요 오른쪽 아래 원: 필살기. 사옥 옥상의 사장님은 부술 때마다 한마디씩 하고, 사옥이 무너지면 근처 건축사무소로 도망쳐요. 끝까지 쫓아가 잡으면 큰 보너스!';
-  TUT[3][1]=TUT[3][1].replace('Ctrl+Z 되돌리기.','[되돌리기] 버튼으로 되돌릴 수 있어요.');
-  TUT[4][1]='[단면]으로 사옥을 잘라 우리 층만 정밀 철거해요. 단면에서는 장비와 인부가 화면에 그대로 보이고, 층을 꾹 눌러 빼서 던지거나(MOVE) 위로 끌어 증축(EXTRUDE)할 수 있어요. 위쪽 [확대해서 보기]로 우리 층 확대. 철거 일보로 랭킹 등록, [정복]에서 구별 진행도를 확인하세요.';
-}
-TUT[2][1]+=' 대학교를 고르면 사장님 대신 총장님이 나와요.';
-TUT[2][1]+=' 사장님을 검거한 뒤 점수를 더 모으면 부동산 호황! 비행선을 타고 돌아와 사옥을 새로 지어요. 밤(야근 타임)에는 불 켜진 건물 점수 ×2, 꺼진 건물 ×0.25예요. 너무 몰아서 부수면 구청이 3초 공사중지를 걸어요.';
-TUT[2][1]+=' 사옥이 꽤 부서지면 발주처가 난입해서 빨간 임시 철골·빨간펜 테이프·매스를 마구 갖다 놓아요. 전부 부술 거리예요! 건물이 무너지면 한 번은 새로 지어 사장님을 복귀시키고, 또 무너지면 포기하고 도망가요. 발주처 이름은 회사 고르기 창이나 설정에서 직접 정할 수 있어요.';
-let tutI=0;
-function showTut(i){tutI=clamp(i,0,TUT.length-1);$('#tutStep').textContent=`${tutI+1} / ${TUT.length}`;$('#tutTitle').textContent=TUT[tutI][0];$('#tutText').textContent=TUT[tutI][1];
-  $('#tutPrev').disabled=tutI===0;$('#tutNext').textContent=tutI===TUT.length-1?'시작하기':'다음';$('#mTut').classList.add('open')}
-$('#tutPrev').onclick=()=>showTut(tutI-1);
-$('#tutNext').onclick=()=>{if(tutI===TUT.length-1){closeModals();lsSet('smasharch_tut_v2',1)}else showTut(tutI+1)};
-$('#tutSkip').onclick=()=>{closeModals();lsSet('smasharch_tut_v2',1)};
-$('#btnHelp').onclick=()=>showTut(0);
+const GUIDE_TABS=[['start','처음 시작'],['tools','도구 사용법'],['section','단면 모드'],['events','이벤트'],['score','점수·공유'],['patch','업데이트']];
+function gStart(){const pc=!TOUCH;
+  return `<div class="g-steps">
+  <div class="g-step"><i>1</i><div><b>회사(또는 학교) 고르기</b><p>왼쪽 위 <kbd>⌂ 다른 회사</kbd>를 누르고 이름을 검색해요. 그 회사 동네의 실제 지도가 3D로 만들어져요.</p></div></div>
+  <div class="g-step"><i>2</i><div><b>화면 움직이기</b>${pc?`
+    <div class="g-ctl"><span><em>🖱 왼쪽 드래그</em>화면 돌리기</span><span><em>🖱 오른쪽 드래그<small>(또는 Shift+드래그)</small></em>옆으로 이동</span><span><em>🖱 휠</em>확대 · 축소</span><span><em>⌨ W A S D</em>앞뒤좌우 이동</span></div>`:`
+    <div class="g-ctl"><span><em>☝ 한 손가락으로 밀기</em>화면 돌리기</span><span><em>✌ 두 손가락 벌리기·오므리기</em>확대 · 축소</span><span><em>✌ 두 손가락 같이 밀기</em>옆으로 이동</span></div>`}</div></div>
+  <div class="g-step"><i>3</i><div><b>도구 고르고 건물 누르기</b><p>아래 도구막대에서 도구를 고르고${pc?' (숫자키 1~0도 돼요)':''}, 건물을 ${K}하면 부서져요.
+    <br>⚠ <b>불도저·쇠공·TRIM</b>은 <u>${K} 한 번 → 끝점에 한 번 더 ${K}</u> 해서 선을 그어요. 누르고 끄는 게 아니에요!</p></div></div>
+  <div class="g-step"><i>4</i><div><b>잘못했으면</b><p><kbd>되돌리기</kbd>${pc?'(Ctrl+Z)':''}로 한 단계 전으로, <kbd>전부 복구</kbd>로 처음 상태로 돌아가요.</p></div></div>
+  </div>
+  <div class="g-cta"><button class="btn-p" id="gMission">🎯 따라하기로 하나씩 배우기</button><button class="btn-s" data-gtab="tools">도구 사용법 보기 →</button></div>`}
+function gTools(){return `<div class="g-tools">`+GUIDE_TOOLS.map(t=>`<div class="g-tool">
+  <div class="g-img"><img loading="lazy" src="img/guide/${t.img}.jpg" alt="${t.name} 예시">${t.img2?`<img loading="lazy" src="img/guide/${t.img2}.jpg" alt="${t.name} 결과">`:''}</div>
+  <div class="g-txt"><div class="g-name"><kbd>${t.w===9?0:t.w+1}</kbd> ${t.name} <small>${t.team}팀</small></div><p class="g-one">${t.one}</p>
+  <ol>${t.steps.map(s=>`<li>${s}</li>`).join('')}</ol><p class="g-tip">💡 ${t.tip}</p>
+  <button class="btn-s g-try" data-w="${t.w}">이 도구로 해보기</button></div></div>`).join('')+`
+  <div class="g-tool g-ult"><div class="g-txt"><div class="g-name"><kbd>Q</kbd> 필살기</div><p class="g-one">부술수록 오른쪽 아래 원형 게이지가 차요. 가득 차면 ${TOUCH?'원을 누르고':'Q 키를 누르고'} 아무 곳이나 ${K}하면 일대가 한 번에 날아가요.</p></div></div></div>`}
+function gSection(){return `<div class="g-tool"><div class="g-img"><img loading="lazy" src="img/guide/section.jpg" alt="단면 모드"></div><div class="g-txt">
+  <div class="g-name">🔪 단면 모드 — 우리 층만 정밀 철거</div><p class="g-one">사옥을 잘라서 층별 단면으로 보여줘요. 기둥·코어·슬래브를 하나하나 부술 수 있어요.</p>
+  <ol><li>아래 <kbd>단면</kbd> 버튼${TOUCH?'':' (또는 C 키)'}을 눌러요. 동네 지도의 파란 사무소 이름표를 ${TOUCH?'두 번 탭':'클릭'}해도 그 건물 단면으로 들어가요</li>
+  <li>도구는 동네와 같아요. MOVE는 층을 통째로 빼서 던지고, EXTRUDE는 위로 끌어 올려 증축해요</li>
+  <li>${TOUCH?'위쪽 [확대해서 보기]':'F 키'}로 우리 층을 확대하고, <kbd>동네로</kbd> 버튼으로 돌아가요</li></ol>
+  <p class="g-tip">💡 한 층의 기둥이 절반 넘게 부러지면 그 층이 주저앉고, 위층이 연달아 무너져요. 적은 타격으로 완전 붕괴시키면 '구조 등급' 보너스!</p></div></div>`}
+function gEvents(){return `<div class="g-ev">
+  <div><b>👔 사장님</b><p>옥상에서 잔소리해요. 사장님을 ${K}하면 기절 + 보너스. 사옥이 무너지면 근처 건축사무소로 도망가요 — 화면 가장자리 화살표를 누르면 따라가요. 더 도망칠 곳이 없으면 검거! (대학교는 총장님)</p></div>
+  <div><b>😤 발주처 난입</b><p>사옥이 꽤 부서지면 검은 차를 타고 와서 빨간 임시 철골·빨간펜 테이프·매스·타워를 갖다 놓아요. 전부 부수면 점수! 건물이 무너지면 한 번은 새로 지어요.</p></div>
+  <div><b>📢 부동산 호황</b><p>사장님을 검거한 뒤 점수를 더 모으면 사장님이 비행선을 타고 돌아와 사옥을 새로 지어요. 비행선 현수막엔 최근 7일 가장 많이 무너진 사옥 1위!</p></div>
+  <div><b>🌙 야근 모드</b><p>낮 90초 · 밤 60초. 밤에는 <b>불 켜진 건물 점수 ×2</b>, 꺼진 건물 ×0.25. 오른쪽 위에 남은 시간이 보여요.</p></div>
+  <div><b>🚧 구청 공사중지</b><p>몇 초 만에 건물을 10동 넘게 몰아서 부수면 3초 동안 도구를 못 써요. 화면은 움직일 수 있어요.</p></div>
+  <div><b>🔥 콤보</b><p>쉬지 않고 계속 부수면 n COMBO — 점수가 최대 ×2.</p></div></div>`}
+function gScore(){return `<div class="g-ev">
+  <div><b>📋 철거 공사 일보</b><p>오른쪽 위 <kbd>철거 일보</kbd>: 파괴율·철거 동수·점수·직급(인턴 → ANNIHILATOR). 여기서 랭킹 등록과 공유를 해요.</p></div>
+  <div><b>🏆 랭킹</b><p>이번 주 점수 순위. 한 판(회사를 고른 뒤 다른 회사를 고르거나 전부 복구하기 전까지)에 닉네임 하나로 점수만 올라가요.</p></div>
+  <div><b>🔥 가장 많이 무너진 사옥</b><p>회사 고르기 창 위쪽. 최근 7일 동안 그 사옥을 무너뜨린 <b>사람 수</b> 기준이에요. 동료들과 같이 부숴 1위를 만들어 보세요.</p></div>
+  <div><b>🗺 정복</b><p>구별로 몇 곳을 무너뜨렸는지 지도로 보여줘요.</p></div>
+  <div><b>📤 공유</b><p>지금 화면으로 결과 카드를 만들어 카카오톡·SNS로 보내요. "도전장"을 켜면 받은 친구 화면에 내 점수가 떠요.</p></div>
+  <div><b>📮 회사 추가 · 문의</b><p>목록에 없으면 회사 고르기 창 검색 아래 버튼으로 이름·주소만 넣으면 바로 추가돼요.</p></div></div>`}
+function gPatch(){const p=$('#mPatch');const ul=p?p.querySelector('ul'):null;const ver=p?p.querySelector('.small').textContent:'';
+  return `<div class="small" style="margin-bottom:6px">${esc(ver)}</div><div class="card patch" style="padding:0;background:none;box-shadow:none;max-width:none">${ul?ul.outerHTML:''}</div>
+  <label class="opt" style="margin-top:10px">업데이트가 있으면 시작할 때 이 내용 띄우기 <input type="checkbox" id="optPatch2" ${opts.patch!==false?'checked':''}></label>`}
+function openGuide(tab){const m=$('#mGuide');if(!m)return;closeModals();m.classList.add('open');showGuide(tab||lsGet('smasharch_gtab')||'start')}
+function showGuide(tab){const b=$('#gBody');if(!b)return;lsSet('smasharch_gtab',tab);
+  document.querySelectorAll('#gTabs button').forEach(x=>x.classList.toggle('on',x.dataset.t===tab));
+  b.innerHTML={start:gStart,tools:gTools,section:gSection,events:gEvents,score:gScore,patch:gPatch}[tab]();b.scrollTop=0;
+  b.querySelectorAll('[data-gtab]').forEach(x=>x.onclick=()=>showGuide(x.dataset.gtab));
+  b.querySelectorAll('.g-try').forEach(x=>x.onclick=()=>{closeModals();selectWeapon(+x.dataset.w);toast(`${WEAPONS[+x.dataset.w].name} 준비! 건물을 ${K}해 보세요`,2600)});
+  const gm=$('#gMission');if(gm)gm.onclick=()=>{closeModals();missionStart()};
+  const op=$('#optPatch2');if(op)op.onchange=()=>{opts.patch=op.checked;lsSet('smasharch_opts',opts);const o=$('#optPatch');if(o)o.checked=op.checked}}
+(function(){const t=$('#gTabs');if(!t)return;t.innerHTML=GUIDE_TABS.map(([k,n])=>`<button data-t="${k}">${n}</button>`).join('');
+  t.querySelectorAll('button').forEach(x=>x.onclick=()=>showGuide(x.dataset.t))})();
+$('#btnHelp').onclick=()=>openGuide();if($('#setGuide'))$('#setGuide').onclick=()=>openGuide();
+// 처음 온 사람: 환영 카드 → 따라하기 / 가이드 / 바로 시작
+function showWelcome(){const m=$('#mWelcome');if(!m){openGuide('start');return}closeModals();m.classList.add('open')}
+if($('#mWelcome')){$('#wMission').onclick=()=>{closeModals();lsSet('smasharch_tut_v2',1);missionStart()};
+  $('#wGuide').onclick=()=>{lsSet('smasharch_tut_v2',1);openGuide('start')};$('#wSkip').onclick=()=>{closeModals();lsSet('smasharch_tut_v2',1)}}
+// 따라하기 미션 — 화면 왼쪽에 할 일 목록, 해내면 자동으로 체크
+const MISSIONS=[
+  {t:TOUCH?'한 손가락으로 화면을 밀어 돌려보기':'빈 곳을 드래그해서 화면 돌려보기',ok:()=>MS.rot>0.6},
+  {t:TOUCH?'두 손가락으로 확대·축소해 보기':'마우스 휠로 확대·축소해 보기',ok:()=>MS.zoom>0.25},
+  {t:`<b>1 철거반</b>을 고르고 건물을 ${K}`,w:0,ok:()=>(STATS.tools.crew||0)>0},
+  {t:`<b>2 불도저</b>: 땅을 ${K} → 건물 너머를 한 번 더 ${K}`,w:1,ok:()=>(STATS.tools.dozer||0)>0},
+  {t:`<b>5 다이너마이트</b>를 벽에 붙이고 ${TOUCH?'[기폭]':'Space'}로 쾅`,w:4,ok:()=>(STATS.tools.blast||0)>0},
+  {t:`옥상의 <b>사장님</b>을 ${K}해서 기절시키기`,ok:()=>MS.boss>0},
+  {t:`<b>단면</b> 버튼으로 건물 속 들어가 보기`,ok:()=>MODE==='section'},
+];
+let MS=null;
+function missionStart(){MS={i:0,rot:0,zoom:0,boss:0,th:cam.theta,ds:cam.dist,done:new Array(MISSIONS.length).fill(false)};missionUI();toast('🎯 왼쪽 목록을 하나씩 해보세요. 해내면 자동으로 체크돼요',3500)}
+function missionTick(){if(!MS)return;MS.rot+=Math.abs(cam.theta-MS.th);MS.th=cam.theta;if(MS.ds>0)MS.zoom+=Math.abs(cam.dist-MS.ds)/MS.ds;MS.ds=cam.dist;
+  let ch=false;MISSIONS.forEach((m,i)=>{if(!MS.done[i]&&m.ok()){MS.done[i]=true;ch=true;sfx(4,0.15)}});if(ch)missionUI()}
+function missionUI(){let el=$('#mission');if(!MS){if(el)el.remove();return}
+  if(!el){el=document.createElement('div');el.id='mission';document.body.appendChild(el)}
+  const n=MS.done.filter(Boolean).length,all=n===MISSIONS.length;
+  el.innerHTML=`<div class="mh"><b>🎯 따라하기 ${n}/${MISSIONS.length}</b><button title="닫기">×</button></div>`+MISSIONS.map((m,i)=>`<div class="mi${MS.done[i]?' ok':''}"><i>${MS.done[i]?'✔':i+1}</i><span>${m.t}</span>${m.w!=null&&!MS.done[i]?`<button data-w="${m.w}">고르기</button>`:''}</div>`).join('')+
+    (all?`<div class="mdone">🎉 다 했어요! 이제 마음껏 부수세요.<br><button class="btn-s" id="mGuideBtn">📘 다른 도구도 보기</button></div>`:`<div class="mfoot"><button class="btn-s" id="mGuideBtn">📘 가이드 보기</button></div>`);
+  el.querySelector('.mh button').onclick=()=>{MS=null;missionUI()};
+  el.querySelectorAll('.mi button').forEach(b=>b.onclick=()=>{selectWeapon(+b.dataset.w);toast(`${WEAPONS[+b.dataset.w].name} 준비 완료`,1500)});
+  const g=el.querySelector('#mGuideBtn');if(g)g.onclick=()=>openGuide('tools');
+  if(all){flashScreen(0.2,'#fff3c4');sfx(20,0.6);setTimeout(()=>{if(MS&&MS.done.every(Boolean)){MS=null;missionUI()}},12000)}}
+setInterval(missionTick,300);
+
 
 function updateWorld(dt){
   if(MODE==='city'){pumpTiles();const ti=tileOf(cam.tx)+','+tileOf(cam.tz);if(basePlaneAt!==ti)buildBasePlane()}

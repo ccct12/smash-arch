@@ -418,6 +418,52 @@ body.iostip #iosTip{display:flex}
 #mReq input,#mReq select,#mReq textarea{width:100%;box-sizing:border-box;padding:8px;border-radius:7px;border:1px solid #000;background:#14171b;color:#eee;font:inherit;font-size:13px}
 #mReq textarea{min-height:70px;resize:vertical}.rq-2{display:flex;gap:8px}.rq-2>div{flex:1}
 #rqMsg2{min-height:16px;font-size:12px;color:#ffb86b;margin-top:6px}
+
+/* 게임 가이드 · 환영 · 따라하기 */
+#mGuide .card.guide{width:min(820px,100%);padding-top:14px}
+#gTabs{display:flex;gap:4px;flex-wrap:wrap;margin:8px 0 10px;border-bottom:1px solid var(--line);padding-bottom:8px;position:sticky;top:-14px;background:var(--panel);z-index:1}
+#gTabs button{padding:6px 12px;border-radius:16px;background:var(--panel2);border:1px solid var(--line);font-size:13px;font-weight:700;color:#c9cdd1}
+#gTabs button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+#gBody{font-size:13.5px;line-height:1.65;color:#d6d9dc}
+#gBody b{color:#fff}#gBody u{text-decoration-color:var(--accent);text-underline-offset:3px}
+#gBody kbd,.g-name kbd{display:inline-block;min-width:20px;text-align:center;padding:0 6px;border-radius:4px;background:#2a2e33;border:1px solid #4a4f56;border-bottom-width:2px;font:700 12px/1.6 inherit;color:#fff}
+.g-steps{display:flex;flex-direction:column;gap:10px}
+.g-step{display:flex;gap:10px;align-items:flex-start;background:var(--panel2);border-radius:8px;padding:10px 12px}
+.g-step>i,.mi>i{flex:0 0 24px;height:24px;border-radius:50%;background:var(--accent);color:#fff;font:700 13px/24px inherit;text-align:center;font-style:normal}
+.g-step p{margin:2px 0 0}
+.g-ctl{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px;margin-top:6px}
+.g-ctl span{background:#1d2024;border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-size:12.5px}
+.g-ctl em{display:block;font-style:normal;font-weight:700;color:var(--gold)}.g-ctl small{font-weight:400;color:#9aa0a6}
+.g-cta{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.g-cta .btn-p{font-size:14px;padding:10px 16px}.g-cta .btn-s{padding:9px 14px}
+.g-tools{display:flex;flex-direction:column;gap:12px}
+.g-tool{display:flex;gap:12px;background:var(--panel2);border-radius:8px;padding:10px;align-items:flex-start}
+.g-img{flex:0 0 46%;display:flex;flex-direction:column;gap:6px}
+.g-img img{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:6px;background:#111;display:block}
+.g-txt{flex:1;min-width:0}
+.g-name{font-weight:700;font-size:15px;color:#fff}.g-name small{font-weight:400;font-size:11px;color:#9aa0a6;margin-left:4px}
+.g-one{margin:3px 0 6px;color:#c9cdd1}
+.g-txt ol{margin:0 0 6px 18px;padding:0}.g-txt li{margin-bottom:3px}
+.g-tip{margin:0 0 8px;font-size:12.5px;color:#ffd58a}
+.g-try{font-weight:700}
+.g-ev{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:8px}
+.g-ev>div{background:var(--panel2);border-radius:8px;padding:10px 12px}.g-ev p{margin:3px 0 0;font-size:13px}
+@media (max-width:640px){.g-tool{flex-direction:column}.g-img{flex:none;width:100%}}
+@media (pointer:coarse) and (max-height:500px){.g-tool{flex-direction:row}.g-img{flex:0 0 40%}#gTabs button{padding:4px 9px;font-size:12px}#gBody{font-size:12.5px}}
+#mWelcome .card.welcome{width:min(420px,100%);text-align:center;display:flex;flex-direction:column;gap:8px}
+#mWelcome p{font-size:14px;line-height:1.7;margin:2px 0 6px;color:#d6d9dc}
+#mWelcome .btn-p{font-size:15px;padding:12px}#mWelcome .btn-p small{font-weight:400;opacity:.85}#mWelcome .btn-s{padding:9px;font-size:13.5px}
+#mission{position:fixed;left:12px;top:50%;transform:translateY(-50%);z-index:9;width:min(280px,42vw);background:rgba(24,26,29,.94);border:1px solid #000;border-left:4px solid var(--accent);border-radius:8px;padding:8px 10px;font-size:12.5px;line-height:1.45;color:#d6d9dc;box-shadow:0 4px 0 rgba(0,0,0,.35)}
+#mission .mh{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;color:#fff}
+#mission .mh button{font-size:18px;line-height:1;padding:0 4px;color:#aaa}
+#mission .mi{display:flex;gap:7px;align-items:center;padding:4px 0;border-top:1px solid rgba(255,255,255,.06)}
+#mission .mi>i{flex:0 0 20px;height:20px;font-size:11px;line-height:20px;background:#3a3f45}
+#mission .mi:not(.ok):first-of-type>i,#mission .mi.ok+.mi:not(.ok)>i{background:var(--accent)}
+#mission .mi.ok{opacity:.55}#mission .mi.ok>i{background:#3fae5a}#mission .mi.ok span{text-decoration:line-through}
+#mission .mi span{flex:1}#mission .mi b{color:#fff}
+#mission .mi button{font-size:11px;padding:2px 7px;border-radius:4px;background:var(--accent);color:#fff;font-weight:700}
+#mission .mfoot,#mission .mdone{margin-top:6px;text-align:center}#mission .mdone{color:var(--gold);font-weight:700}
+@media (pointer:coarse) and (max-height:500px){#mission{top:auto;bottom:calc(64px + env(safe-area-inset-bottom));transform:none;font-size:11px;width:min(240px,38vw);padding:6px 8px}#mission .mi{padding:2px 0}}
+body.night #mission{background:rgba(14,16,22,.94)}
 </style>
 </head>
 <body>
@@ -445,7 +491,7 @@ body.iostip #iosTip{display:flex}
 <button id="bossArrow" style="display:none"><i></i>사장님</button>
 <button id="btnDet" style="display:none">기폭! (Space)<b>0</b></button>
 
-<div id="brand" class="panel"><b>SMASH <span>ARCH</span></b><button class="btn-s" id="btnFirm">⌂ 다른 회사</button><button class="btn-s" id="btnHelp" title="튜토리얼">?</button><button class="btn-s" id="btnMini" title="간단 화면 (H)">UI</button><button class="btn-s" id="btnFS" title="전체 화면">⛶</button></div>
+<div id="brand" class="panel"><b>SMASH <span>ARCH</span></b><button class="btn-s" id="btnFirm">⌂ 다른 회사</button><button class="btn-s" id="btnHelp" title="게임 가이드 · 조작법">?</button><button class="btn-s" id="btnMini" title="간단 화면 (H)">UI</button><button class="btn-s" id="btnFS" title="전체 화면">⛶</button></div>
 
 <div id="hudTop" class="panel">
   <div style="min-width:0">
@@ -518,9 +564,19 @@ body.iostip #iosTip{display:flex}
 
 <button id="ult" title="필살기 (Q)"><span>필살기</span></button>
 <div id="cmdbar"></div>
-<div class="modal" id="mTut"><div class="card tut">
-  <div class="small" id="tutStep"></div><h2 id="tutTitle"></h2><p id="tutText" style="font-size:14px;line-height:1.7;margin:8px 0 16px"></p>
-  <div class="row" style="justify-content:space-between"><button class="btn-s" id="tutSkip">건너뛰기</button><div class="row" style="margin:0"><button class="btn-s" id="tutPrev">이전</button><button class="btn-p" id="tutNext">다음</button></div></div>
+<div class="modal" id="mGuide"><div class="card guide">
+  <button class="close" data-close>×</button>
+  <h2>📘 게임 가이드</h2>
+  <div id="gTabs"></div>
+  <div id="gBody"></div>
+</div></div>
+<div class="modal" id="mWelcome"><div class="card welcome">
+  <h2>💥 SMASH ARCH에 오신 걸 환영해요</h2>
+  <p>실제 지도로 만든 우리 회사 동네를 부수는 게임이에요.<br>처음이라면 <b>따라하기</b>로 1분만 배워 보세요. 하나씩 알려드려요.</p>
+  <button class="btn-p" id="wMission">🎯 따라하기로 배우기 <small>(추천 · 1분)</small></button>
+  <button class="btn-s" id="wGuide">📘 사진으로 된 가이드 먼저 보기</button>
+  <button class="btn-s" id="wSkip">바로 시작할게요</button>
+  <div class="small">가이드는 언제든 왼쪽 위 <b>?</b> 버튼으로 다시 볼 수 있어요.</div>
 </div></div>
 <div class="modal" id="mReport"><div class="card report">
   <button class="close" data-close>×</button>
@@ -599,9 +655,10 @@ body.iostip #iosTip{display:flex}
   <label class="opt">간단 화면 — 필요한 버튼만 작게 (H) <input type="checkbox" id="optMini"></label>
   <label class="opt">화면 흔들림 (멀미 나면 끄기) <input type="checkbox" id="optShake"></label>
   <label class="opt">낮·밤 바뀜 (밤 = 야근 모드) <input type="checkbox" id="optNight" checked></label>
+  <label class="opt">업데이트 소식 자동으로 띄우기 <input type="checkbox" id="optPatch" checked></label>
   <div class="small" style="margin-top:10px">사장님 이름 · 발주처 이름 (이 브라우저에만 저장)</div>
   <div class="row"><input id="bossName2" class="cn-input" maxlength="12" placeholder="사장님 — 비우면 '사장님'" style="flex:0 0 38%"><input id="clientNames2" class="cn-input" maxlength="80" placeholder="발주처 — 쉼표로 최대 5개"></div>
-  <div class="row" id="setLinks" style="margin-top:10px"><button class="btn-s" data-go="btnRank">랭킹</button><button class="btn-s" data-go="btnConq">정복</button><button class="btn-s" data-go="btnShare">공유</button><button class="btn-s" data-go="btnReport">철거 일보</button><button class="btn-s" data-req="문의·버그">📮 문의함</button></div>
+  <div class="row" id="setLinks" style="margin-top:10px"><button class="btn-s" data-go="btnRank">랭킹</button><button class="btn-s" data-go="btnConq">정복</button><button class="btn-s" data-go="btnShare">공유</button><button class="btn-s" data-go="btnReport">철거 일보</button><button class="btn-s" data-req="문의·버그">📮 문의함</button><button class="btn-s" id="setGuide">📘 가이드</button><button class="btn-s" id="setPatch">📰 업데이트 내역</button></div>
   <a class="donate" href="https://fairy.hada.io/@smash-arch#support" target="_blank" rel="noopener">☕ 만든 사람에게 커피 한 잔 <small>(선택 · 게임은 계속 무료)</small></a>
   <button class="btn-p" id="btnPickHQ" style="width:100%;margin-top:12px">사옥 건물 직접 지정</button>
   <div class="small" style="margin-top:14px">게임 서버 주소 (Apps Script 웹앱 …/exec) · 비워두면 config.js 값 사용</div>
@@ -680,9 +737,11 @@ body.iostip #iosTip{display:flex}
 })();
 </script>
 <div class="modal" id="mPatch"><div class="card patch">
-  <div class="small" style="margin:0 0 4px">업데이트 · 2026.11.03 (2차)</div>
+  <div class="small" style="margin:0 0 4px">업데이트 · 2026.11.03 (3차)</div>
   <h2>이번에 바뀐 것</h2>
   <ul>
+    <li><b>📘 게임 가이드 · 따라하기</b> — 왼쪽 위 <b>?</b> 버튼에 도구마다 예시 사진과 1·2·3 순서를 넣었어요. [🎯 따라하기]를 켜면 할 일 목록이 뜨고, 해내면 자동으로 체크돼요.</li>
+    <li><b>📰 업데이트 안내 끄기</b> — 아래 체크를 풀거나 설정에서 끌 수 있어요. 끄더라도 설정 → [업데이트 내역]에서 언제든 볼 수 있어요.</li>
     <li><b>🌙 낮·밤 · 야근 모드</b> — 낮 90초, 밤 60초가 번갈아 와요. 밤에는 <b>불 켜진 건물(단면에서는 층) 점수 ×2</b>, 꺼진 건물은 ×0.25. 우리 사옥은 늘 야근 중이라 불이 켜져 있어요. 설정에서 끌 수 있어요.</li>
     <li><b>📢 부동산 호황</b> — 사장님을 검거한 뒤 점수를 더 모으면 비행선을 타고 사장님이 돌아와 사옥을 새로 지어요. 비행선 현수막에는 최근 7일 가장 많이 무너진 사옥 1위가 걸려요. 필요한 점수는 10만 → 40만 → 90만…으로 점점 늘어나요. 발주처도 다시 올 수 있어요.</li>
     <li><b>🚧 구청 공사중지</b> — 몇 초 만에 건물을 10동 넘게 몰아서 부수면 구청이 3초 동안 공사를 멈춰요. (필살기 직후는 봐줘요)</li>
@@ -700,7 +759,8 @@ body.iostip #iosTip{display:flex}
     <li><b>화면 흔들림 기본 끔</b> — 멀미 방지. 설정에서 다시 켤 수 있어요.</li>
     <li><b>휴대폰</b> — 가로 전용 화면, 안드로이드 전체 화면, 간단 화면(H)·[UI] 버튼.</li>
   </ul>
-  <button class="btn-p" id="patchOk" style="width:100%;margin-top:12px">확인하고 시작</button>
+  <label class="opt" style="margin-top:8px;border:0">다음 업데이트부터 자동으로 띄우지 않기 <input type="checkbox" id="patchNo"></label>
+  <button class="btn-p" id="patchOk" style="width:100%;margin-top:6px">확인하고 시작</button>
 </div></div>
 <script src="config.js"></script>
 <script>
