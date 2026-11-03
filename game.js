@@ -600,6 +600,8 @@ function wakeRubble(x,z,r){for(let i=0;i<MAXD;i++){if(D.used[i]&&D.rest[i]&&Math
 
 // ---------- 점수 & 랭크 ----------
 let score=0;
+// 한 판 = 회사 하나 불러와서(또는 [전부 복구]부터) 다시 불러올 때까지. 랭킹은 한 판에 닉네임 하나, 기록 한 줄(점수만 갱신)
+let GAME_ID='',RANK_LOCK=null;function newGame(){GAME_ID=(Date.now().toString(36)+Math.random().toString(36).slice(2,10)).slice(0,20);RANK_LOCK=null}
 const RANKS=[[0,'F','인턴'],[3000,'E','사원'],[15000,'D','대리'],[50000,'C','과장'],[150000,'B','소장'],[450000,'A','대표 건축사'],[1500000,'S','ANNIHILATOR']];
 function addScore(v){v*=comboMult();score+=v;chargeUlt(v)}
 // ---- 연속 콤보: 2.5초 안에 계속 부수면 n COMBO, 점수 배율 최대 ×2 (화면 흔들림 대신 글자로만)
@@ -1638,7 +1640,7 @@ function restore(s){clientReset();for(const [k,v] of s.chunks){const c=CHUNKS.ge
   if(BOSS&&s.boss&&B[s.boss.bi]){const k=s.boss;Object.assign(BOSS,{b:B[k.bi],flees:k.flees,state:k.state,firm:k.firm,x:k.x,y:k.y,z:k.z,jump:null,visited:new Set(k.vis.map(i=>B[i]).filter(Boolean)),textT:0});CAMGO=null}
   groundDirty=true;bldDirty=true;rubDirty=true;treeDirty=true;updateHUD()}
 $('#btnUndo').onclick=()=>{if(MODE==='section'){const v=SUNDO.pop();if(v)secRestore(v);$('#btnUndo').disabled=!SUNDO.length;return}const s=UNDO.pop();if(s)restore(s);$('#btnUndo').disabled=!UNDO.length};
-$('#btnReset').onclick=()=>{if(MODE==='section'){secRestore(SEC.base);SUNDO=[];$('#btnUndo').disabled=true;toast('단면 건물을 전부 복구했어요');return}if(!BASE)return;restore(BASE);UNDO.length=0;$('#btnUndo').disabled=true;$('#btnReset').disabled=true;toast('전부 복구했어요')};
+$('#btnReset').onclick=()=>{if(MODE==='section'){secRestore(SEC.base);SUNDO=[];$('#btnUndo').disabled=true;toast('단면 건물을 전부 복구했어요');return}if(!BASE)return;restore(BASE);newGame();UNDO.length=0;$('#btnUndo').disabled=true;$('#btnReset').disabled=true;toast('전부 복구했어요')};
 
 // ---------- 입력 ----------
 const ptrs=new Map();let drag=null,pinch=null,firing=false,pickHQ=false;
@@ -1853,7 +1855,7 @@ async function loadFirm(f){
   let fake=WORLD.fake;
   if(!fake&&n<3){resetWorld();WORLD.fake=true;fake=true;await loadTile(0,0);toast(lat==null?'주소 위치를 찾지 못해 가상 단지로 시작해요. 다른 회사 → 좌표 입력으로 다시 시도해보세요.':'지도 데이터를 불러오지 못해 가상 단지로 시작해요.',4500);$('#firmAddr').textContent=(f.addr||'')+' · 가상 단지'}
   chooseHQ();buildNeighborhood();applyLandmarks();stage={done:false,t0:0};
-  D.used.fill(0);D.rest.fill(0);FALL=[];beam=null;shock=null;quake=null;score=0;UNDO.length=0;$('#btnUndo').disabled=true;$('#btnReset').disabled=true;
+  D.used.fill(0);D.rest.fill(0);FALL=[];beam=null;shock=null;quake=null;score=0;newGame();UNDO.length=0;$('#btnUndo').disabled=true;$('#btnReset').disabled=true;
   bldDirty=true;rubDirty=true;treeDirty=true;groundDirty=true;makeLabels();
   bossSpawn();BASE=takeState();updateHUD();
   // 하늘에서 사옥으로 날아 들어오기
@@ -2964,7 +2966,7 @@ function renderRank(d){RANK_LAST=d;
 }
 async function openRank(){
   $('#mRank').classList.add('open');
-  $('#rankNick').value=lsGet('smasharch_nick')||'';
+  rankLockUI();
   $('#rankMine').textContent=CUR?`${CUR.name} · 현재 ${fmt(score)}점`:'';
   const u=rankUrl();
   if(!u){$('#rankBody').innerHTML='<p class="small">게임 서버가 아직 연결되지 않았어요. config.js 의 API_URL(또는 설정 → "게임 서버 주소")에 Apps Script 웹앱 주소를 넣어주세요.</p>';return}
@@ -2972,14 +2974,23 @@ async function openRank(){
   try{const r=await fetchT(u+(u.includes('?')?'&':'?')+'action=top',{},15000);renderRank(r)}
   catch(e){$('#rankBody').innerHTML='<p class="small">랭킹을 불러오지 못했어요. 서버 주소와 배포 설정(액세스: 모든 사용자)을 확인해주세요.</p>'}
 }
+function rankLockUI(){const inp=$('#rankNick'),btn=$('#rankSubmit');const lock=RANK_LOCK&&RANK_LOCK.gid===GAME_ID;
+  inp.value=lock?RANK_LOCK.nick:(lsGet('smasharch_nick')||'');inp.disabled=!!lock;
+  inp.title=lock?'이번 판은 이 닉네임으로 등록됐어요. 다른 회사를 고르거나 [전부 복구]하면 새 판이에요':'';
+  btn.textContent=lock?'점수 갱신':'내 점수 등록';
+  const m=$('#rankLockMsg');if(m)m.textContent=lock?`이번 판은 “${RANK_LOCK.nick}”(으)로 ${fmt(RANK_LOCK.score)}점 등록됨 · 닉네임은 바꿀 수 없고, 점수가 오르면 [점수 갱신]으로 올라가요`:''}
 async function submitRank(){
   const u=rankUrl();if(!u){toast('랭킹 서버 주소를 먼저 설정해주세요');return}
   if(!CUR||score<1){toast('먼저 뭔가를 부숴주세요');return}
-  const nick=$('#rankNick').value.trim().slice(0,20)||'익명';lsSet('smasharch_nick',nick);
-  const body=JSON.stringify({nick,firmKey:CUR.key||CUR.name,firmName:CUR.name,score:Math.floor(score)});
+  if(!GAME_ID)newGame();const gid=GAME_ID,sc0=Math.floor(score);
+  const nick=RANK_LOCK&&RANK_LOCK.gid===GAME_ID?RANK_LOCK.nick:($('#rankNick').value.trim().slice(0,20)||'익명');
+  if(RANK_LOCK&&RANK_LOCK.gid===GAME_ID&&Math.floor(score)<=RANK_LOCK.score){toast(`이번 판은 이미 ${fmt(RANK_LOCK.score)}점으로 등록됐어요 — 점수가 오르면 갱신돼요`,3000);return}
+  lsSet('smasharch_nick',nick);
+  const body=JSON.stringify({nick,firmKey:CUR.key||CUR.name,firmName:CUR.name,score:sc0,gid});
   $('#rankSubmit').disabled=true;
   try{const r=await fetchT(u,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body},15000);
-    if(r&&r.ok){toast('랭킹에 등록했어요');if(r.top)renderRank(r.top)}else toast('등록 실패: '+((r&&r.error)||'알 수 없는 오류'))}
+    if(r&&r.ok){const nk=r.nick||nick;if(gid===GAME_ID){RANK_LOCK={gid,nick:nk,score:Math.max(sc0,r.score||0)};rankLockUI()}
+      toast(r.updated?`이번 판 기록을 ${fmt(Math.max(sc0,r.score||0))}점으로 갱신했어요 (${nk})`:'랭킹에 등록했어요');if(r.top)renderRank(r.top)}else toast('등록 실패: '+((r&&r.error)||'알 수 없는 오류'))}
   catch(e){toast('등록 실패 — 서버 주소를 확인해주세요')}
   finally{setTimeout(()=>$('#rankSubmit').disabled=false,3000)}
 }
