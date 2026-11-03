@@ -50,18 +50,22 @@ try{ const s = JSON.parse(localStorage.getItem('smasharch_opts')||'null'); if(s)
 const DAY_SEC=90,NIGHT_SEC=60,NIGHT_LIT=0.45,NIGHT_X=2,NIGHT_OFF=0.25;
 let DAY={t:0,night:false,k:0,n:0};
 function litHash(a,b){const v=Math.sin(a*12.9898+b*78.233)*43758.5453;return v-Math.floor(v)}
-function bLit(b){return !!b&&(!!b.hq||litHash((b.id||0)%100003+0.5,DAY.n*1.37+0.21)<NIGHT_LIT)}
-function litFloor(b,f){return litHash((b.id||0)%100003+f*0.37,DAY.n+5.3)<0.7}
-function litSt(b,st){return st>=0&&DAY.night&&bLit(b)?st+10:st}
+// 불 켜짐은 건물마다 '번호표(1~127)'를 메시에 한 번만 새겨두고, 밤마다 번호표별 켜짐 표(LITB, 128칸 텍스처)만 바꿈
+//  → 낮·밤이 바뀔 때 도시 전체 메시를 다시 만들지 않음 (예전엔 바뀔 때마다 0.1초 넘게 멈칫)
+const LITB=new Uint8Array(128);LITB[1]=255;
+function litBucket(b){return b.hq?1:2+((((b.id|0)%126)+126)%126)}
+function bLit(b){return !!b&&LITB[litBucket(b)]>0}
+function litSt(b,st){return st>=0?st+10*litBucket(b):st}
+function litReroll(){for(let i=2;i<128;i++)LITB[i]=Math.random()<NIGHT_LIT?255:0;LITB[1]=255;if(typeof litTex!=='undefined'){gl.bindTexture(gl.TEXTURE_2D,litTex);gl.texSubImage2D(gl.TEXTURE_2D,0,0,0,128,1,gl.LUMINANCE,gl.UNSIGNED_BYTE,LITB)}}
 function nightK(b){return DAY.night&&MODE==='city'?(bLit(b)?NIGHT_X:NIGHT_OFF):1}
 function secLitK(k){return !!SEC&&(k===SEC.ourK||(k>=0&&litHash(k+0.5,DAY.n*1.37+(SEC.b&&SEC.b.id||0)%997)<0.5))}
 function secNightK(k){return DAY.night&&MODE==='section'&&SEC?(secLitK(k)?NIGHT_X:NIGHT_OFF):1}
-function dayRemesh(all){if(all)bldDirty=true;for(const b of DETS)if(b.det)b.det.dirty=true;if(SEC)secDirty=true}
-function nightStart(){DAY.night=true;DAY.t=0;DAY.n++;dayRemesh(true);
+function dayRemesh(){if(SEC)secDirty=true}   // 단면만 다시 그림 (건물 한 채라 가벼움)
+function nightStart(){DAY.night=true;DAY.t=0;DAY.n++;litReroll();dayRemesh();
   toast(`🌙 야근 타임 ${NIGHT_SEC}초! 불 켜진 건물 점수 ×${NIGHT_X} · 꺼진 건물 ×${NIGHT_OFF}`,3200);sfx(6,0.4);
   if(BOSS&&BOSS.state==='idle')bossSay(pickL(['오늘 야근이다. 불 끄지 마!','저녁은 컵라면으로 시켜.','퇴근? 도면 다 끝나면.']),3)}
-function dayStart(){DAY.night=false;DAY.t=0;dayRemesh(false);toast('☀ 아침이 밝았어요 — 점수 배율이 원래대로 돌아와요',2200)}
-function dayReset(){const was=DAY.night;DAY.t=0;DAY.night=false;DAY.k=0;if(was)dayRemesh(false)}
+function dayStart(){DAY.night=false;DAY.t=0;dayRemesh();toast('☀ 아침이 밝았어요 — 점수 배율이 원래대로 돌아와요',2200)}
+function dayReset(){const was=DAY.night;DAY.t=0;DAY.night=false;DAY.k=0;if(was)dayRemesh()}
 function dayUpdate(dt){
   if(opts.night&&CUR){DAY.t+=dt;if(DAY.t>=(DAY.night?NIGHT_SEC:DAY_SEC)){if(DAY.night)dayStart();else nightStart()}}
   else if(DAY.night)dayStart();
@@ -100,7 +104,7 @@ void main(){
   vF=clamp((length(aP.xz-uTgt.xz)-uFogR.x)/uFogR.y,0.0,1.0);
 }`;
 const FS=(DERIV?'#extension GL_OES_standard_derivatives : enable\n':'')+PREC+`
-uniform sampler2D uSh;uniform vec3 uFog;uniform vec3 uSun;uniform vec3 uCam;uniform float uShOn;uniform float uTexel;uniform float uNight;
+uniform sampler2D uSh;uniform vec3 uFog;uniform vec3 uSun;uniform vec3 uCam;uniform float uShOn;uniform float uTexel;uniform float uNight;uniform sampler2D uLit;
 varying vec3 vC;varying vec3 vN;varying vec3 vW;varying vec2 vX;varying vec4 vL;varying float vF;varying float vE;
 float unpack(vec4 c){return dot(c,vec4(1.0,1.0/255.0,1.0/65025.0,1.0/16581375.0));}
 float shadowAt(float nd){
@@ -116,9 +120,10 @@ float shadowAt(float nd){
 void main(){
   if(vE>0.5){gl_FragColor=vec4(mix(vC,uFog,vF),1.0);return;}
   vec3 n=normalize(vN);vec3 c=vC;float glass=0.0;float em=0.0;vec3 ec=vec3(0.0);
-  if(vX.x<-1.5){em=uNight;ec=vC;}   // 밤에 불 켜진 유리 (단면·MAP 사옥)
+  if(vX.x<-2.5){em=uNight;ec=vC;}   // 단면: 불 켜진 층 유리
+  else if(vX.x<-1.5){float fh=fract(sin(floor(vW.y/3.4)*91.7+floor(vW.x*0.05)*7.3)*43758.5453);em=uNight*step(0.3,fh);ec=vec3(1.0,0.82,0.48);}   // MAP 사옥 유리: 밤엔 층마다 켜짐
   if(vX.x>=0.0){
-    float u=vX.x,st=vX.y,y=vW.y;float lit=step(9.5,st);st-=lit*10.0;   // style+10 = 야근 중(불 켜진) 건물
+    float u=vX.x,st=vX.y,y=vW.y;float bk=floor((st+0.5)/10.0);st-=bk*10.0;float lit=bk>0.5?step(0.5,texture2D(uLit,vec2((bk+0.5)/128.0,0.5)).r):0.0;   // style+10×번호표 → 켜짐 표에서 찾기
     float fy=fract((y-0.4)/3.4);float fx;float win=0.0;float avg=0.3;
     if(st<0.5){fx=fract(u/3.2);win=step(0.2,fx)*step(fx,0.8)*step(0.3,fy)*step(fy,0.8);avg=0.3;}
     else if(st<1.5){fx=fract(u/1.8);win=step(0.40,fy)*step(fy,0.88)*step(0.08,fx);avg=0.44;}
@@ -149,13 +154,17 @@ function mkProg(v,f){const p=gl.createProgram();gl.attachShader(p,sh(gl.VERTEX_S
   gl.bindAttribLocation(p,0,'aP');gl.bindAttribLocation(p,1,'aN');gl.bindAttribLocation(p,2,'aC');gl.bindAttribLocation(p,3,'aX');gl.linkProgram(p);
   if(!gl.getProgramParameter(p,gl.LINK_STATUS))throw new Error(gl.getProgramInfoLog(p));return p}
 const prog=mkProg(VS,FS), sprog=mkProg(SVS,SFS);
-const U={};for(const n of['uVP','uLVP','uCam','uFog','uSun','uSh','uShOn','uTexel','uTgt','uFogR','uNight'])U[n]=gl.getUniformLocation(prog,n);
+const U={};for(const n of['uVP','uLVP','uCam','uFog','uSun','uSh','uShOn','uTexel','uTgt','uFogR','uNight','uLit'])U[n]=gl.getUniformLocation(prog,n);
 const SU={uLVP:gl.getUniformLocation(sprog,'uLVP')};
 gl.enable(gl.DEPTH_TEST);gl.disable(gl.CULL_FACE);
 for(let i=0;i<4;i++)gl.enableVertexAttribArray(i);
 
 // 그림자 맵
 const SHSIZE=Math.min(2048,gl.getParameter(gl.MAX_TEXTURE_SIZE));
+const litTex=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,litTex);gl.pixelStorei(gl.UNPACK_ALIGNMENT,1);
+gl.texImage2D(gl.TEXTURE_2D,0,gl.LUMINANCE,128,1,0,gl.LUMINANCE,gl.UNSIGNED_BYTE,LITB);
+gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
+gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
 const shTex=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,shTex);
 gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,SHSIZE,SHSIZE,0,gl.RGBA,gl.UNSIGNED_BYTE,null);
 gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
@@ -898,7 +907,6 @@ function buildMapMesh(b){
   const off=(p,n,k)=>[p[0]+n[0]*k,p[1]+n[1]*k];
   for(let f=0;f<F;f++){
     if(!d.fl[f]){const y=base+t[f]+0.6;m.grow(b.tris.length);for(let q=0;q<b.tris.length;q+=3)for(let k=0;k<3;k++){const P=b.pts[b.tris[q+k]];m.v(P[0],y,P[1],0,1,0,...RUBBLE)}continue}
-    const NL=DAY.night&&bLit(b)&&litFloor(b,f);   // 밤: 불 켜진 층
     const y0=base+d.fy[f],y1=y0+d.fh,ys=y1-0.45,top=f===F-1;
     let intact=true;for(let j=0;j<d.M;j++)if(!d.panel[f*d.M+j]){intact=false;break}
     if(intact)for(let j=0;j<d.C;j++)if(d.hp[f*d.C+j]<d.hp0){intact=false;break}
@@ -911,9 +919,9 @@ function buildMapMesh(b){
       const L=Math.hypot(e[0]-a[0],e[1]-a[1]),longSide=Math.abs(((e[0]-a[0])*fr.ca+(e[1]-a[1])*fr.sa)/(L||1))>0.7;
       if(zone==='B'){
         if(top){// 9층 테라스: 안쪽으로 물러난 유리벽 + 낮은 유리 난간
-          const ia=off(a,n,-2.6),ie=off(e,n,-2.6);quad(m,[ia[0],y0,ia[1]],[ie[0],y0,ie[1]],[ie[0],ys,ie[1]],[ia[0],ys,ia[1]],N3,NL?LIT_GLASS:LM_GLASS2,NL?-2:-1,-1,0);
+          const ia=off(a,n,-2.6),ie=off(e,n,-2.6);quad(m,[ia[0],y0,ia[1]],[ie[0],y0,ie[1]],[ie[0],ys,ie[1]],[ia[0],ys,ia[1]],N3,LM_GLASS2,-2,-2,0);
           quad(m,[a[0],y0,a[1]],[e[0],y0,e[1]],[e[0],y0+1.1,e[1]],[a[0],y0+1.1,a[1]],N3,[0.72,0.82,0.88],-1,-1,0);continue}
-        quad(m,[a[0],y0,a[1]],[e[0],y0,e[1]],[e[0],ys,e[1]],[a[0],ys,a[1]],N3,NL?LIT_GLASS:LM_GLASS,NL?-2:-1,-1,0);
+        quad(m,[a[0],y0,a[1]],[e[0],y0,e[1]],[e[0],ys,e[1]],[a[0],ys,a[1]],N3,LM_GLASS,-2,-2,0);
         // 사무실 조명 줄 · 멀리언
         const dx=(e[0]-a[0])/L,dz=(e[1]-a[1])/L,rot=Math.atan2(-dz,dx);
         for(let k=0.9;k<L;k+=1.8){const x=a[0]+dx*k-n[0]*0.35,z=a[1]+dz*k-n[1]*0.35;pushShape(m,CUBE,x,ys-0.15,z,1.1,0.06,0.12,rot,[1,1,0.96],1)}
@@ -924,7 +932,7 @@ function buildMapMesh(b){
         let wall=zone==='A'?LM_WHITE:LM_GLASS;
         const win=zone==='A'&&longSide&&(f===F-2||f===F-3);   // 7·8층 큰 창 (사진의 MAP GROUP 아래)
         if(win)wall=LM_DARK;
-        const wl=NL&&wall!==LM_WHITE;quad(m,[a[0],y0,a[1]],[e[0],y0,e[1]],[e[0],ys,e[1]],[a[0],ys,a[1]],N3,wl?LIT_GLASS:wall,wl?-2:-1,-1,0);
+        const wl=wall!==LM_WHITE;quad(m,[a[0],y0,a[1]],[e[0],y0,e[1]],[e[0],ys,e[1]],[a[0],ys,a[1]],N3,wall,wl?-2:-1,wl?-2:-1,0);
         if(!win)fins(m,a,e,n,y0+0.05,y1,0.85,(f%2)*0.42,0.55,0.16,LM_FIN);
       }
     }
@@ -2503,7 +2511,7 @@ function buildSection(){
   for(const e of SEC.els){if(!e.alive)continue;const b=elWorld(e),c=e.col;
     if(e.kind==='slab'||e.kind==='roof'){const ours=SEC.ourK!=null&&e.k===SEC.ourK;secBox(m,b[0],b[1],b[2],b[3],b[4],b[5],c,[c[0]*0.85,c[1]*0.85,c[2]*0.85],ours?[0.95,0.65,0.1]:POCHE)}
     else if(e.kind==='wall'&&e.glass){const sp=b[1]+1.1;const cs=[c[0]*0.95,c[1]*0.95,c[2]*0.95];
-      secBox(m,b[0],b[1],b[2],b[3],sp,b[5],cs,cs,POCHE);if(DAY.night&&secLitK(e.k))secBox(m,b[0],sp,b[2],b[3],b[4],b[5],LIT_GLASS,LIT_GLASS,LIT_GLASS,-2);else secBox(m,b[0],sp,b[2],b[3],b[4],b[5],C_GLASS,C_GLASS,C_GLASS)}
+      secBox(m,b[0],b[1],b[2],b[3],sp,b[5],cs,cs,POCHE);if(DAY.night&&secLitK(e.k))secBox(m,b[0],sp,b[2],b[3],b[4],b[5],LIT_GLASS,LIT_GLASS,LIT_GLASS,-3);else secBox(m,b[0],sp,b[2],b[3],b[4],b[5],C_GLASS,C_GLASS,C_GLASS)}
     else if(e.kind==='col'||e.kind==='core'){const h=HL[e.k];let st=h.core?0:clamp((0.75-h.r)/0.41,0,1);if(e.kind==='core')st=1-h.coreHp;if(e.hp<e.hp0)st=Math.max(st,0.6);
       const hot=[0.93,0.36,0.16],cc=[c[0]+(hot[0]-c[0])*st,c[1]+(hot[1]-c[1])*st,c[2]+(hot[2]-c[2])*st];secBox(m,b[0],b[1],b[2],b[3],b[4],b[5],cc,cc,e.kind==='core'?POCHE:cc)}
     else secBox(m,b[0],b[1],b[2],b[3],b[4],b[5],c,c,c);
@@ -2598,8 +2606,12 @@ function buildNeighborhood(){
 }
 function makePins(){
   const box=$('#labels');
+  const curKey=CUR&&CUR.dkey;
   for(const b of NBB){
-    const fs=b.firms;const el=document.createElement('div');el.className='lbl pin'+(fs[0].cons?' cons':fs[0].gen?' gen':fs[0].univ?' univ':'');
+    // 지금 고른 회사는 노란 사옥 이름표로 이미 보이니 파란 핀에서는 뺌 (같은 회사가 두 번 뜨지 않게)
+    const curN=CUR?norm(shortName(CUR.name)):'',same=f=>(curKey&&f.i!=null&&FIRMDATA[f.i]&&'d'+FIRMDATA[f.i][5]===curKey)||(f.i==null&&curN&&f.short&&norm(f.short)&&(curN.includes(norm(f.short))||norm(f.short).includes(curN)));
+    const fs=b.firms.filter(f=>!same(f));if(!fs.length)continue;
+    const el=document.createElement('div');el.className='lbl pin'+(fs[0].cons?' cons':fs[0].gen?' gen':fs[0].univ?' univ':'');
     el.textContent=fs[0].short+(fs.length>1?` 외 ${fs.length-1}`:'');
     el.title=fs.map(f=>f.name).join('\n')+'\n\n클릭: 이 건물 단면 보기';
     el.addEventListener('pointerdown',e=>e.stopPropagation());
@@ -3364,7 +3376,7 @@ function frameBody(now){
   gl.useProgram(prog);
   gl.uniformMatrix4fv(U.uVP,false,VP);gl.uniformMatrix4fv(U.uLVP,false,LVPcur);gl.uniform3fv(U.uCam,eye);gl.uniform3fv(U.uTgt,[cam.tx,cam.ty,cam.tz]);gl.uniform2fv(U.uFogR,MODE==='city'?[Math.max(420,cam.dist*0.6),Math.max(320,cam.dist*0.45)]:[9000,1000]);gl.uniform3fv(U.uFog,FOG);gl.uniform3fv(U.uSun,SUN);gl.uniform1f(U.uNight,DAY.k*(MODE==='section'?0.6:1));   // 단면은 속이 보여야 해서 덜 어둡게
   gl.uniform1f(U.uShOn,useSh?1:0);gl.uniform1f(U.uTexel,1/SHSIZE);
-  gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,shTex);gl.uniform1i(U.uSh,0);
+  gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,litTex);gl.uniform1i(U.uLit,1);gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,shTex);gl.uniform1i(U.uSh,0);
   drawScene(false);
   updateLabels();
   hudT+=dt;if(hudT>0.1){hudT=0;updateHUD()}
