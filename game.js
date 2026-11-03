@@ -1720,7 +1720,7 @@ canvas.addEventListener('pointerup',endPtr);canvas.addEventListener('pointercanc
 canvas.addEventListener('wheel',e=>{e.preventDefault();cam.dist=clamp(cam.dist*Math.exp(e.deltaY*0.0012),MODE==='section'?15:120,2600)},{passive:false});
 function stopBeam(){beam=null;sBeam=null;humStop()}
 const KEYS=new Set();addEventListener('keyup',e=>KEYS.delete(e.key.toLowerCase()));addEventListener('blur',()=>KEYS.clear());
-addEventListener('keydown',e=>{if(e.target.tagName==='INPUT')return;if(!e.ctrlKey&&!e.metaKey)KEYS.add(e.key.toLowerCase());
+addEventListener('keydown',e=>{if(/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName))return;if(!e.ctrlKey&&!e.metaKey)KEYS.add(e.key.toLowerCase());
   const k=e.key.toLowerCase();
   if(k==='c'&&!e.ctrlKey&&!e.metaKey)enterSection();
   if(k==='h'&&!e.ctrlKey&&!e.metaKey)toggleMini();
@@ -1871,7 +1871,7 @@ async function loadFirm(f){
 function closeModals(){document.querySelectorAll('.modal').forEach(m=>m.classList.remove('open'))}
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=closeModals);
 document.querySelectorAll('.modal').forEach(m=>m.addEventListener('pointerdown',e=>{if(e.target===m)closeModals()}));
-$('#btnFirm').onclick=()=>{$('#mFirm').classList.add('open');setTimeout(()=>$('#customQ').focus(),50)};
+$('#btnFirm').onclick=()=>{$('#mFirm').classList.add('open');loadHot();setTimeout(()=>$('#customQ').focus(),50)};
 $('#btnSet').onclick=()=>$('#mSet').classList.add('open');
 function firmButton(name,addr,onclick,firm){const b=document.createElement('button');
   if(firm){b.addEventListener('pointerenter',()=>{clearTimeout(prefT);prefT=setTimeout(()=>prefetchFirm(firm,true),350)});b.addEventListener('pointerleave',()=>clearTimeout(prefT));b.addEventListener('pointerdown',()=>prefetchFirm(firm,true))}b.className='firm';b.innerHTML='<b></b><span></span>';b.querySelector('b').textContent=name;b.querySelector('span').textContent=addr;b.onclick=onclick;return b}
@@ -1889,12 +1889,13 @@ function runSearch(){const q=$('#customQ').value.trim();const box=$('#searchRes'
   box.style.display='';
   if(m){box.appendChild(firmButton('좌표로 이동',`${m[1]}, ${m[2]}`,()=>loadFirm({name:'좌표 '+(+m[1]).toFixed(4)+', '+(+m[2]).toFixed(4),addr:'',lat:+m[1],lng:+m[2]})));return}
   const nq=norm(q);const hits=[];for(let i=0;i<FIDX.length&&hits.length<40;i++)if(FIDX[i].includes(nq))hits.push(i);
-  hits.forEach((i,n)=>{const f=firmFromData(i);box.appendChild(firmButton((FIRMDATA[i][8]==='c'?'🏗 ':'')+FIRMDATA[i][0],FIRMDATA[i][1]+GEO_TAG[FIRMDATA[i][4]]+(FIRMDATA[i][8]==='c'?' · 건설사':''),()=>loadFirm(f),f));if(n<3)setTimeout(()=>{if($('#customQ').value.trim()===q)prefetchFirm(f,false)},400)});
+  hits.forEach((i,n)=>{const f=firmFromData(i);box.appendChild(firmButton(({c:'🏗 ',g:'🏢 '}[FIRMDATA[i][8]]||'')+FIRMDATA[i][0],FIRMDATA[i][1]+GEO_TAG[FIRMDATA[i][4]]+({c:' · 건설사',g:' · 일반 회사'}[FIRMDATA[i][8]]||''),()=>loadFirm(f),f));if(n<3)setTimeout(()=>{if($('#customQ').value.trim()===q)prefetchFirm(f,false)},400)});
   box.appendChild(firmButton('“'+q+'” 주소로 직접 찾기','목록에 없으면 주소나 건물 이름으로 검색',()=>loadFirm({name:q,addr:q,q:addrQueries(q)})));
+  if(hits.length<3)box.appendChild(firmButton('📮 “'+q+'” 우리 회사로 바로 추가하기','목록에 없으면 주소·층수만 넣어주세요. 위치를 찾아 바로 추가돼요 (일반 회사도 OK)',()=>openReq('회사 추가',q)));
 }
 $('#customQ').addEventListener('input',runSearch);
 $('#customQ').addEventListener('keydown',e=>{if(e.key==='Enter'){const f=$('#searchRes .firm');if(f)f.click()}});
-$('#btnShare').onclick=async()=>{const url=location.href;try{if(navigator.share&&matchMedia('(pointer:coarse)').matches){await navigator.share({title:'SMASH ARCH',text:`${CUR?CUR.name:''} 사옥을 ${fmt(score)}점어치 부쉈어요`,url});return}await navigator.clipboard.writeText(url);toast('링크를 복사했어요')}catch(e){toast('복사 실패 — 주소창의 링크를 공유해주세요')}};
+$('#btnShare').onclick=()=>openShare('result');
 $('#btnPickHQ').onclick=()=>{closeModals();pickHQ=true;$('#hint').textContent='사옥 건물을 눌러주세요';toast('사옥으로 쓸 건물을 눌러주세요')};
 for(const k of ['Sound','Labels','Debris','Shadows','Pins','Mini','Shake']){const el=$('#opt'+k);if(!el)continue;const key=k.toLowerCase();el.checked=!!opts[key];el.onchange=()=>{opts[key]=el.checked;lsSet('smasharch_opts',opts);if(key==='sound'&&!el.checked)humStop();if(key==='mini')applyMini()}}
 // ---- 간단 화면: H 키 · 왼쪽 위 [UI] 버튼 · 설정 체크 ----
@@ -2546,7 +2547,7 @@ function buildNeighborhood(){
     const [x,z]=proj(r[2],r[3]);const c=chunkAt(x,z);if(!c||c.state!=='ready')continue;
     let bb=null,bd=1e9;forBuildingsNear(x,z,25,b=>{const d=pip(x,z,b.pts)?0:distToBuilding(b,x,z);if(d<bd){bd=d;bb=b}});
     if(bd>25)bb=null;
-    const f={i,name:r[0],short:shortName(r[0]),addr:r[1],x,z,b:bb,approx:r[4]===1,cons:r[8]==='c'};
+    const f={i,name:r[0],short:shortName(r[0]),addr:r[1],x,z,b:bb,approx:r[4]===1,cons:r[8]==='c',gen:r[8]==='g'};
     NB.push(f);if(bb){if(!bb.firms){bb.firms=[];NBB.push(bb)}bb.firms.push(f)}
   }
   // 공공데이터에 없는 지역(송파구 등)은 OpenStreetMap에 등록된 건축사무소로 보충
@@ -2559,7 +2560,7 @@ function buildNeighborhood(){
 function makePins(){
   const box=$('#labels');
   for(const b of NBB){
-    const fs=b.firms;const el=document.createElement('div');el.className='lbl pin'+(fs[0].cons?' cons':'');
+    const fs=b.firms;const el=document.createElement('div');el.className='lbl pin'+(fs[0].cons?' cons':fs[0].gen?' gen':'');
     el.textContent=fs[0].short+(fs.length>1?` 외 ${fs.length-1}`:'');
     el.title=fs.map(f=>f.name).join('\n')+'\n\n클릭: 이 건물 단면 보기';
     el.addEventListener('pointerdown',e=>e.stopPropagation());
@@ -2650,18 +2651,18 @@ function bossFlee(){const from=BOSS.b;let best=null,bd=1e9;
   const y0=MODE==='city'?BOSS.y:bTop(from);
   BOSS.state='jump';BOSS.jump={t:0,T:1.2+bd/240,x0:BOSS.x,y0,z0:BOSS.z,b:best,h:Math.max(30,bd*0.4)};
   CAMGO={t:0,dur:BOSS.jump.T+0.8,follow:true};
-  toast(`사장님이 ${best.firms&&best.firms[0]?best.firms[0].short:'빈 건물'}(으)로 도망쳐요! 쫓아가세요`,2400);sfx(6,0.4)}
+  toast(`${BT()}이 ${best.firms&&best.firms[0]?best.firms[0].short:'빈 건물'}(으)로 도망쳐요! 쫓아가세요`,2400);sfx(6,0.4)}
 function bossLand(){const b=BOSS.jump.b;BOSS.b=b;BOSS.state='idle';BOSS.sayT=6;
   if(BOSS.rehire){BOSS.rehire=false;BOSS.firm=(b.firms&&b.firms[0]?b.firms[0].short:BOSS.firm);const top=bTop(b);boom3(BOSS.x,top+1,BOSS.z,10);sfx(14,0.4);
-    bossSay(pickL(['돈 받았으니 다시 일한다!','재계약이다! 다들 자리로!','이번엔 진짜 끝까지 간다!']),3);floatText(BOSS.x,top+14,BOSS.z,'사장님 재고용','cad',2.2);return}
+    bossSay(pickL(['돈 받았으니 다시 일한다!','재계약이다! 다들 자리로!','이번엔 진짜 끝까지 간다!']),3);floatText(BOSS.x,top+14,BOSS.z,BT()+' 재고용','cad',2.2);return}
   BOSS.flees++;const n=BOSS.flees;
   BOSS.firm=b.firms&&b.firms[0]?b.firms[0].short:'임시 사무실';
   bossSay(pickL(BOSS_LINES.arrive[Math.min(2,n-1)]),3);const bonus=5000*n;addScore(bonus);
   const top=bTop(b);boom3(BOSS.x,top+1,BOSS.z,10);cam.shake=Math.max(cam.shake,3);sfx(14,0.4);
-  floatText(BOSS.x,top+14,BOSS.z,`${BOSS.firm} 대표 취임`,'cad',2.2);toast(`사장님이 ${BOSS.firm}에 새로 자리 잡았어요 · 도주 ${n}회 · +${fmt(bonus)}`,2600)}
+  floatText(BOSS.x,top+14,BOSS.z,`${BOSS.firm} 대표 취임`,'cad',2.2);toast(`${BT()}이 ${BOSS.firm}에 새로 자리 잡았어요 · 도주 ${n}회 · +${fmt(bonus)}`,2600)}
 function bossCaught(){BOSS.state='caught';BOSS.t=0;const bonus=50000+20000*BOSS.flees;addScore(bonus);
   bossSay(pickL(BOSS_LINES.caught),3);floatText(BOSS.x,BOSS.y+12,BOSS.z,'사장님 검거!','count',2.6);
-  toast(`더 도망칠 곳이 없어요 — 사장님 검거! 도주 ${BOSS.flees}회 · +${fmt(bonus)}`,4000);sfx(20,1);flashScreen(0.3,'#fff3c4')}
+  toast(`더 도망칠 곳이 없어요 — ${BT()} 검거! 도주 ${BOSS.flees}회 · +${fmt(bonus)}`,4000);sfx(20,1);flashScreen(0.3,'#fff3c4')}
 // 발주처가 새로 지은 건물로 사장님 재고용 (검거 상태에서도 풀려나 점프)
 function bossRehire(b){if(!BOSS)return;const y0=BOSS.y,d=Math.hypot(b.cx-BOSS.x,b.cz-BOSS.z);
   BOSS.rehire=true;BOSS.flees=0;BOSS.visited=new Set([b]);BOSS.stun=0;BOSS.lastSay=0;
@@ -2690,7 +2691,7 @@ function bossSecUpdate(dt){if(!SEC||SEC.b!==BOSS.b)return;const p=bossPos();
   if(!p.out){const top=secTop();p.y=p.y>top?Math.max(top,p.y-20*dt):top;
     if(BOSS.state==='idle'){BOSS.sayT-=dt;if(BOSS.sayT<=0&&BOSS.stun<=0){BOSS.sayT=8+Math.random()*5;bossSay(pickL(BOSS_LINES.idle),0)}}
     if(BOSS.state==='idle'&&secCollapse()>=0.55){p.out=true;p.vx=(p.x>=0?1:-1)*9;p.vy=11;bossSay(pickL(BOSS_LINES.flee),3);
-      toast('사장님이 도망쳤어요! [동네로] 나가면 근처 건축사무소까지 쫓아갈 수 있어요',3200)}}
+      toast(BT()+'이 도망쳤어요! [동네로] 나가면 근처 건축사무소까지 쫓아갈 수 있어요',3200)}}
   else{p.vy-=30*dt;p.x+=p.vx*dt;p.y+=p.vy*dt;if(p.y<0){p.y=0;p.vy=0}}}
 // ---------- 그리기 ----------
 function drawBoss(m,mg){if(!bossHere())return;const p=bossPos();if(MODE==='section'&&p.out&&Math.abs(p.x)>SEC.W/2+40)return;
@@ -2723,7 +2724,8 @@ function drawBossUI(){const ui=$('#bossUI'),ar=$('#bossArrow'),bx=$('#bossBox');
   if(!BOSS||!bossHere()){ui.style.display='none';ar.style.display='none';bx.style.display=BOSS&&MODE==='city'?'':'none';return}
   const p=bossPos(),S=bossScale(),q=project(p.x,p.y+2.35*S,p.z);
   bx.style.display=MODE==='city'?'':'none';
-  const t=`사장님 · ${BOSS.state==='caught'?'검거됨':BOSS.firm}${BOSS.flees?` · 도주 ${BOSS.flees}회`:''}`;if(bx.textContent!==t)bx.textContent=t;
+  {const tg=ui.querySelector('.tag'),nm=bossName()||'사장님';if(tg.textContent!==nm)tg.textContent=nm;const an=ar.lastChild;if(an&&an.nodeType===3&&an.textContent!==nm)an.textContent=nm}
+  const t=`${BT()} · ${BOSS.state==='caught'?'검거됨':BOSS.firm}${BOSS.flees?` · 도주 ${BOSS.flees}회`:''}`;if(bx.textContent!==t)bx.textContent=t;
   const W=innerWidth,H=innerHeight,f=project(p.x,p.y+0.5*S,p.z);const on=q&&f&&f[0]>10&&f[0]<W-10&&f[1]>10&&f[1]<H-60;
   if(on){ui.style.display='';ui.style.left=q[0]+'px';ui.style.top=Math.max(q[1],100)+'px';const bb=ui.querySelector('.bubble');
     const txt=BOSS.textT>0?BOSS.text:'';if(bb.textContent!==txt)bb.textContent=txt;bb.style.display=txt?'':'none';ar.style.display='none'}
@@ -2767,6 +2769,13 @@ function clientBanner(name){const el=$('#clientBanner');if(!el)return;
   el.innerHTML=`<b>😤 발주처 난입!</b><span>${esc(name)}</span><p>빨간 임시 철골 · 빨간펜 테이프 · 매스 · 가설 타워를 마구 갖다 놔요.<br><em>전부 부술 거리!</em> 부술수록 점수 폭발 · 건물이 무너지면 한 번 재건축</p>`;
   el.classList.remove('on');void el.offsetWidth;el.classList.add('on');clearTimeout(clientBanner._t);clientBanner._t=setTimeout(()=>el.classList.remove('on'),5200)}
 // ---- 사용자가 정한 발주처 이름 (회사 고르기 창 · 설정) — 이 브라우저에만 저장, 서버·랭킹·공유로 보내지 않음
+// ---- 사용자가 정한 사장님 이름 — 이 브라우저에만 저장. 철거 일보·공유·랭킹에는 넣지 않음
+function bossName(){const v=lsGet('smasharch_boss');return typeof v==='string'?v:''}
+function BT(){const n=bossName();return n?n+' 사장님':'사장님'}
+(function(){const ins=[$('#bossName'),$('#bossName2')].filter(Boolean);
+  const fill=()=>{ins.forEach(el=>{if(document.activeElement!==el)el.value=bossName()})};
+  const save=el=>{lsSet('smasharch_boss',el.value.replace(/[<>\u0000-\u001f]/g,'').trim().slice(0,12));fill()};
+  ins.forEach(el=>{el.addEventListener('change',()=>save(el));el.addEventListener('blur',()=>save(el));el.addEventListener('keydown',e=>{e.stopPropagation();if(e.key==='Enter')el.blur()})});fill()})();
 function clientNamesUser(){const v=lsGet('smasharch_clients');return Array.isArray(v)?v:[]}
 function clientName(){const u=clientNamesUser();return pickL(u.length?u:CLIENT_NAMES)}
 (function(){const ins=[$('#clientNames'),$('#clientNames2')].filter(Boolean);
@@ -2853,7 +2862,7 @@ function clientRebuild(){const c=CLIENT,b=c.b;c.rebuilt=true;c.posts=[];c.tape=n
     boom3(b.cx,b.base+3,b.cz,30);for(let k=0;k<30;k++)spawn(b.cx+(Math.random()-.5)*R*2,b.base+1,b.cz+(Math.random()-.5)*R*2,(Math.random()-.5)*10,4+Math.random()*8,(Math.random()-.5)*10,1+Math.random()*2,[0.85,0.83,0.8],0.9,2);
     bossRehire(b)}
   hitStop(0.08);sfxBoom(0.8);flashScreen(0.2,'#ffe1ea');addScore(20000);
-  clientSay(pickL(CLIENT_LINES.rebuilt),3);toast('발주처가 건물을 새로 지었어요 — 사장님 강제 복귀! 다시 부수세요 · +20,000',3600);c.cool=3}
+  clientSay(pickL(CLIENT_LINES.rebuilt),3);toast('발주처가 건물을 새로 지었어요 — '+BT()+' 강제 복귀! 다시 부수세요 · +20,000',3600);c.cool=3}
 function clientLeave(why){const c=CLIENT;if(!c||c.state==='leave')return;c.state='leave';c.t=0;c.wind=null;c.tape=null;if(clientInSec()&&SEC.tapeK)SEC.tapeK.clear();
   if(why==='giveup'){const bonus=30000+c.broken*500;addScore(bonus);clientSay(pickL(CLIENT_LINES.giveup),3);const p=clientPos();
     floatText(p.x,p.y+clientScale()*3,p.z,'사업 포기','mark',3);flashScreen(0.2,'#ffd9d4');sfx(20,1);
@@ -2948,7 +2957,7 @@ function sfxGlass(){sfx(1,0.12);setTimeout(()=>sfx(0.5,0.1),40);setTimeout(()=>s
 const RANK_URL_DEFAULT=(window.SMASH_CONFIG&&window.SMASH_CONFIG.API_URL)||'';   // config.js 의 API_URL
 function rankUrl(){return String(lsGet('smasharch_rank_url')||RANK_URL_DEFAULT||'').trim()}
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-function renderRank(d){
+function renderRank(d){RANK_LAST=d;
   const f=(d.firms||[]).map((r,i)=>`<li><b>${i+1}</b><span>${esc(shortName(r.name))}</span><em>${fmt(r.total)}점 · ${r.count}회</em></li>`).join('')||'<li class="empty">아직 기록이 없어요</li>';
   const p=(d.players||[]).map((r,i)=>`<li><b>${i+1}</b><span>${esc(r.nick)} <small>${esc(shortName(r.firm))}</small></span><em>${fmt(r.score)}점</em></li>`).join('')||'<li class="empty">아직 기록이 없어요</li>';
   $('#rankBody').innerHTML=`<div class="rk-h">이번 주 가장 많이 부서진 사무소</div><ol class="rk">${f}</ol><div class="rk-h">개인 최고 점수</div><ol class="rk">${p}</ol>`;
@@ -2974,6 +2983,160 @@ async function submitRank(){
   catch(e){toast('등록 실패 — 서버 주소를 확인해주세요')}
   finally{setTimeout(()=>$('#rankSubmit').disabled=false,3000)}
 }
+
+
+
+// =====================================================================
+// 회사 고르기 창: 최근 7일 가장 많이 무너진 사옥 TOP 10 (서버 '일별철거' 집계). 기록이 없으면 대형 설계사무소 목록
+// =====================================================================
+let HOT={t:0,d:null,busy:false};
+async function loadHot(){const box=$('#hotList');if(!box)return;const u=rankUrl();
+  if(!u){showHot(null);return}
+  if(HOT.d&&performance.now()-HOT.t<120000){showHot(HOT.d);return}
+  if(HOT.busy)return;HOT.busy=true;if(!HOT.d)box.innerHTML='<div class="small" style="opacity:.7">불러오는 중…</div>';
+  try{const r=await fetchT(u+(u.includes('?')?'&':'?')+'action=hot',{},12000);if(r&&r.ok){HOT.d=r.hot||[];HOT.t=performance.now()}}catch(e){}
+  HOT.busy=false;showHot(HOT.d)}
+function showHot(list){const box=$('#hotList'),big=$('#bigFirms'),head=$('#hotHead');box.innerHTML='';
+  const items=(list||[]).map(h=>{const i=keyIdx(h.key);if(i==null)return null;const pre=FIRMS.find(f=>f.dkey===h.key);return {h,i,f:pre||firmFromData(i)}}).filter(Boolean);
+  if(!items.length){head.style.display='none';box.style.display='none';big.style.display='';return}
+  head.style.display='';box.style.display='';big.style.display='none';
+  items.forEach((it,n)=>{const r=FIRMDATA[it.i];const medal=['🥇','🥈','🥉'][n]||(n+1)+'.';
+    box.appendChild(firmButton(`${medal} ${({c:'🏗 ',g:'🏢 '}[r[8]]||'')}${it.f.name}`,`${r[1]} · 🔥 ${fmt(it.h.count)}번 무너짐`,()=>loadFirm(it.f),it.f))})}
+// =====================================================================
+// 회사 추가 요청 · 문의함 → Apps Script '요청함' 시트로
+// =====================================================================
+// 서버가 방금 추가한 회사 한 줄을 이 화면 목록에도 바로 넣기
+function addFirmRow(r){const kid=+r[5];if(!isFinite(kid))return null;let i=FKI.get(kid);if(i!=null)return i;
+  FIRMDATA.push(r);i=FIRMDATA.length-1;FIDX.push(norm(r[0])+'|'+norm(r[1]));FKI.set(kid,i);return i}
+function openReq(kind,name){closeModals();const m=$('#mReq');if(!m)return;
+  setReqKind(kind||'회사 추가');if(name!=null)$('#rqName').value=name;$('#rqMsg2').textContent='';m.classList.add('open');
+  setTimeout(()=>{const fk=kind==='회사 추가'||kind==='정보 수정'||!kind;const el=fk?($('#rqName').value?$('#rqAddr'):$('#rqName')):$('#rqMsg');try{el.focus()}catch(e){}},60)}
+function setReqKind(k){document.querySelectorAll('#rqKinds button').forEach(b=>b.classList.toggle('on',b.dataset.k===k));$('#mReq').dataset.kind=k;
+  const firm=k==='회사 추가'||k==='정보 수정';$('#rqFirmBox').style.display=firm?'':'none';
+  $('#rqMsg').placeholder=k==='회사 추가'?'(선택) 덧붙일 말 — 예: 사옥이 2동이에요, 지도에서 위치가 달라요':k==='정보 수정'?'무엇이 틀렸는지 알려주세요 — 예: 이사했어요, 층수가 달라요':'문의·버그·아이디어를 자유롭게 적어주세요 (기기/브라우저도 적어주면 좋아요)'}
+async function sendReq(){const k=$('#mReq').dataset.kind||'회사 추가',u=rankUrl();
+  const d={type:'request',kind:k,name:$('#rqName').value.trim(),addr:$('#rqAddr').value.trim(),floor:$('#rqFloor').value.trim(),cat:$('#rqCat').value,msg:$('#rqMsg').value.trim(),contact:$('#rqContact').value.trim(),hp:$('#rqHp').value,vid:lsGet('smasharch_vid')||''};
+  if(k==='회사 추가'||k==='정보 수정'){d.msg=(d.msg+(CUR&&k==='정보 수정'?`\n(보던 회사: ${CUR.name})`:'')).trim()}else{d.name=d.addr=d.floor='';d.cat=''}
+  const say=t=>{$('#rqMsg2').textContent=t};
+  if(k==='회사 추가'&&(!d.name||!d.addr)){say('회사 이름과 주소는 꼭 적어주세요');return}
+  if(k==='정보 수정'&&!d.name){say('어느 회사인지 이름을 적어주세요');return}
+  if(k==='문의·버그'&&d.msg.length<2){say('내용을 적어주세요');return}
+  if(!u){say('서버가 연결되지 않아 보낼 수 없어요');return}
+  const btn=$('#rqSend');btn.disabled=true;say('보내는 중…');
+  try{const r=await fetchT(u,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(d)},15000);
+    if(r&&r.ok){['#rqName','#rqAddr','#rqFloor','#rqMsg'].forEach(s=>$(s).value='');say('');closeModals();
+      if(r.row&&Array.isArray(r.row)&&r.row.length>=8){const i=addFirmRow(r.row);toast(r.dup?'이미 목록에 있는 회사예요 — 바로 가요':'목록에 추가됐어요! 바로 부수러 가요 🏗'+(r.note?' ('+r.note+')':''),3600);if(i!=null)setTimeout(()=>loadFirm(firmFromData(i)),600)}
+      else toast(k==='회사 추가'?(r.auto===false?'요청을 받았어요 — 확인 후 넣을게요 🙏':'요청을 보냈어요 🙏'):'보냈어요! 고마워요 🙏',3400)}
+    else say('보내기 실패: '+((r&&r.error)||'알 수 없는 오류'))}
+  catch(e){say('보내기 실패 — 잠시 뒤에 다시 시도해주세요')}
+  finally{setTimeout(()=>btn.disabled=false,2500)}}
+(function(){if(!$('#mReq'))return;
+  document.querySelectorAll('#rqKinds button').forEach(b=>b.onclick=()=>setReqKind(b.dataset.k));
+  $('#rqSend').onclick=sendReq;
+  document.querySelectorAll('[data-req]').forEach(b=>b.onclick=()=>openReq(b.dataset.req,b.dataset.req==='회사 추가'?($('#customQ').value.trim()||null):null));
+  $('#mReq').addEventListener('keydown',e=>e.stopPropagation())})();
+// =====================================================================
+// 공유 — 결과 카드(스크린샷)·랭킹 카드 이미지 + 링크. 링크로 들어온 사람은 같은 사옥에서 바로 시작, 점수 도전장(?vs=)
+// =====================================================================
+let RANK_LAST=null,SHARE_MODE='result',SHARE_IMG=null,SHARE_SHOT=null,KAKAO_OK=false;
+const SITE_URL=(window.SMASH_CONFIG&&window.SMASH_CONFIG.SITE_URL)||'https://ccct12.github.io/smash-arch/';
+function shareBase(){try{const u=new URL(location.href);if(/^https?:$/.test(u.protocol)){u.search='';u.hash='';return u}}catch(e){}return new URL(SITE_URL)}
+function shareUrl(withVs){const u=shareBase();
+  if(SHARE_MODE==='result'&&CUR){if(CUR.key)u.searchParams.set('firm',CUR.key);else if(CUR.lat){u.searchParams.set('lat',(+CUR.lat).toFixed(5));u.searchParams.set('lng',(+CUR.lng).toFixed(5));u.searchParams.set('name',CUR.name)}
+    if(withVs&&score>=1)u.searchParams.set('vs',Math.floor(score))}
+  return u.toString()}
+function curRank(){let k=0;for(let i=0;i<RANKS.length;i++)if(score>=RANKS[i][0])k=i;return RANKS[k]}
+function shareText(){const vs=$('#shVs')&&$('#shVs').checked,url=shareUrl(vs);
+  if(SHARE_MODE==='rank'){const d=RANK_LAST||{};const f=(d.firms||[]).slice(0,5).map((r,i)=>`${i+1}. ${shortName(r.name)} (${fmt(r.total)}점)`).join('\n');
+    return `🏆 SMASH ARCH 이번 주 가장 많이 부서진 건축사무소\n${f||'(아직 기록 없음)'}\n\n우리 회사도 순위에 올려보자 👇\n${url}`}
+  if(!CUR||score<1)return `💥 전국 건축사무소 사옥 부수기 게임 SMASH ARCH\n우리 회사 사옥 찾아서 같이 부숴요 👇\n${url}`;
+  const tot=B.length,dead=B.filter(b=>!b.alive).length,pct=tot?Math.round(dead/tot*100):0;
+  return `💥 ${shortName(CUR.name)} 사옥을 ${fmt(score)}점어치 부쉈어요! (직급: ${curRank()[2]} · 파괴율 ${pct}%)\n${vs?'이 점수 넘을 수 있어? 👇':'같이 부수러 가기 👇'}\n${url}`}
+function rr(c,x,y,w,h,r){c.beginPath();c.moveTo(x+r,y);c.arcTo(x+w,y,x+w,y+h,r);c.arcTo(x+w,y+h,x,y+h,r);c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath()}
+function fitText(c,t,maxW){if(c.measureText(t).width<=maxW)return t;while(t.length>1&&c.measureText(t+'…').width>maxW)t=t.slice(0,-1);return t+'…'}
+function makeCard(shot){const W=1200,H=630,cv=document.createElement('canvas');cv.width=W;cv.height=H;const c=cv.getContext('2d');
+  const F='"Pretendard","Apple SD Gothic Neo","Malgun Gothic",sans-serif';
+  c.fillStyle='#1d2126';c.fillRect(0,0,W,H);
+  if(SHARE_MODE==='result'&&shot){const s=Math.max(W/shot.width,H/shot.height),w=shot.width*s,h=shot.height*s;c.drawImage(shot,(W-w)/2,(H-h)/2,w,h)}
+  else{c.fillStyle='#2a2f36';for(let i=0;i<14;i++){const x=i*95-20,h=120+((i*73)%5)*55;c.fillRect(x,H-h,70,h)}}
+  let g=c.createLinearGradient(0,H*0.38,0,H);g.addColorStop(0,'rgba(10,12,14,0)');g.addColorStop(1,'rgba(10,12,14,.92)');c.fillStyle=g;c.fillRect(0,0,W,H);
+  g=c.createLinearGradient(0,0,0,120);g.addColorStop(0,'rgba(10,12,14,.75)');g.addColorStop(1,'rgba(10,12,14,0)');c.fillStyle=g;c.fillRect(0,0,W,120);
+  c.textBaseline='alphabetic';c.fillStyle='#fff';c.font=`900 40px ${F}`;c.fillText('SMASH',36,62);const sw=c.measureText('SMASH ').width;c.fillStyle='#f2b134';c.fillText('ARCH',36+sw,62);
+  c.font=`600 20px ${F}`;c.fillStyle='rgba(255,255,255,.8)';c.textAlign='right';c.fillText('건축사무소 사옥 부수기',W-36,58);c.textAlign='left';
+  if(SHARE_MODE==='rank'){const d=RANK_LAST||{};const fr=(d.firms||[]).slice(0,5),pl=(d.players||[]).slice(0,5);
+    c.fillStyle='#f2b134';c.font=`800 30px ${F}`;c.fillText('🏆 이번 주 가장 많이 부서진 사무소',40,150);
+    c.font=`700 30px ${F}`;fr.forEach((r,i)=>{const y=205+i*54;c.fillStyle=i<3?'#f2b134':'#fff';c.fillText(String(i+1),48,y);c.fillStyle='#fff';c.fillText(fitText(c,shortName(r.name),470),90,y);c.fillStyle='rgba(255,255,255,.7)';c.font=`600 22px ${F}`;c.fillText(`${fmt(r.total)}점`,90+480,y);c.font=`700 30px ${F}`});
+    if(!fr.length){c.fillStyle='#fff';c.font=`600 26px ${F}`;c.fillText('아직 기록이 없어요 — 첫 번째가 되어보세요',48,210)}
+    c.fillStyle='#f2b134';c.font=`800 24px ${F}`;c.fillText('개인 최고 점수',800,150);
+    c.font=`600 22px ${F}`;pl.forEach((r,i)=>{const y=195+i*42;c.fillStyle='#fff';c.fillText(fitText(c,`${i+1}. ${r.nick}`,230),800,y);c.fillStyle='rgba(255,255,255,.7)';c.textAlign='right';c.fillText(fmt(r.score),W-40,y);c.textAlign='left'})}
+  else if(CUR&&score>=1){const rk=curRank(),tot=B.length,dead=B.filter(b=>!b.alive).length,pct=tot?Math.round(dead/tot*100):0;
+    c.fillStyle='#fff';c.font=`800 46px ${F}`;c.fillText(fitText(c,shortName(CUR.name)+' 사옥',760),40,H-150);
+    c.font=`900 74px ${F}`;c.fillStyle='#f2b134';const st=fmt(score)+'점';c.fillText(st,40,H-70);const w1=c.measureText(st).width;
+    c.font=`700 28px ${F}`;c.fillStyle='#fff';c.fillText(`어치 부숨 · 파괴율 ${pct}%`,52+w1,H-78);
+    rr(c,W-250,H-210,210,150,14);c.fillStyle='rgba(242,177,52,.95)';c.fill();c.fillStyle='#1d2126';c.textAlign='center';c.font=`900 76px ${F}`;c.fillText(rk[1],W-145,H-112);c.font=`800 26px ${F}`;c.fillText(rk[2],W-145,H-76);c.textAlign='left';
+    if(BOSS&&BOSS.state==='caught'){c.font=`800 22px ${F}`;rr(c,40,H-236,190,40,8);c.fillStyle='#8f1d16';c.fill();c.fillStyle='#fff';c.fillText('🚨 사장님 검거',54,H-208)}}
+  else{c.fillStyle='#fff';c.font=`800 48px ${F}`;c.fillText('우리 회사 사옥, 같이 부숴요',40,H-110);c.font=`600 26px ${F}`;c.fillStyle='rgba(255,255,255,.8)';c.fillText('전국 건축사무소·건설사 1만 곳 · 무료 · 설치 없음',40,H-66)}
+  c.font=`600 19px ${F}`;c.fillStyle='rgba(255,255,255,.65)';c.textAlign='right';c.fillText(shareBase().host+shareBase().pathname.replace(/\/$/,''),W-36,H-24);c.textAlign='left';
+  return cv}
+function shareRefresh(){const cv=makeCard(SHARE_SHOT);SHARE_IMG=cv;$('#shImg').src=cv.toDataURL('image/jpeg',0.88);$('#shText').value=shareText();
+  $('#shVsRow').style.display=SHARE_MODE==='result'&&CUR&&score>=1?'':'none';
+  document.querySelectorAll('#shTabs button').forEach(b=>b.classList.toggle('on',b.dataset.m===SHARE_MODE));
+  $('#shNative').style.display=navigator.share?'':'none';$('#shCopyImg').style.display=window.ClipboardItem&&navigator.clipboard&&navigator.clipboard.write?'':'none'}
+async function openShare(mode){SHARE_MODE=mode||'result';closeModals();
+  if(SHARE_MODE==='rank'&&!RANK_LAST){const u=rankUrl();if(u){try{RANK_LAST=await fetchT(u+(u.includes('?')?'&':'?')+'action=top',{},15000)}catch(e){}}}
+  SHARE_SHOT=null;SHOT_CB=c=>{SHARE_SHOT=c;shareRefresh();$('#mShare').classList.add('open')};
+  setTimeout(()=>{if(SHOT_CB){SHOT_CB=null;shareRefresh();$('#mShare').classList.add('open')}},600)}
+function shareBlob(){return new Promise(r=>{if(!SHARE_IMG)return r(null);SHARE_IMG.toBlob(b=>r(b),'image/png')})}
+function shareFileName(){return `smash-arch_${SHARE_MODE==='rank'?'ranking':(CUR?shortName(CUR.name).replace(/[\\/:*?"<>|\s]+/g,''):'play')}.png`}
+async function copyText(t){try{await navigator.clipboard.writeText(t);return true}catch(e){try{const ta=document.createElement('textarea');ta.value=t;document.body.appendChild(ta);ta.select();const ok=document.execCommand('copy');ta.remove();return ok}catch(_){return false}}}
+const isPhone=()=>matchMedia('(pointer:coarse)').matches;
+// 카카오톡: config.js 에 KAKAO_JS_KEY 가 있으면 카카오 공유(이미지 카드+버튼). 없으면 폰은 공유 시트, PC는 문구 복사 → 카톡에 붙여넣기
+function kakaoKey(){return (window.SMASH_CONFIG&&window.SMASH_CONFIG.KAKAO_JS_KEY)||''}
+function kakaoLoad(){return new Promise(res=>{if(KAKAO_OK)return res(true);const k=kakaoKey();if(!k)return res(false);
+  if(window.Kakao&&window.Kakao.init){try{if(!Kakao.isInitialized())Kakao.init(k);KAKAO_OK=true}catch(e){}return res(KAKAO_OK)}
+  const sc=document.createElement('script');sc.src=(window.SMASH_CONFIG.KAKAO_SDK||'https://t1.kakaocdn.net/kakao_js_sdk/2.7.2/kakao.min.js');sc.crossOrigin='anonymous';
+  sc.onload=()=>{try{Kakao.init(k);KAKAO_OK=true}catch(e){}res(KAKAO_OK)};sc.onerror=()=>res(false);document.head.appendChild(sc);setTimeout(()=>res(KAKAO_OK),6000)})}
+async function shareKakao(){const vs=$('#shVs').checked,url=shareUrl(vs),text=$('#shText').value;
+  if(await kakaoLoad()){let img=new URL('og.jpg',shareBase()).toString();
+    try{const b=await shareBlob();if(b&&Kakao.Share.uploadImage){const r=await Kakao.Share.uploadImage({file:[new File([b],'card.png',{type:'image/png'})]});if(r&&r.infos&&r.infos.original)img=r.infos.original.url}}catch(e){}
+    const title=SHARE_MODE==='rank'?'SMASH ARCH 이번 주 랭킹':(CUR&&score>=1?`${shortName(CUR.name)} 사옥 ${fmt(score)}점 철거`:'SMASH ARCH — 건축사무소 사옥 부수기');
+    const desc=SHARE_MODE==='result'&&CUR&&score>=1?(vs?'이 점수 넘을 수 있어?':'같이 부수러 가기'):'전국 건축사무소 사옥을 3D 지도에서 부숴보세요';
+    try{Kakao.Share.sendDefault({objectType:'feed',content:{title,description:desc,imageUrl:img,imageWidth:1200,imageHeight:630,link:{mobileWebUrl:url,webUrl:url}},buttons:[{title:SHARE_MODE==='result'&&vs?'도전하러 가기':'게임하러 가기',link:{mobileWebUrl:url,webUrl:url}}]});return}catch(e){}}
+  if(navigator.share&&isPhone()){try{await navigator.share({title:'SMASH ARCH',text});}catch(e){}return}   // 폰: 공유 시트에서 카카오톡 선택 (링크 미리보기 카드가 붙어요)
+  if(await copyText(text))toast('문구+링크를 복사했어요 — 카카오톡 대화창에 붙여넣기(Ctrl+V) 하세요',3600);else toast('복사 실패 — 아래 문구를 직접 복사해주세요')}
+async function shareNative(){const text=$('#shText').value;
+  try{const b=await shareBlob();const f=b&&new File([b],shareFileName(),{type:'image/png'});
+    if(f&&navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f],text,title:'SMASH ARCH'});return}
+    await navigator.share({title:'SMASH ARCH',text})}catch(e){}}
+async function shareSave(){const b=await shareBlob();if(!b){toast('이미지를 만들지 못했어요');return}const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=shareFileName();document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);toast('이미지를 저장했어요')}
+async function shareCopyImg(){try{const b=await shareBlob();await navigator.clipboard.write([new ClipboardItem({'image/png':b})]);toast('이미지를 복사했어요 — 카톡·메신저 대화창에 붙여넣기(Ctrl+V)',3600)}catch(e){toast('이미지 복사가 안 되는 브라우저예요 — [이미지 저장]을 써주세요')}}
+async function shareCopy(){if(await copyText($('#shText').value))toast('문구+링크를 복사했어요');else toast('복사 실패 — 아래 문구를 직접 복사해주세요')}
+function shareSns(kind){const url=shareUrl($('#shVs').checked),t=$('#shText').value.replace(/\n?https?:\/\/\S+$/,'');
+  const u=kind==='x'?`https://twitter.com/intent/tweet?text=${encodeURIComponent(t)}&url=${encodeURIComponent(url)}`:kind==='fb'?`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`:`https://share.naver.com/web/shareView?url=${encodeURIComponent(url)}&title=${encodeURIComponent('SMASH ARCH')}`;
+  window.open(u,'_blank','noopener,width=620,height=560')}
+(function(){if(!$('#mShare'))return;
+  $('#shKakao').onclick=shareKakao;$('#shNative').onclick=shareNative;$('#shSave').onclick=shareSave;$('#shCopyImg').onclick=shareCopyImg;$('#shCopy').onclick=shareCopy;
+  document.querySelectorAll('#shSns button').forEach(b=>b.onclick=()=>shareSns(b.dataset.s));
+  document.querySelectorAll('#shTabs button').forEach(b=>b.onclick=()=>{SHARE_MODE=b.dataset.m;if(SHARE_MODE==='rank'&&!RANK_LAST)openShare('rank');else shareRefresh()});
+  $('#shVs').onchange=()=>{$('#shText').value=shareText()};
+  $('#shText').addEventListener('keydown',e=>e.stopPropagation());
+  if($('#rankShare'))$('#rankShare').onclick=()=>openShare('rank');
+  if(kakaoKey())setTimeout(kakaoLoad,3000)})();
+// ---- 도전장: 친구가 보낸 링크(?vs=점수)로 들어오면 목표 점수 표시, 넘으면 축하 + 되갚기 공유
+let CHAL=null;
+function challengeStart(goal){CHAL={goal,key:CUR&&(CUR.key||CUR.name),done:false};const el=$('#chal');if(!el)return;
+  el.innerHTML=`🥊 친구 기록 <b>${fmt(goal)}</b>점 — 넘어보세요!`;el.style.display='';
+  setTimeout(()=>toast(`친구가 이 사옥을 ${fmt(goal)}점어치 부쉈어요. 이겨보세요!`,4200),1500);
+  el.onclick=()=>{if(CHAL&&CHAL.done)openShare('result')};
+  setInterval(()=>{if(!CHAL)return;const k=CUR&&(CUR.key||CUR.name);if(k!==CHAL.key){el.style.display='none';return}el.style.display='';
+    if(!CHAL.done&&score>CHAL.goal){CHAL.done=true;el.classList.add('win');el.innerHTML=`🎉 친구 기록 ${fmt(CHAL.goal)}점 돌파! <u>되갚아주기</u>`;toast('도전 성공! 친구 점수를 넘었어요 — 위 배지를 눌러 공유',4000);sfx&&sfx(14,0.3)}},500)}
+// ---- PC 전체 화면 (휴대폰은 index.html 쪽에서 처리)
+(function(){const d=document,el=d.documentElement,btn=$('#btnFS');if(!btn||matchMedia('(pointer:coarse)').matches)return;
+  if(!(d.fullscreenEnabled||d.webkitFullscreenEnabled))return;d.body.classList.add('canfs-pc');
+  const inFS=()=>!!(d.fullscreenElement||d.webkitFullscreenElement);
+  const upd=()=>{btn.textContent='⛶';btn.title=inFS()?'전체 화면 나가기 (Esc)':'전체 화면 (F11도 돼요)';setTimeout(()=>{resize();layoutHUD()},120)};
+  btn.onclick=()=>{try{if(inFS())(d.exitFullscreen||d.webkitExitFullscreen).call(d);else{const p=(el.requestFullscreen||el.webkitRequestFullscreen).call(el,{navigationUI:'hide'});if(p&&p.catch)p.catch(()=>toast('이 브라우저는 전체 화면을 막았어요 — F11을 눌러주세요'))}}catch(e){toast('F11을 눌러 전체 화면으로 바꿔주세요')}};
+  d.addEventListener('fullscreenchange',upd);d.addEventListener('webkitfullscreenchange',upd);upd()})();
 
 // ---------- 메인 루프 ----------
 function resize(){const dpr=Math.min(devicePixelRatio||1,PERF_CAP[PERF.q]);canvas.width=Math.floor(innerWidth*dpr);canvas.height=Math.floor(innerHeight*dpr)}
@@ -3050,8 +3213,8 @@ function frameBody(now){
   hudT+=dt;if(hudT>0.1){hudT=0;updateHUD()}
 }
 // 한 프레임에서 오류가 나도 게임이 멈추지 않게 (예전에는 오류 한 번이면 화면이 그대로 굳음)
-let FRAME_ERR=0,lastFrameT=0;
-function frame(now){try{frameBody(now)}catch(e){FRAME_ERR++;if(FRAME_ERR<6)console.error('[frame]',e);try{gl.bindFramebuffer(gl.FRAMEBUFFER,null)}catch(_){}}
+let FRAME_ERR=0,lastFrameT=0,SHOT_CB=null;
+function frame(now){try{frameBody(now);if(SHOT_CB){const cb=SHOT_CB;SHOT_CB=null;let c=null;try{c=document.createElement('canvas');c.width=canvas.width;c.height=canvas.height;c.getContext('2d').drawImage(canvas,0,0)}catch(_){c=null}cb(c)}}catch(e){FRAME_ERR++;if(FRAME_ERR<6)console.error('[frame]',e);try{gl.bindFramebuffer(gl.FRAMEBUFFER,null)}catch(_){}}
   perfTick(lastFrameT?now-lastFrameT:16);lastFrameT=now;requestAnimationFrame(frame)}
 // 그래픽 메모리가 부족해 WebGL 이 끊기면(휴대폰에서 흔함) 안내 후 다시 불러오기
 canvas.addEventListener('webglcontextlost',e=>{e.preventDefault();const d=document.createElement('div');d.id='glLost';
@@ -3061,12 +3224,12 @@ canvas.addEventListener('webglcontextrestored',()=>location.reload());
 // ---------- 시작 ----------
 (function start(){
   selectWeapon(0);$('#btnUndo').disabled=true;$('#btnReset').disabled=true;
-  const sp=new URLSearchParams(location.search);const fk=sp.get('firm')||'';
+  const sp=new URLSearchParams(location.search);const fk=sp.get('firm')||'';const vs=Math.floor(+sp.get('vs')||0);
   let f=FIRMS.find(x=>x.key===fk);
   if(!f&&/^d\d+$/.test(fk)){const i=FIRMDATA.findIndex(r=>r[5]===+fk.slice(1));if(i>=0)f=firmFromData(i)}
   if(!f&&sp.get('lat')&&sp.get('lng'))f={name:sp.get('name')||'공유된 위치',addr:'',lat:+sp.get('lat'),lng:+sp.get('lng')};
   requestAnimationFrame(frame);
-  if(f)loadFirm(f);else{resetWorld();$('#firmName').textContent='회사를 골라주세요';$('#mFirm').classList.add('open')}
+  if(f){loadFirm(f);if(vs>0&&vs<1e10)challengeStart(vs)}else{resetWorld();$('#firmName').textContent='회사를 골라주세요';$('#mFirm').classList.add('open');loadHot()}
   if(!lsGet('smasharch_tut_v2'))lsSet('smasharch_ver',GAME_VER);                       // 처음 온 사람은 튜토리얼만
   else if(lsGet('smasharch_ver')!==GAME_VER&&$('#mPatch'))$('#mPatch').classList.add('open');   // 다시 온 사람은 업데이트 내역
 })();
@@ -3095,7 +3258,7 @@ function openReport(){
   $('#mReport').classList.add('open');
 }
 $('#btnReport').onclick=openReport;
-$('#repShare').onclick=()=>{closeModals();$('#btnShare').click()};
+$('#repShare').onclick=()=>{closeModals();openShare('result')};
 $('#repRank').onclick=()=>{closeModals();openRank()};
 $('#ult').onclick=armUlt;
 $('#btnDet').onclick=detonate;
