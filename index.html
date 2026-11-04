@@ -498,6 +498,16 @@ details.fold .client-in{margin:8px 0 2px}details.fold.cast{margin:0 0 8px;backgr
 #adBan img{display:block;max-width:100%;max-height:90px;margin:4px auto;border-radius:2px}
 #adBan b{display:block;font-family:"Black Han Sans",sans-serif;font-weight:400;font-size:20px;line-height:1.2;word-break:keep-all}
 #adBan i{display:block;font-style:normal;font-size:11px;font-weight:700;color:#1f6feb;margin-top:2px}
+
+/* 🌍 재난 모드 */
+.tool .emo{font-style:normal;font-size:19px;line-height:1;display:block;margin:1px 0 2px}
+.tool.sm .emo{font-size:16px}
+#gmSeg{margin:0 0 8px}#gmSeg button{padding:8px;font-size:13.5px;font-weight:800}#gmSeg button small{font-size:10px;color:#7fe0a8;font-weight:800}
+#gmSeg button[data-gm="earth"].on{background:#1f8a57;border-color:#2fb58a}
+body.earth #toolbar .tool.on{background:#1f8a57;border-color:#2fb58a}
+body.earth #toolbar .glbl{color:#7fe0a8}
+body.earth #ult{--ult:#ffb020}
+.g-emo{display:flex;align-items:center;justify-content:center;height:100%;min-height:110px;font-size:64px;background:linear-gradient(135deg,#1d3a2c,#14251d);border-radius:8px}.g-mode{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 10px;font-size:13px;padding:8px 10px;border-radius:8px;background:var(--panel2);border:1px solid var(--line)}.g-mode .btn-s{padding:5px 10px;font-size:12px;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -558,6 +568,7 @@ details.fold .client-in{margin:8px 0 2px}details.fold.cast{margin:0 0 8px;backgr
   <div class="sep"></div>
   <div class="grp"><span class="glbl">설계팀</span><button class="tool" data-w="6"><span class="num">7</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M2 12h20M12 2l-3 3M12 2l3 3M12 22l-3-3M12 22l3-3M2 12l3-3M2 12l3 3M22 12l-3-3M22 12l-3 3"/></svg>MOVE</button><button class="tool" data-w="7"><span class="num">8</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="7" y="13" width="10" height="8"/><path d="M7 13V5h10v8" stroke-dasharray="2 2"/><path d="M12 11V2M9 5l3-3 3 3"/></svg>EXTRUDE</button><button class="tool" data-w="8"><span class="num">9</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="4" width="14" height="17"/><path d="M2 15L22 7" stroke-dasharray="3 2"/><path d="M14 2l3 3-3 3"/></svg>TRIM</button><button class="tool" data-w="9"><span class="num">0</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 14h5M17 14h5"/><ellipse cx="12" cy="15" rx="5" ry="2.2"/><path d="M12 4v7M9 8l3 3 3-3"/><path d="M7 15l2 5h6l2-5"/></svg>싱크홀</button></div>
   <div class="sep"></div>
+  <button class="tool sm" id="btnGM" title="모드 바꾸기"><i class="emo">🌍</i>재난 모드</button>
   <button class="tool sm" id="btnSection"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 21V8l8-5 8 5v13"/><path d="M4 12h16M4 16h16M9 21v-5"/><path d="M14 3v18" stroke-dasharray="2 2"/></svg>단면</button>
   <div class="sep"></div>
   <button class="tool sm" id="btnUndo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg>되돌리기</button>
@@ -672,6 +683,7 @@ details.fold .client-in{margin:8px 0 2px}details.fold.cast{margin:0 0 8px;backgr
   <div class="fhead">
   <button class="close" data-close>×</button>
   <h2>어디를 부술까요?</h2>
+  <div id="gmSeg" class="seg gm"><button data-gm="build" class="on">🏗 건축 모드</button><button data-gm="earth">🌍 재난 모드 <small>NEW</small></button></div>
   <div class="row" style="margin:0 0 6px"><input id="customQ" placeholder="검색 — 회사·학교 이름, 주소, 좌표" autocomplete="off"></div>
   <div id="fCats"><button data-k="all" class="on">전체</button><button data-k="">📐 건축사사무소</button><button data-k="c">🏗 건설사</button><button data-k="u">🎓 대학교</button><button data-k="g">🏢 일반 회사</button></div>
   </div>
@@ -785,8 +797,17 @@ details.fold .client-in{margin:8px 0 2px}details.fold.cast{margin:0 0 8px;backgr
 })();
 </script>
 <div class="modal" id="mPatch"><div class="card patch">
-  <div class="small" style="margin:0 0 4px">업데이트 · 2026.11.04</div>
-  <h2>이번에 바뀐 것</h2>
+  <div class="small" style="margin:0 0 4px">업데이트 · 2026.11.05</div>
+  <h2>🌍 재난 모드가 생겼어요</h2>
+  <ul>
+    <li><b>건축을 너무 많이 해서 지구가 화났어요!</b> 회사 고르기 창 맨 위나 도구막대의 [🌍 재난 모드]로 바꿀 수 있어요. 같은 동네에서 도구만 바뀌어요.</li>
+    <li><b>동물의 분노</b> — 🐜 흰개미 떼 · 🐘 코끼리 떼 · 🪲 쇠똥구리(거대 똥공) · 🕊️ 비둘기 떼 · 🕳️ 두더지 굴</li>
+    <li><b>자연의 분노</b> — 🌧️ 산성비 · 🌪️ 토네이도 · 🌋 화산 · 🌊 쓰나미 · 🫨 지진</li>
+    <li><b>필살기 ☀ 태양 조각</b> — 게이지 대신 <b>30초마다</b> 쓸 수 있고 범위가 3배예요. 떨어지면 세상이 캄캄해지고, 밤이 끝나면 인류가 인공 태양을 띄워 다시 낮이 돼요.</li>
+    <li><b>사장님·발주처도 재난 모드 대사</b> — 발주처는 "이런 재해도 버틸 만큼 튼튼하게!", 부동산 호황은 "재해로 지을 땅이 많아졌어! 오히려 좋아!"</li>
+    <li><b>랭킹은 모드별로 따로</b> 집계돼요.</li>
+  </ul>
+  <div class="small" style="margin:8px 0 2px">2026.11.04</div>
   <ul>
     <li><b>📢 광고 타워</b> — 게임을 시작하고 조금 지나면 하늘에서 쌍둥이 타워가 내려와요. 두 타워를 잇는 다리에 현수막이 걸려요. 진짜 건물이라 다 부술 수 있고, <b>다리를 떨어뜨리면 +30,000점</b>.</li>
     <li><b>📍 사옥 위치 바로잡기</b> — 좌표가 근사값인 곳은 도착하면 안내가 떠요. [우리 건물 직접 고르기]로 건물을 누르면 내 화면에서 바로 바뀌고 위치가 개발자에게 전달돼요. 지도에 건물이 없으면 빈 땅을 눌러 사옥을 세울 수 있어요.</li>
