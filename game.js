@@ -3255,8 +3255,8 @@ async function hqFixSend(la,ln){if(!CUR||!CUR.dkey)return;
 // 그 밖의 사람이 사옥 건물을 직접 고르면 → 서버 요청함에 '위치 제안' (2명이 같은 곳을 고르면 자동 확정, 아니면 개발자가 확인)
 async function hqPropose(la,ln){const u=rankUrl(),kid=+String(CUR.dkey).slice(1);if(!u||!(kid>=0))return;geoNote(false);
   try{const r=await fetchT(u,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({type:'fix',kid,lat:la,lng:ln,vid:lsGet('smasharch_vid')||''})},15000);
-    if(r&&r.ok&&r.applied){const i=FKI.get(kid);if(i!=null){FIRMDATA[i][2]=la;FIRMDATA[i][3]=ln;FIRMDATA[i][4]=0}toast('📍 다른 사람과 같은 건물을 골랐어요 — 모두에게 바로 반영됐어요 👍',4200)}
-    else if(r&&r.ok)toast(r.again?'📍 오늘 이미 위치를 보냈어요. 이 브라우저에선 고른 건물로 보여요':'📍 위치 제안을 보냈어요 — 개발자가 확인하면 모두에게 반영돼요 (이 브라우저엔 바로 저장)',4200)
+    if(r&&r.ok&&r.applied){const i=FKI.get(kid);if(i!=null){FIRMDATA[i][2]=la;FIRMDATA[i][3]=ln;FIRMDATA[i][4]=0}toast('📍 여러 사람이 같은 곳을 골라 모두에게 반영됐어요 👍',4200)}
+    else if(r&&r.ok)toast(r.again?'📍 오늘 이미 위치를 보냈어요. 이 브라우저에선 고른 건물로 보여요':'📍 위치 제안을 보냈어요 — 지금은 내 화면에만 바뀌고, 개발자가 확인하면 모두에게 반영돼요',4200)
     else if(r&&r.error)toast('위치 제안: '+r.error,4000)}catch(e){}}
 // 좌표가 근사값인 회사를 열었을 때 화면 위에 잠깐 뜨는 안내 (버튼으로 바로 직접 지정)
 function geoNote(on,msg){let el=$('#geoNote');if(!on){if(el)el.classList.remove('on');return}
