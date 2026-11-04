@@ -408,7 +408,7 @@ body.iostip #iosTip{display:flex}
 
 /* 최근 7일 무너진 사옥 · 요청함 */
 .hot-h{margin:10px 0 6px;color:#ffb86b!important;font-weight:800}.hot-h small{font-weight:400;opacity:.7}
-.req-link.top{margin:4px 0 4px;border:1px solid #f2b134;background:rgba(242,177,52,.10)}.req-link small{opacity:.7;font-size:11px}
+.req-link.top{margin:4px 0 4px;border:1px solid #f2b134;background:rgba(242,177,52,.10)}.req-row{display:flex;gap:6px}.req-row .req-link{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 6px;line-height:1.3}.req-row .req-link b{font-size:13.5px}.req-link small{opacity:.7;font-size:11px}
 #rqCats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:2px 0 6px}#rqCats button{padding:8px 2px;border:1px solid #000;border-radius:7px;background:#2a2f36;color:#ddd;font-weight:700;cursor:pointer;font-size:12.5px;white-space:nowrap}#rqCats button.on{background:#f2b134;color:#111}
 @media (max-width:520px){#rqCats{grid-template-columns:repeat(2,1fr)}}
 .req-link{display:block;width:100%;margin:8px 0 6px;padding:9px;border-radius:7px;border:1px dashed #6b7280;background:transparent;color:#ddd;cursor:pointer;font-size:13px}.req-link b{color:#f2b134}
@@ -634,7 +634,7 @@ details.fold .client-in{margin:8px 0 2px}
   </div>
   <div id="rqPhotoBox" style="display:none">
     <div class="small" style="margin:2px 0 6px">사옥 모양이 실제와 다르면 <b>외관 사진</b>을 보내주세요. 제미나이(AI)가 층수·덩어리·외장·색·지붕을 읽고, <b>개발자가 확인한 뒤</b> 게임 속 사옥이 새로 올라가요.</div>
-    <label>회사 <small>(지금 보고 있는 사옥)</small></label><div id="rqPhotoFirm" class="rq-firm"></div>
+    <label>회사 <small>(지금 보고 있는 사옥 · 다른 곳이면 그 회사로 먼저 이동해 주세요)</small></label><div id="rqPhotoFirm" class="rq-firm"></div>
     <label>사옥 사진 <b>*</b> <small>(건물 전체가 보이게 · 정면이나 모서리에서)</small></label><input id="rqPhoto" type="file" accept="image/*">
     <img id="rqPhotoPrev" alt="" style="display:none">
     <div class="small" style="opacity:.75;margin-top:4px">사진은 운영자 드라이브에만 비공개로 저장되고, 게임에는 모양 숫자만 나가요. 사람 얼굴·차 번호판은 안 나오게 찍어주세요.</div>
@@ -677,7 +677,7 @@ details.fold .client-in{margin:8px 0 2px}
   </div>
   <div class="fbody">
   <div id="searchRes" style="display:none"></div>
-  <button class="req-link top" data-req="회사 추가">📮 찾는 곳이 없나요? <b>우리 회사·학교 바로 추가</b> <small>(건축사사무소·건설사·일반 회사·대학교)</small></button>
+  <div class="req-row"><button class="req-link top" data-req="회사 추가">📮 찾는 곳이 없나요?<b>바로 추가</b></button><button class="req-link top" data-req="사옥 모양">🏢 사옥 모양이 달라요?<b>사진 보내기</b></button></div>
   <div class="small hot-h" id="hotHead" style="display:none">🔥 최근 7일 가장 많이 무너진 사옥 <small>(무너뜨린 사람 수 · 하루 1인 1회)</small></div>
   <div id="hotList"></div>
   <div id="bigFirms"><div class="small" style="margin:10px 0 6px;color:#ccc">대형 설계사무소</div><div id="firmList"></div></div>
