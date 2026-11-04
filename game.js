@@ -1696,7 +1696,7 @@ function applyGM(silent){const e=EARTH();document.body.classList.toggle('earth',
   try{const u=new URL(location.href);if(e)u.searchParams.set('mode','earth');else u.searchParams.delete('mode');history.replaceState(null,'',u)}catch(err){}
   if(!silent)selectWeapon(weapon)}
 function setGM(m,quiet){if(m!=='earth')m='build';if(m===GM){applyGM(true);return}
-  if(MODE==='section')exitSection();clearTools();HELD=null;GM=m;lsSet('smasharch_gmode',m);ultArmed=false;applyGM();RANK_LAST=null;
+  if(MODE==='section')exitSection();clearTools();HELD=null;try{if(CONQ_Q.size)flushConq()}catch(e){}GM=m;try{CONQ_ALL=null}catch(e){}lsSet('smasharch_gmode',m);ultArmed=false;applyGM();RANK_LAST=null;
   if(MS)missionStart();
   if(!quiet)toast(m==='earth'?'🌍 재난 모드 — 건축을 너무 많이 해서 지구가 화났어요! 동물의 분노 · 자연의 분노':'🏗 건축 모드 — 다시 철거 현장으로',3000)}
 
@@ -3978,7 +3978,9 @@ function updateWorld(dt){
 //  구별 정복 진행도 — 부순 건축사무소를 시도·시군구별로 집계
 //  '나': 이 브라우저에 저장 / '모두 함께': Apps Script 웹앱 '철거' 탭
 // =====================================================================
-const CONQ=new Set(lsGet('smasharch_conq')||[]);
+// 정복 기록은 모드별로 따로 (건축: smasharch_conq / 재난: smasharch_conq_earth)
+const CONQ_B=new Set(lsGet('smasharch_conq')||[]),CONQ_E=new Set(lsGet('smasharch_conq_earth')||[]);
+function CQ(){return EARTH()?CONQ_E:CONQ_B}
 let CONQ_Q=new Set(), HOT_Q=new Set(), conqTimer=0, CONQ_ALL=null, conqView={who:'all',scope:'seoul',open:null};
 const FKI=new Map(FIRMDATA.map((r,i)=>[r[5],i]));
 function keyIdx(k){return /^d\d+$/.test(k||'')?FKI.get(+k.slice(1)):undefined}
@@ -3988,18 +3990,18 @@ const REG=(()=>{const m=new Map();FIRMDATA.forEach((r,i)=>{if(!r[6])return;const
   if(!m.has(k))m.set(k,{key:k,sido:r[6],sgg:r[7],idx:[],n:0});const g=m.get(k);g.n++;if(r[4]!==2&&r[2]!=null)g.idx.push(i)});return m})();
 function conqKeysOf(b){const ks=[];if(b&&b.firms)for(const f of b.firms)if(f.i!=null&&FIRMDATA[f.i])ks.push('d'+FIRMDATA[f.i][5]);
   if(b&&b.hq&&CUR&&CUR.dkey)ks.push(CUR.dkey);return [...new Set(ks)]}
-function myDone(reg){let n=0;for(const i of reg.idx)if(CONQ.has('d'+FIRMDATA[i][5]))n++;return n}
+function myDone(reg){let n=0;const C=CQ();for(const i of reg.idx)if(C.has('d'+FIRMDATA[i][5]))n++;return n}
 function allDone(reg){return CONQ_ALL&&CONQ_ALL.done?(CONQ_ALL.done[reg.key]||0):0}
 function conqRecord(b){
   const ks=conqKeysOf(b);if(!ks.length)return;let fresh=[];
   if(b&&b.hq&&CUR&&CUR.dkey)HOT_Q.add(CUR.dkey);   // '가장 많이 무너진 사옥'은 고른 사옥만 (같은 건물에 든 다른 회사는 정복에만 반영)
-  for(const k of ks){CONQ_Q.add(k);if(!CONQ.has(k)){CONQ.add(k);fresh.push(k)}}
-  if(fresh.length){lsSet('smasharch_conq',[...CONQ]);
+  const C=CQ();for(const k of ks){CONQ_Q.add(k);if(!C.has(k)){C.add(k);fresh.push(k)}}
+  if(fresh.length){lsSet(EARTH()?'smasharch_conq_earth':'smasharch_conq',[...C]);
     const i=keyIdx(fresh[0]);const reg=i!=null?REG.get(regionOfRow(FIRMDATA[i])):null;
     if(reg){const d=myDone(reg),t=reg.idx.length;setTimeout(()=>toast(`${reg.sgg} 정복 ${d} / ${t}곳 (${Math.floor(d/t*100)}%)${d===t?' · 완전 정복!':''}`,2600),2400)}}
   clearTimeout(conqTimer);conqTimer=setTimeout(flushConq,6000);
 }
-function conqBody(){return JSON.stringify({type:'kill',keys:[...CONQ_Q].slice(0,200),hot:[...HOT_Q].slice(0,5),vid:lsGet('smasharch_vid')||'',nick:lsGet('smasharch_nick')||'익명'})}
+function conqBody(){return JSON.stringify({type:'kill',mode:GM,keys:[...CONQ_Q].slice(0,200),hot:[...HOT_Q].slice(0,5),vid:lsGet('smasharch_vid')||'',nick:lsGet('smasharch_nick')||'익명'})}
 async function flushConq(){
   const u=rankUrl();if(!u||!CONQ_Q.size)return;const body=conqBody();const sent=[...CONQ_Q].slice(0,200),sentH=[...HOT_Q];
   try{const r=await fetchT(u,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body},15000);
@@ -4046,6 +4048,7 @@ function sidoGroups(){const g=new Map();for(const reg of REG.values()){if(!g.has
 function allDoneSido(s){return s.subs.reduce((n,r)=>n+allDone(r),0)}
 function renderConq(){
   const box=$('#conqBody');const who=conqView.who;
+  {const h=$('#mConq h2'),t=EARTH()?'🌍 구별 정복 현황 · 재난 모드':'🏗 구별 정복 현황 · 건축 모드';if(h&&h.textContent!==t)h.textContent=t}
   document.querySelectorAll('#mConq [data-who]').forEach(b=>b.classList.toggle('on',b.dataset.who===who));
   document.querySelectorAll('#mConq [data-scope]').forEach(b=>b.classList.toggle('on',b.dataset.scope===conqView.scope));
   let tot=0,dn=0;for(const reg of REG.values()){tot+=reg.idx.length;dn+=who==='me'?myDone(reg):allDone(reg)}
@@ -4069,7 +4072,7 @@ function renderConq(){
   box.querySelectorAll('[data-reg]').forEach(el=>el.onclick=()=>conqPick(REG.get(el.dataset.reg)));
   box.querySelectorAll('[data-sido]').forEach(el=>el.onclick=()=>{conqView.open=conqView.open===el.dataset.sido?null:el.dataset.sido;renderConq()});
 }
-function conqPick(reg){if(!reg)return;const left=reg.idx.filter(i=>!CONQ.has('d'+FIRMDATA[i][5]));
+function conqPick(reg){if(!reg)return;const left=reg.idx.filter(i=>!CQ().has('d'+FIRMDATA[i][5]));
   const el=$('#conqPick');const name=reg.sido==='서울특별시'?reg.sgg:reg.key;
   el.innerHTML=`<div class="cq-pick"><b>${esc(name)}</b> · ${reg.idx.length?`내가 남긴 사무소 ${fmt(left.length)}곳 / 전체 ${fmt(reg.idx.length)}곳`:`사무소 ${fmt(reg.n)}곳 · 아직 좌표가 없어요(시트에서 좌표 작업 후 열려요)`}<br><small>모두 함께 ${fmt(allDone(reg))}곳 철거</small>
     <div class="row"><button class="btn-p" id="cqGo" ${left.length?'':'disabled'} style="flex:1">${left.length?'남은 사무소로 출동':reg.idx.length?'완전 정복!':'좌표 준비 중'}</button></div></div>`;
@@ -4077,7 +4080,7 @@ function conqPick(reg){if(!reg)return;const left=reg.idx.filter(i=>!CONQ.has('d'
   const go=$('#cqGo');if(go)go.onclick=()=>{const i=left[Math.floor(Math.random()*left.length)];closeModals();loadFirm(firmFromData(i))};
 }
 async function loadConqAll(){const u=rankUrl();if(!u)return;
-  try{const r=await fetchT(u+(u.includes('?')?'&':'?')+'action=progress',{},15000);if(r&&r.ok){CONQ_ALL=r;if($('#mConq').classList.contains('open'))renderConq()}}catch(e){}}
+  try{const r=await fetchT(u+(u.includes('?')?'&':'?')+'action=progress&mode='+GM,{},15000);if(r&&r.ok){CONQ_ALL=r;if($('#mConq').classList.contains('open'))renderConq()}}catch(e){}}
 function openConq(){$('#mConq').classList.add('open');renderConq();if(CONQ_Q.size)flushConq().then(loadConqAll);else loadConqAll()}
 $('#btnConq').onclick=openConq;
 document.querySelectorAll('#mConq [data-who]').forEach(b=>b.onclick=()=>{conqView.who=b.dataset.who;renderConq()});
