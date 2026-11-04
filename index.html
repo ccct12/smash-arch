@@ -13,20 +13,20 @@
 <meta property="og:site_name" content="SMASH ARCH">
 <meta property="og:locale" content="ko_KR">
 <meta property="og:url" content="https://ccct12.github.io/smash-arch/">
-<meta property="og:title" content="SMASH ARCH — 우리 회사·우리 학교 부수기">
-<meta property="og:description" content="건축사사무소·건설사·대학교 1만 1천여 곳, 우리 사옥과 캠퍼스를 3D 지도에서 부숴보세요. 야근 모드·부동산 호황·단면 철거. 무료, 로그인 없음.">
-<meta property="og:image" content="https://ccct12.github.io/smash-arch/og.jpg">
+<meta property="og:title" content="SMASH ARCH 🌍 NEW 재난 모드 — 지구가 화났다!">
+<meta property="og:description" content="건축을 너무 많이 해서 동물과 자연이 사옥을 부숴요. 흰개미·코끼리·쇠똥구리·화산·쓰나미·지진·태양 조각! 건축사사무소·건설사·대학교 1만 1천여 곳, 무료·로그인 없음.">
+<meta property="og:image" content="https://ccct12.github.io/smash-arch/og-earth.jpg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="SMASH ARCH 게임 화면 — 야근 중인 밤의 사옥과 사장님">
+<meta property="og:image:alt" content="SMASH ARCH 재난 모드 — 태양 조각이 떨어지고 화산이 솟는 밤의 도시">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="SMASH ARCH — 우리 회사·우리 학교 부수기">
-<meta name="twitter:description" content="건축사사무소·건설사·대학교 1만 1천여 곳, 우리 사옥과 캠퍼스를 3D 지도에서 부숴보세요.">
-<meta name="twitter:image" content="https://ccct12.github.io/smash-arch/og.jpg">
+<meta name="twitter:title" content="SMASH ARCH 🌍 NEW 재난 모드 — 지구가 화났다!">
+<meta name="twitter:description" content="건축을 너무 많이 해서 동물과 자연이 사옥을 부숴요. 우리 회사·학교 1만 1천여 곳, 무료.">
+<meta name="twitter:image" content="https://ccct12.github.io/smash-arch/og-earth.jpg">
 <!-- 검색 등록 인증: 구글 서치 콘솔 / 네이버 서치어드바이저에서 받은 한 줄로 아래 주석을 바꿔 넣으세요 -->
 <!-- <meta name="google-site-verification" content="여기에_구글_코드"> -->
 <!-- <meta name="naver-site-verification" content="여기에_네이버_코드"> -->
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"VideoGame","name":"SMASH ARCH","alternateName":"사옥 부수기","url":"https://ccct12.github.io/smash-arch/","image":"https://ccct12.github.io/smash-arch/og.jpg","description":"전국 건축사사무소·건설사·대학교 1만 1천여 곳을 실제 지도 위 3D로 부수는 무료 웹 게임","genre":["Action","Casual","Simulation"],"gamePlatform":"Web browser","applicationCategory":"Game","operatingSystem":"Any","inLanguage":"ko","isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"KRW"}}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"VideoGame","name":"SMASH ARCH","alternateName":"사옥 부수기","url":"https://ccct12.github.io/smash-arch/","image":"https://ccct12.github.io/smash-arch/og-earth.jpg","description":"전국 건축사사무소·건설사·대학교 1만 1천여 곳을 실제 지도 위 3D로 부수는 무료 웹 게임","genre":["Action","Casual","Simulation"],"gamePlatform":"Web browser","applicationCategory":"Game","operatingSystem":"Any","inLanguage":"ko","isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"KRW"}}</script>
 <!-- 휴대폰: 홈 화면에 추가하면 주소창 없이 가로 전체 화면으로 실행 -->
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#17191c">
@@ -508,6 +508,7 @@ body.earth #toolbar .tool.on{background:#1f8a57;border-color:#2fb58a}
 body.earth #toolbar .glbl{color:#7fe0a8}
 body.earth #ult{--ult:#ffb020}
 .g-emo{display:flex;align-items:center;justify-content:center;height:100%;min-height:110px;font-size:64px;background:linear-gradient(135deg,#1d3a2c,#14251d);border-radius:8px}.g-mode{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 10px;font-size:13px;padding:8px 10px;border-radius:8px;background:var(--panel2);border:1px solid var(--line)}.g-mode .btn-s{padding:5px 10px;font-size:12px;white-space:nowrap}
+.w-new{margin:10px 0 4px!important;padding:9px 11px;border-radius:8px;background:#163828;border:1px solid #2fb58a;color:#d8ffe9;font-size:13px!important;line-height:1.5}
 </style>
 </head>
 <body>
@@ -619,6 +620,7 @@ body.earth #ult{--ult:#ffb020}
 <div class="modal" id="mWelcome"><div class="card welcome">
   <h2>💥 SMASH ARCH에 오신 걸 환영해요</h2>
   <p>실제 지도로 만든 우리 회사 동네를 부수는 게임이에요.<br>처음이라면 <b>따라하기</b>로 1분만 배워 보세요. 하나씩 알려드려요.</p>
+  <p class="w-new">🌍 <b>NEW 재난 모드</b> — 건축을 너무 많이 해서 지구가 화났어요! 회사 고르기 창 맨 위나 도구막대의 [🌍 재난 모드]로 바꿔 보세요.</p>
   <button class="btn-p" id="wMission">🎯 따라하기로 배우기 <small>(추천 · 1분)</small></button>
   <button class="btn-s" id="wGuide">📘 사진으로 된 가이드 먼저 보기</button>
   <button class="btn-s" id="wSkip">바로 시작할게요</button>
@@ -800,14 +802,14 @@ body.earth #ult{--ult:#ffb020}
   <div class="small" style="margin:0 0 4px">업데이트 · 2026.11.05</div>
   <h2>🌍 재난 모드가 생겼어요</h2>
   <ul>
-    <li><b>건축을 너무 많이 해서 지구가 화났어요!</b> 회사 고르기 창 맨 위나 도구막대의 [🌍 재난 모드]로 바꿀 수 있어요. 같은 동네에서 도구만 바뀌어요.</li>
+    <li><b>건축을 너무 많이 해서 지구가 화났어요!</b> 이번엔 동물과 자연이 사옥을 부숴요. 회사 고르기 창 맨 위나 도구막대의 [🌍 재난 모드]로 바꾸면 같은 동네에서 도구만 바뀌어요.</li>
     <li><b>동물의 분노</b> — 🐜 흰개미 떼 · 🐘 코끼리 떼 · 🪲 쇠똥구리(거대 똥공) · 🕊️ 비둘기 떼 · 🕳️ 두더지 굴</li>
     <li><b>자연의 분노</b> — 🌧️ 산성비 · 🌪️ 토네이도 · 🌋 화산 · 🌊 쓰나미 · 🫨 지진</li>
     <li><b>필살기 ☀ 태양 조각</b> — 게이지 대신 <b>30초마다</b> 쓸 수 있고 범위가 3배예요. 떨어지면 세상이 캄캄해지고, 밤이 끝나면 인류가 인공 태양을 띄워 다시 낮이 돼요.</li>
     <li><b>사장님·발주처도 재난 모드 대사</b> — 발주처는 "이런 재해도 버틸 만큼 튼튼하게!", 부동산 호황은 "재해로 지을 땅이 많아졌어! 오히려 좋아!"</li>
     <li><b>랭킹은 모드별로 따로</b> 집계돼요.</li>
   </ul>
-  <div class="small" style="margin:8px 0 2px">2026.11.04</div>
+  <details class="fold"><summary>11.04 업데이트 보기 <small>(광고 타워 · 위치 바로잡기 · 사옥 모양 고치기)</small></summary>
   <ul>
     <li><b>📢 광고 타워</b> — 게임을 시작하고 조금 지나면 하늘에서 쌍둥이 타워가 내려와요. 두 타워를 잇는 다리에 현수막이 걸려요. 진짜 건물이라 다 부술 수 있고, <b>다리를 떨어뜨리면 +30,000점</b>.</li>
     <li><b>📍 사옥 위치 바로잡기</b> — 좌표가 근사값인 곳은 도착하면 안내가 떠요. [우리 건물 직접 고르기]로 건물을 누르면 내 화면에서 바로 바뀌고 위치가 개발자에게 전달돼요. 지도에 건물이 없으면 빈 땅을 눌러 사옥을 세울 수 있어요.</li>
@@ -816,7 +818,8 @@ body.earth #ult{--ult:#ffb020}
     <li><b>🏢 사옥 모양 고치기</b> — 게임 속 사옥이 실제와 다르면 요청함(또는 설정)의 [🏢 사옥 모양]에서 외관 사진을 보내주세요. AI가 층수·덩어리·외장·지붕을 읽고, 개발자가 확인하면 사옥이 새로 올라가요.</li>
     <li><b>🏗 빈 땅에 사옥 세우기</b> — 지도에 우리 건물이 없으면 [사옥 건물 직접 지정]에서 그 자리 빈 땅을 누르면 새로 세워져요.</li>
   </ul>
-  <details class="fold"><summary>지난 업데이트 보기 <small>(11.03 3차까지)</small></summary>
+  </details>
+  <details class="fold"><summary>그 전 업데이트 보기 <small>(11.03 3차까지)</small></summary>
   <ul>
     <li><b>📘 게임 가이드 · 따라하기</b> — 왼쪽 위 <b>?</b> 버튼에 도구마다 예시 사진과 1·2·3 순서를 넣었어요. [🎯 따라하기]를 켜면 할 일 목록이 뜨고, 해내면 자동으로 체크돼요.</li>
     <li><b>📰 업데이트 안내 끄기</b> — 아래 체크를 풀거나 설정에서 끌 수 있어요. 끄더라도 설정 → [업데이트 내역]에서 언제든 볼 수 있어요.</li>
@@ -839,7 +842,7 @@ body.earth #ult{--ult:#ffb020}
   </ul>
   </details>
   <label class="opt" style="margin-top:8px;border:0">다음 업데이트부터 자동으로 띄우지 않기 <input type="checkbox" id="patchNo"></label>
-  <button class="btn-p" id="patchOk" style="width:100%;margin-top:6px">확인하고 시작</button>
+  <div class="row" style="margin-top:6px;gap:6px"><button class="btn-p" id="patchEarth" style="flex:1;background:#1f8a57">🌍 재난 모드로 시작</button><button class="btn-s" id="patchOk" style="flex:1">확인하고 시작</button></div>
 </div></div>
 <script src="config.js"></script>
 <script>

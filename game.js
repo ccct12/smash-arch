@@ -3598,9 +3598,10 @@ function curRank(){let k=0;for(let i=0;i<RANKS.length;i++)if(score>=RANKS[i][0])
 function shareText(){const vs=$('#shVs')&&$('#shVs').checked,url=shareUrl(vs);
   if(SHARE_MODE==='rank'){const d=RANK_LAST||{};const f=(d.firms||[]).slice(0,5).map((r,i)=>`${i+1}. ${shortName(r.name)} (${fmt(r.total)}점)`).join('\n');
     return `🏆 SMASH ARCH 이번 주 가장 많이 부서진 사옥\n${f||'(아직 기록 없음)'}\n\n우리 회사·학교도 순위에 올려보자 👇\n${url}`}
+  if((!CUR||score<1)&&EARTH())return `🌍 SMASH ARCH 재난 모드 — 지구가 화났다!\n건축을 너무 많이 해서 흰개미·코끼리·화산·쓰나미·태양 조각이 우리 회사 사옥을 부숴요 👇\n${url}`;
   if(!CUR||score<1)return `💥 SMASH ARCH — 우리 회사·우리 학교 부수기 게임\n건축사사무소·건설사·대학교 1만 1천여 곳 중 우리 사옥 찾아서 같이 부숴요 🌙 밤엔 야근 모드, 사장님은 비행선 타고 컴백 👇\n${url}`;
   const tot=B.length,dead=B.filter(b=>!b.alive).length,pct=tot?Math.round(dead/tot*100):0;
-  return `💥 ${shortName(CUR.name)} ${CUR.kind==='u'?'캠퍼스':'사옥'}을 ${fmt(score)}점어치 부쉈어요! (직급: ${curRank()[2]} · 파괴율 ${pct}%)\n${vs?'이 점수 넘을 수 있어? 👇':'같이 부수러 가기 👇'}\n${url}`}
+  return `${EARTH()?'🌍':'💥'} ${shortName(CUR.name)} ${CUR.kind==='u'?'캠퍼스':'사옥'}을 ${EARTH()?'재난 모드로 ':''}${fmt(score)}점어치 부쉈어요! (직급: ${curRank()[2]} · 파괴율 ${pct}%)\n${vs?'이 점수 넘을 수 있어? 👇':'같이 부수러 가기 👇'}\n${url}`}
 function rr(c,x,y,w,h,r){c.beginPath();c.moveTo(x+r,y);c.arcTo(x+w,y,x+w,y+h,r);c.arcTo(x+w,y+h,x,y+h,r);c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath()}
 function fitText(c,t,maxW){if(c.measureText(t).width<=maxW)return t;while(t.length>1&&c.measureText(t+'…').width>maxW)t=t.slice(0,-1);return t+'…'}
 function makeCard(shot){const W=1200,H=630,cv=document.createElement('canvas');cv.width=W;cv.height=H;const c=cv.getContext('2d');
@@ -3785,6 +3786,7 @@ canvas.addEventListener('webglcontextrestored',()=>location.reload());
 if($('#patchOk'))$('#patchOk').onclick=()=>{$('#mPatch').classList.remove('open');lsSet('smasharch_ver',GAME_VER);
   const no=$('#patchNo');if(no){opts.patch=!no.checked;lsSet('smasharch_opts',opts);const o=$('#optPatch');if(o)o.checked=opts.patch}};
 if($('#patchNo'))$('#patchNo').checked=opts.patch===false;
+if($('#patchEarth'))$('#patchEarth').onclick=()=>{$('#patchOk').click();setGM('earth')};
 function openPatch(){closeModals();const no=$('#patchNo');if(no)no.checked=opts.patch===false;$('#mPatch').classList.add('open')}
 if($('#setPatch'))$('#setPatch').onclick=openPatch;
 
