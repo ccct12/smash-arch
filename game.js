@@ -1759,7 +1759,7 @@ function endPtr(e){
         else if(!holdOf()){const id=WEAPONS[weapon].id;if(id!=='blast')secPushUndo();secFire(weapon,h);statTool(id);bossTool(id)}}}
     drag=null;return}
   if(click&&drag.btn===0){const h=pick(mx,my);
-    if(pickHQ){pickHQ=false;selectWeapon(weapon);if(h&&h.b){setHQ(h.b,true);toast('사옥으로 지정했어요 (이 브라우저에 저장)')}else toast('건물을 눌러주세요')}
+    if(pickHQ){pickHQ=false;selectWeapon(weapon);if(h&&h.b){setHQ(h.b,true);toast('사옥으로 지정했어요 (이 브라우저에 저장)')}else{const g=rayGround(mx,my,0),nb=g&&hqSynth(g[0],g[1]);if(nb){setHQ(nb,true);toast('🏗 여기에 사옥을 세웠어요 (이 브라우저에 저장)',3000)}else toast('건물이나 빈 땅을 눌러주세요')}}
     else if(h&&ultArmed){snapshot();STOP.grace=performance.now()+8000;ULTIMATE.fire(h);ULT=0;ultArmed=false;statTool('nuke');selectWeapon(weapon);bossTool('nuke',h.x,h.z)}
     else if(h&&!holdOf()){const w=WEAPONS[weapon];if(!w.nosnap)snapshot();w.fire(h);if(w.id!=='blast')statTool(w.id);bossTool(w.id,h.x,h.z)}}
   drag=null;
@@ -1872,11 +1872,23 @@ function fakeCity(seed,ox,oz){
 }
 function setHQ(b,save){for(const o of B){if(o.hq){o.hq=false;o.col=o.col0||o.col}}
   b.hq=true;b.hqName=CUR.name;b.col0=b.col;b.col=[0.98,0.92,0.66];bldDirty=true;markB(b);
-  if(save){const [la,ln]=unproj(b.cx,b.cz);lsSet('smasharch_hq_'+CUR.id,[la,ln]);hqFixSend(la,ln)}
+  if(save){const [la,ln]=unproj(b.cx,b.cz);lsSet('smasharch_hq_'+CUR.id,b.synth?[la,ln,'new']:[la,ln]);hqFixSend(la,ln)}
   makeLabels();if(BOSS&&!BOSS.flees&&BOSS.state==='idle')bossSpawn();if(BASE){BASE=takeState()}}
+// OpenStreetMap 에 건물이 없는 곳(신도시 등)에 사옥을 직접 세움: 가까운 도로 방향에 맞춘 20×16m, 층수는 주소의 층 + 여유
+function hqSynth(x,z){
+  let ang=0,bd=80;for(const c of CHUNKS.values())for(const s of c.roads){const dx=s.bx-s.ax,dz=s.bz-s.az,l2=dx*dx+dz*dz;if(l2<1)continue;
+    const t=clamp(((x-s.ax)*dx+(z-s.az)*dz)/l2,0,1),d=Math.hypot(s.ax+dx*t-x,s.az+dz*t-z);if(d<bd){bd=d;ang=Math.atan2(dz,dx)}}
+  const W=20,D=16,cr=Math.cos(ang),sr=Math.sin(ang),pts=[[-W/2,-D/2],[W/2,-D/2],[W/2,D/2],[-W/2,D/2]].map(([u,v])=>[x+u*cr-v*sr,z+u*sr+v*cr]);
+  const fl=CUR?parseFloor(CUR.addr):null,floors=Math.max(5,(fl||0)+2);
+  const b=makeBuilding('hq'+Date.now().toString(36),pts,{height:String(floors*3.5+1),building:'office'});if(!b)return null;
+  b.synth=true;b.units=[];b.ck=chunkAt(b.cx,b.cz,true);b.ck.blds.push(b);B.push(b);indexBuilding(b,B.length-1);b.ck.dB=true;bldDirty=true;return b}
 function chooseHQ(){
   const saved=lsGet('smasharch_hq_'+CUR.id);let px=0,pz=0;if(saved){[px,pz]=proj(saved[0],saved[1])}
+  if(saved&&saved[2]==='new'){const b=hqSynth(px,pz);if(b)setHQ(b,false);return}
   let best=null,bd=1e9;for(const b of B){const d=pip(px,pz,b.pts)?-1:Math.hypot(b.cx-px,b.cz-pz);if(d<bd){bd=d;best=b}}
+  // 좌표가 '확정'인데 그 자리(20m 안)에 건물이 없으면 지도에 건물이 빠진 것 → 좌표 자리에 사옥을 세움 (대학교 캠퍼스는 제외)
+  const sure=!saved&&!WORLD.fake&&CUR.dkey&&CUR.lat!=null&&!CUR.approx&&CUR.kind!=='u';
+  if(sure&&(!best||bd>=60||distToBuilding(best,px,pz)>20)){const b=hqSynth(px,pz);if(b){setHQ(b,false);return}}
   if(best&&bd<60)setHQ(best,false);
 }
 function setLoading(on,msg){$('#loading').classList.toggle('on',on);if(msg)$('#loadingMsg').textContent=msg}
@@ -1949,7 +1961,7 @@ function runSearch(){const q=$('#customQ').value.trim();const box=$('#searchRes'
 $('#customQ').addEventListener('input',runSearch);
 $('#customQ').addEventListener('keydown',e=>{if(e.key==='Enter'){const f=$('#searchRes .firm');if(f)f.click()}});
 $('#btnShare').onclick=()=>openShare('result');
-$('#btnPickHQ').onclick=()=>{closeModals();pickHQ=true;$('#hint').textContent='사옥 건물을 눌러주세요';toast('사옥으로 쓸 건물을 눌러주세요')};
+$('#btnPickHQ').onclick=()=>{closeModals();pickHQ=true;$('#hint').textContent='사옥 건물(또는 빈 땅)을 눌러주세요';toast('사옥으로 쓸 건물을 눌러주세요. 건물이 없으면 빈 땅을 누르면 새로 세워요',4000)};
 for(const k of ['Sound','Labels','Debris','Shadows','Pins','Mini','Shake','Night','Patch']){const el=$('#opt'+k);if(!el)continue;const key=k.toLowerCase();el.checked=!!opts[key];el.onchange=()=>{opts[key]=el.checked;lsSet('smasharch_opts',opts);if(key==='sound'&&!el.checked)humStop();if(key==='mini')applyMini();if(key==='night'){if(!el.checked&&DAY.night)dayStart();DAY.t=0}}}
 // ---- 간단 화면: H 키 · 왼쪽 위 [UI] 버튼 · 설정 체크 ----
 function applyMini(){document.body.classList.toggle('mini',!!opts.mini);const el=$('#optMini');if(el)el.checked=!!opts.mini;setTimeout(layoutHUD,0)}
@@ -3249,7 +3261,7 @@ async function hqPropose(la,ln){const u=rankUrl(),kid=+String(CUR.dkey).slice(1)
 // 좌표가 근사값인 회사를 열었을 때 화면 위에 잠깐 뜨는 안내 (버튼으로 바로 직접 지정)
 function geoNote(on,msg){let el=$('#geoNote');if(!on){if(el)el.classList.remove('on');return}
   if(!el){el=document.createElement('div');el.id='geoNote';el.innerHTML='<span></span><button class="gn-pick">📍 우리 건물 직접 고르기</button><button class="gn-x" aria-label="닫기">×</button>';document.body.appendChild(el);
-    el.querySelector('.gn-pick').onclick=()=>{geoNote(false);closeModals();pickHQ=true;$('#hint').textContent='우리 사옥 건물을 눌러주세요';toast('지도를 돌려보며 우리 사옥 건물을 눌러주세요',3500)};
+    el.querySelector('.gn-pick').onclick=()=>{geoNote(false);closeModals();pickHQ=true;$('#hint').textContent='우리 사옥 건물을 눌러주세요';toast('우리 사옥 건물을 눌러주세요. 지도에 건물이 없으면 그 자리 빈 땅을 누르면 새로 세워요',4500)};
     el.querySelector('.gn-x').onclick=()=>geoNote(false)}
   el.querySelector('span').textContent=msg;el.classList.add('on');clearTimeout(geoNote._t);geoNote._t=setTimeout(()=>el.classList.remove('on'),14000)}
 function openReq(kind,name){closeModals();const m=$('#mReq');if(!m)return;
