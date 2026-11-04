@@ -41,7 +41,8 @@ function addrQueries(addr){
 
 // ---------- 설정 ----------
 const FLOOR_Y = -60, BOTTOM_Y = -75;
-const GAME_VER='2026.11.05';   // 패치 노트 버전 — 바꾸면 재방문자에게 업데이트 창이 한 번 뜸 (index.html #mPatch 내용도 같이 수정)
+const GAME_VER='2026.11.05b';
+const NOTICE_MAJOR=true;   // true = 큰 업데이트: '업데이트 소식 끄기'와 상관없이, 처음 온 사람에게도 한 번 띄움   // 패치 노트 버전 — 바꾸면 재방문자에게 업데이트 창이 한 번 뜸 (index.html #mPatch 내용도 같이 수정)
 const opts = {sound:true, labels:true, debris:true, shadows:true, pins:true, mini:false, shake:false, night:true, patch:true};
 try{ const s = JSON.parse(localStorage.getItem('smasharch_opts')||'null'); if(s) Object.assign(opts,s);}catch(e){}
 // ---------- 낮·밤 (야근 모드) ----------
@@ -1696,6 +1697,7 @@ function applyGM(silent){const e=EARTH();document.body.classList.toggle('earth',
   if(!silent)selectWeapon(weapon)}
 function setGM(m,quiet){if(m!=='earth')m='build';if(m===GM){applyGM(true);return}
   if(MODE==='section')exitSection();clearTools();HELD=null;GM=m;lsSet('smasharch_gmode',m);ultArmed=false;applyGM();RANK_LAST=null;
+  if(MS)missionStart();
   if(!quiet)toast(m==='earth'?'🌍 재난 모드 — 건축을 너무 많이 해서 지구가 화났어요! 동물의 분노 · 자연의 분노':'🏗 건축 모드 — 다시 철거 현장으로',3000)}
 
 // ---- 1. 흰개미 (철거반 인부 대신 그림) ----
@@ -2074,7 +2076,7 @@ async function loadFirm(f){
   // 하늘에서 사옥으로 날아 들어오기
   cam.theta=0.75;cam.phi=0.62;cam.dist=2400;camFly={t:0,from:{dist:2400,phi:0.62,theta:0.75},to:{dist:Math.min(1600,560*Math.max(1,1.15*innerHeight/innerWidth)),phi:0.95,theta:1.25}};
   clearTimeout(slowMsg);setLoading(false);
-  if(!lsGet('smasharch_tut_v2'))setTimeout(showWelcome,400);
+  if(!lsGet('smasharch_tut_v2')&&!$('#mPatch').classList.contains('open'))setTimeout(showWelcome,400);
   if(HQFIX&&f.dkey==='d'+HQFIX.kid)hqFixAsk();
   else if(!fake&&!B.some(b=>b.hq))toast('사옥 건물을 못 찾았어요. 설정 → "사옥 건물 직접 지정"으로 골라주세요.',4500);
   else if(!fake&&!f.tenant&&parseFloor(f.addr)==null&&B.some(b=>b.hq))toast('레이드 보스 · 사옥 전체를 쓰는 회사예요. 사옥 기둥이 2배 단단해요',3500);
@@ -2087,7 +2089,7 @@ async function loadFirm(f){
 // ---------- 회사 검색 / 모달 ----------
 function closeModals(){document.querySelectorAll('.modal').forEach(m=>m.classList.remove('open'))}
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=closeModals);
-document.querySelectorAll('.modal').forEach(m=>m.addEventListener('pointerdown',e=>{if(e.target===m)closeModals()}));
+document.querySelectorAll('.modal').forEach(m=>m.addEventListener('pointerdown',e=>{if(e.target!==m)return;if(m.id==='mPatch'&&$('#patchOk')){$('#patchOk').click();return}closeModals()}));
 $('#btnFirm').onclick=()=>{castSum();$('#mFirm').classList.add('open');loadHot();setTimeout(()=>$('#customQ').focus(),50)};
 $('#btnSet').onclick=()=>$('#mSet').classList.add('open');
 function firmButton(name,addr,onclick,firm){const b=document.createElement('button');
@@ -3780,10 +3782,9 @@ canvas.addEventListener('webglcontextrestored',()=>location.reload());
   if(!f&&sp.get('lat')&&sp.get('lng'))f={name:sp.get('name')||'공유된 위치',addr:'',lat:+sp.get('lat'),lng:+sp.get('lng')};
   requestAnimationFrame(frame);
   if(f){loadFirm(f);if(vs>0&&vs<1e10)challengeStart(vs)}else{resetWorld();$('#firmName').textContent='회사를 골라주세요';$('#mFirm').classList.add('open');loadHot()}
-  if(!lsGet('smasharch_tut_v2'))lsSet('smasharch_ver',GAME_VER);                       // 처음 온 사람은 튜토리얼만
-  else if(lsGet('smasharch_ver')!==GAME_VER&&$('#mPatch')){if(opts.patch===false)lsSet('smasharch_ver',GAME_VER);else $('#mPatch').classList.add('open')}   // 설정에서 끌 수 있음   // 다시 온 사람은 업데이트 내역
+  if(lsGet('smasharch_ver')!==GAME_VER&&$('#mPatch')){if(opts.patch===false&&!NOTICE_MAJOR)lsSet('smasharch_ver',GAME_VER);else $('#mPatch').classList.add('open')}   // 공지는 처음 온 사람에게도 (닫으면 환영 창)   // 설정에서 끌 수 있음   // 다시 온 사람은 업데이트 내역
 })();
-if($('#patchOk'))$('#patchOk').onclick=()=>{$('#mPatch').classList.remove('open');lsSet('smasharch_ver',GAME_VER);
+if($('#patchOk'))$('#patchOk').onclick=()=>{$('#mPatch').classList.remove('open');lsSet('smasharch_ver',GAME_VER);if(!lsGet('smasharch_tut_v2'))setTimeout(showWelcome,300);
   const no=$('#patchNo');if(no){opts.patch=!no.checked;lsSet('smasharch_opts',opts);const o=$('#optPatch');if(o)o.checked=opts.patch}};
 if($('#patchNo'))$('#patchNo').checked=opts.patch===false;
 if($('#patchEarth'))$('#patchEarth').onclick=()=>{$('#patchOk').click();setGM('earth')};
@@ -3926,7 +3927,7 @@ function showWelcome(){const m=$('#mWelcome');if(!m){openGuide('start');return}c
 if($('#mWelcome')){$('#wMission').onclick=()=>{closeModals();lsSet('smasharch_tut_v2',1);missionStart()};
   $('#wGuide').onclick=()=>{lsSet('smasharch_tut_v2',1);openGuide('start')};$('#wSkip').onclick=()=>{closeModals();lsSet('smasharch_tut_v2',1)}}
 // 따라하기 미션 — 화면 왼쪽에 할 일 목록, 해내면 자동으로 체크
-const MISSIONS=[
+const MISSIONS_B=[
   {t:TOUCH?'한 손가락으로 화면을 밀어 돌려보기':'빈 곳을 드래그해서 화면 돌려보기',ok:()=>MS.rot>0.6},
   {t:TOUCH?'두 손가락으로 확대·축소해 보기':'마우스 휠로 확대·축소해 보기',ok:()=>MS.zoom>0.25},
   {t:`<b>1 철거반</b>을 고르고 건물을 ${K}`,w:0,ok:()=>(STATS.tools.crew||0)>0},
@@ -3935,17 +3936,27 @@ const MISSIONS=[
   {t:`옥상의 <b>사장님</b>을 ${K}해서 기절시키기`,ok:()=>MS.boss>0},
   {t:`<b>단면</b> 버튼으로 건물 속 들어가 보기`,ok:()=>MODE==='section'},
 ];
+// 재난 모드 따라하기
+const MISSIONS_E=[
+  {t:TOUCH?'한 손가락으로 화면을 밀어 돌려보기':'빈 곳을 드래그해서 화면 돌려보기',ok:()=>MS.rot>0.6},
+  {t:TOUCH?'두 손가락으로 확대·축소해 보기':'마우스 휠로 확대·축소해 보기',ok:()=>MS.zoom>0.25},
+  {t:`<b>1 흰개미 떼</b>를 고르고 건물을 ${K}`,w:0,ok:()=>(STATS.tools.crew||0)>0},
+  {t:`<b>2 코끼리 떼</b>: 땅을 ${K} → 건물 너머를 한 번 더 ${K}`,w:1,ok:()=>(STATS.tools.dozer||0)>0},
+  {t:`<b>5 두더지 굴</b>을 건물 밑에 파고 ${TOUCH?'[와르르!]':'Space'}로 꺼뜨리기`,w:4,ok:()=>(STATS.tools.blast||0)>0},
+  {t:`옥상의 <b>사장님</b>을 ${K}해서 기절시키기`,ok:()=>MS.boss>0},
+  {t:`<b>9 쓰나미</b>: 땅을 ${K} → 파도가 갈 방향을 한 번 더 ${K}`,w:8,ok:()=>(STATS.tools.trim||0)>0},
+];
 let MS=null;
-function missionStart(){MS={i:0,rot:0,zoom:0,boss:0,th:cam.theta,ds:cam.dist,done:new Array(MISSIONS.length).fill(false)};missionUI();toast('🎯 왼쪽 목록을 하나씩 해보세요. 해내면 자동으로 체크돼요',3500)}
+function missionStart(){const list=EARTH()?MISSIONS_E:MISSIONS_B;MS={list,i:0,rot:0,zoom:0,boss:0,th:cam.theta,ds:cam.dist,done:new Array(list.length).fill(false)};missionUI();toast('🎯 왼쪽 목록을 하나씩 해보세요. 해내면 자동으로 체크돼요',3500)}
 function missionTick(){if(!MS)return;MS.rot+=Math.abs(cam.theta-MS.th);MS.th=cam.theta;if(MS.ds>0)MS.zoom+=Math.abs(cam.dist-MS.ds)/MS.ds;MS.ds=cam.dist;
-  let ch=false;MISSIONS.forEach((m,i)=>{if(!MS.done[i]&&m.ok()){MS.done[i]=true;ch=true;sfx(4,0.15)}});if(ch)missionUI()}
+  let ch=false;MS.list.forEach((m,i)=>{if(!MS.done[i]&&m.ok()){MS.done[i]=true;ch=true;sfx(4,0.15)}});if(ch)missionUI()}
 function missionUI(){let el=$('#mission');if(!MS){if(el)el.remove();return}
   if(!el){el=document.createElement('div');el.id='mission';document.body.appendChild(el)}
-  const n=MS.done.filter(Boolean).length,all=n===MISSIONS.length;
-  el.innerHTML=`<div class="mh"><b>🎯 따라하기 ${n}/${MISSIONS.length}</b><button title="닫기">×</button></div>`+MISSIONS.map((m,i)=>`<div class="mi${MS.done[i]?' ok':''}"><i>${MS.done[i]?'✔':i+1}</i><span>${m.t}</span>${m.w!=null&&!MS.done[i]?`<button data-w="${m.w}">고르기</button>`:''}</div>`).join('')+
+  const n=MS.done.filter(Boolean).length,all=n===MS.list.length;
+  el.innerHTML=`<div class="mh"><b>🎯 ${EARTH()?'재난 모드 ':''}따라하기 ${n}/${MS.list.length}</b><button title="닫기">×</button></div>`+MS.list.map((m,i)=>`<div class="mi${MS.done[i]?' ok':''}"><i>${MS.done[i]?'✔':i+1}</i><span>${m.t}</span>${m.w!=null&&!MS.done[i]?`<button data-w="${m.w}">고르기</button>`:''}</div>`).join('')+
     (all?`<div class="mdone">🎉 다 했어요! 이제 마음껏 부수세요.<br><button class="btn-s" id="mGuideBtn">📘 다른 도구도 보기</button></div>`:`<div class="mfoot"><button class="btn-s" id="mGuideBtn">📘 가이드 보기</button></div>`);
   el.querySelector('.mh button').onclick=()=>{MS=null;missionUI()};
-  el.querySelectorAll('.mi button').forEach(b=>b.onclick=()=>{selectWeapon(+b.dataset.w);toast(`${WEAPONS[+b.dataset.w].name} 준비 완료`,1500)});
+  el.querySelectorAll('.mi button').forEach(b=>b.onclick=()=>{selectWeapon(+b.dataset.w);toast(`${EARTH()?E_TOOLS[+b.dataset.w][1]:WEAPONS[+b.dataset.w].name} 준비 완료`,1500)});
   const g=el.querySelector('#mGuideBtn');if(g)g.onclick=()=>openGuide('tools');
   if(all){flashScreen(0.2,'#fff3c4');sfx(20,0.6);setTimeout(()=>{if(MS&&MS.done.every(Boolean)){MS=null;missionUI()}},12000)}}
 setInterval(missionTick,300);
