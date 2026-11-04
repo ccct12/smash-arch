@@ -41,7 +41,7 @@ function addrQueries(addr){
 
 // ---------- 설정 ----------
 const FLOOR_Y = -60, BOTTOM_Y = -75;
-const GAME_VER='2026.11.03c';   // 패치 노트 버전 — 바꾸면 재방문자에게 업데이트 창이 한 번 뜸 (index.html #mPatch 내용도 같이 수정)
+const GAME_VER='2026.11.04';   // 패치 노트 버전 — 바꾸면 재방문자에게 업데이트 창이 한 번 뜸 (index.html #mPatch 내용도 같이 수정)
 const opts = {sound:true, labels:true, debris:true, shadows:true, pins:true, mini:false, shake:false, night:true, patch:true};
 try{ const s = JSON.parse(localStorage.getItem('smasharch_opts')||'null'); if(s) Object.assign(opts,s);}catch(e){}
 // ---------- 낮·밤 (야근 모드) ----------
@@ -1209,14 +1209,14 @@ function drawStamp(m,s){
 function boom3(x,y,z,size){const n=Math.min(40,Math.floor(size*2.5));
   for(let k=0;k<n;k++){const a=Math.random()*Math.PI*2,s=Math.random()*size*0.6;spawn(x,y,z,Math.cos(a)*s,2+Math.random()*size*0.6,Math.sin(a)*s,0.6+Math.random()*size*0.08,Math.random()<0.5?[0.8,0.78,0.74]:[0.62,0.6,0.57],0.5+Math.random()*0.5,1)}
   sfx(size)}
-function updateTools(dt){bossUpdate(dt);boomUpdate(dt);clientUpdate(dt);updateCranes(dt);updateCrews(dt);updateDozers(dt);updateRebar(dt);updateStamps(dt);updateTools2(dt)}
+function updateTools(dt){bossUpdate(dt);boomUpdate(dt);adUpdate(dt);clientUpdate(dt);updateCranes(dt);updateCrews(dt);updateDozers(dt);updateRebar(dt);updateStamps(dt);updateTools2(dt)}
 function drawTools(m,mg){
   for(const c of CRANES)drawCrane(m,mg,c);
   for(const c of CREWS)for(const w of c.ws)drawWorker(m,w,TOY);
   for(const d of DOZERS)drawDozer(m,d);
   for(const r of REBARFX)drawRebarFx(m,r);
   for(const s of STAMPS)drawStamp(m,s);
-  drawTools2(m,mg);drawBoss(m,mg);drawClient(m,mg);drawShip(m,mg);drawStopFence(m);
+  drawTools2(m,mg);drawBoss(m,mg);drawClient(m,mg);drawShip(m,mg);drawAd(m,mg);drawStopFence(m);
   if(dozerPath&&dozerPath.b){const a=dozerPath.a,b=dozerPath.b,l=Math.hypot(b.x-a.x,b.z-a.z);const n=Math.max(1,Math.floor(l/4));
     for(let k=0;k<=n;k+=1){const x=a.x+(b.x-a.x)*k/n,z=a.z+(b.z-a.z)*k/n;pushShape(mg,CUBE,x,groundAt(x,z)+0.6,z,1.6,0.3,1.6,0,[1,0.8,0.1],1)}}
 }
@@ -1796,7 +1796,7 @@ function makeLabels(){const box=$('#labels');box.innerHTML='';LBL=[];
   makePins();
 }
 function updateLabels(){
-  drawFloats();updateUltUI();drawGesture();drawBossUI();drawClientUI();stopUI();shipUI();
+  drawFloats();updateUltUI();drawGesture();drawBossUI();drawClientUI();stopUI();shipUI();adUI();
   if(MODE==='section'){updateSecLabels();return}
   const occ=new Set();
   for(const L of LBL){const b=L.b;if(!b.alive||(L.pin?!opts.pins||b.hq:!opts.labels)){L.el.style.display='none';continue}
@@ -1891,7 +1891,7 @@ async function loadFirm(f){
     else{const qs=f.q||addrQueries(f.addr||f.name);for(let i=0;i<qs.length;i++){const r=await geocode(qs[i]);if(r){lat=r.lat;lng=r.lng;approx=!!f.approxLast&&i===qs.length-1;break}}
       if(lat!=null)lsSet('smasharch_geo3_'+f.id,{lat,lng,approx})}
   }
-  CUR=f;$('#firmName').textContent=f.name;$('#firmAddr').textContent=(f.addr||'')+(f.tenant?' · 입주 건물':'');
+  CUR=f;geoNote(false);adReset();$('#firmName').textContent=f.name;$('#firmAddr').textContent=(f.addr||'')+(f.tenant?' · 입주 건물':'');
   bossReset();clientReset();CLIENT_USED=false;SINK_UNTIL=0;for(const b of [...DETS])freeDet(b);clearTools();STATS={t0:0,kills:0,tools:{}};ULT=0;ultArmed=false;
   BASE=null;resetWorld();LAT0=lat!=null?lat:37.5665;LNG0=lat!=null?lng:126.978;
   cam.tx=0;cam.tz=0;
@@ -1912,7 +1912,8 @@ async function loadFirm(f){
   else if(!fake&&!B.some(b=>b.hq))toast('사옥 건물을 못 찾았어요. 설정 → "사옥 건물 직접 지정"으로 골라주세요.',4500);
   else if(!fake&&!f.tenant&&parseFloor(f.addr)==null&&B.some(b=>b.hq))toast('레이드 보스 · 사옥 전체를 쓰는 회사예요. 사옥 기둥이 2배 단단해요',3500);
   else if(!fake&&f.tenant&&!approx)toast(f.name+'은(는) 이 건물 일부 층에 입주한 사무소예요.',3500);
-  else if(!fake&&approx&&!lsGet('smasharch_hq_'+f.id))toast('정확한 번지를 못 찾아 도로 기준으로 표시했어요. 설정에서 사옥을 직접 지정할 수 있어요.',4500);
+  if(!fake&&approx&&!lsGet('smasharch_hq_'+f.id)&&!(HQFIX&&f.dkey==='d'+HQFIX.kid))setTimeout(()=>geoNote(true,'⚠ 이 사옥은 좌표가 근사값이라 위치가 정확하지 않을 수 있어요. 개발자가 확인 후 고칠 예정이에요.'),1800);
+  else if(!fake&&f.dkey&&!B.some(b=>b.hq))setTimeout(()=>geoNote(true,'⚠ 이 주소에서 사옥 건물을 못 찾았어요. 직접 골라주시면 개발자가 확인 후 반영해요.'),1800);
   try{const u=new URL(location.href);u.search='';if(f.key)u.searchParams.set('firm',f.key);else{u.searchParams.set('lat',lat.toFixed(5));u.searchParams.set('lng',lng.toFixed(5));u.searchParams.set('name',f.name)}history.replaceState(null,'',u)}catch(e){}
 }
 
@@ -1932,13 +1933,15 @@ const norm=s=>s.toLowerCase().replace(/\(주\)|㈜|주식회사|\(유\)|\(합\)|
 const FIDX=FIRMDATA.map(([n,a])=>norm(n)+'|'+norm(a));
 function firmFromData(i){const [n,a,la,ln,st,kid,sido,sgg,kd]=FIRMDATA[i];const f={key:'d'+kid,dkey:'d'+kid,sido,sgg,name:n,addr:a,q:addrQueries(a),approxLast:true,kind:kd||'',tenant:kd!=='u'&&/\d+\s*층|\d+\s*호|지층|지하/.test(a)};
   if(st!==2&&la!=null){f.lat=la;f.lng=ln;f.approx=st===1}return f}
-const GEO_TAG=['','  · 위치 확인 필요(이름검색)','  · 좌표 준비 중(주소 검색으로 찾기)'];
+const GEO_TAG=['','  · ⚠ 근사 좌표','  · 좌표 준비 중(주소 검색으로 찾기)'];
+let FCAT='all';
+document.querySelectorAll('#fCats button').forEach(b=>b.onclick=()=>{FCAT=b.dataset.k;document.querySelectorAll('#fCats button').forEach(x=>x.classList.toggle('on',x===b));runSearch();if(!$('#customQ').value.trim())$('#customQ').focus()});
 function runSearch(){const q=$('#customQ').value.trim();const box=$('#searchRes');box.innerHTML='';
-  if(!q){box.style.display='none';return}
+  if(!q){box.style.display='none';if(FCAT!=='all'){box.style.display='';box.innerHTML=`<div class="small" style="margin:2px 0 8px;opacity:.8">${({'':'건축사사무소',c:'건설사',u:'대학교',g:'일반 회사'})[FCAT]} 중에서 찾아요 — 이름이나 주소를 입력하세요</div>`}return}
   const m=q.match(/^\s*(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)\s*$/);
   box.style.display='';
   if(m){box.appendChild(firmButton('좌표로 이동',`${m[1]}, ${m[2]}`,()=>loadFirm({name:'좌표 '+(+m[1]).toFixed(4)+', '+(+m[2]).toFixed(4),addr:'',lat:+m[1],lng:+m[2]})));return}
-  const nq=norm(q);const hits=[];for(let i=0;i<FIDX.length&&hits.length<40;i++)if(FIDX[i].includes(nq))hits.push(i);
+  const nq=norm(q);const hits=[];for(let i=0;i<FIDX.length&&hits.length<40;i++)if(FIDX[i].includes(nq)&&(FCAT==='all'||(FIRMDATA[i][8]||'')===FCAT))hits.push(i);
   hits.forEach((i,n)=>{const f=firmFromData(i);box.appendChild(firmButton(({c:'🏗 ',g:'🏢 ',u:'🎓 '}[FIRMDATA[i][8]]||'')+FIRMDATA[i][0],FIRMDATA[i][1]+GEO_TAG[FIRMDATA[i][4]]+({c:' · 건설사',g:' · 일반 회사',u:' · 대학교'}[FIRMDATA[i][8]]||''),()=>loadFirm(f),f));if(n<3)setTimeout(()=>{if($('#customQ').value.trim()===q)prefetchFirm(f,false)},400)});
   box.appendChild(firmButton('“'+q+'” 주소로 직접 찾기','목록에 없으면 주소나 건물 이름으로 검색',()=>loadFirm({name:q,addr:q,q:addrQueries(q)})));
   if(hits.length<3)box.appendChild(firmButton('📮 “'+q+'” 바로 추가하기','목록에 없으면 주소만 넣어주세요. 위치를 찾아 바로 추가돼요 (건축사사무소·건설사·일반 회사·대학교)',()=>openReq('회사 추가',q)));
@@ -2886,6 +2889,60 @@ function shipUI(){let el=$('#shipBan');const sh=BOOM.ship;const on=!!sh&&MODE===
   const sc=clamp(1.15-cam.dist/2600,0.55,1);el.style.display='';el.style.left=q[0]+'px';el.style.top=q[1]+'px';el.style.transform=`translate(-50%,0) scale(${sc.toFixed(2)})`;el.classList.toggle('mine',!!(t&&t.mine))}
 
 // =====================================================================
+//  📢 광고 타워 — 게임을 시작하고 조금 지나면 하늘에서 쌍둥이 타워가 내려와요.
+//   두 타워를 잇는 연결 다리에 현수막(시트 '광고' 탭)이 걸려요. 타워는 진짜 건물이라 모든 도구로 부술 수 있고,
+//   어느 한쪽이 다리 높이 아래로 무너지면 다리가 떨어지며 보너스.
+//  ※ 문구·링크·이미지는 시트 '광고' 탭에서. 등장 시간은 AD_DELAY(초), 높이·간격은 AD_H·AD_GAP
+// =====================================================================
+const AD_DELAY=35,AD_H=120,AD_W=20,AD_GAP=56,AD_FALL=5.5,AD_BRIDGE=0.46;
+let AD={list:null,t:0,tw:null,idx:0,swap:0,loading:false};
+function adReset(){AD.t=0;AD.tw=null;const el=$('#adBan');if(el)el.style.display='none'}
+async function adLoad(){if(AD.list||AD.loading)return;const u=rankUrl();if(!u){AD.list=[];return}AD.loading=true;
+  try{const r=await fetchT(u+(u.includes('?')?'&':'?')+'action=ad',{},12000);AD.list=r&&r.ok&&Array.isArray(r.ads)?r.ads.filter(a=>a&&(a.text||a.img)):[]}catch(e){AD.list=[]}
+  AD.loading=false}
+// 사옥에서 120~300m 떨어진, 주변 35m 안에 건물이 없는 빈 땅 찾기 (없으면 가장 덜 붐비는 곳)
+function adSpot(){const hq=B.find(b=>b.hq&&b.alive)||{cx:cam.tx,cz:cam.tz};let best=null,bs=1e9;
+  for(let k=0;k<48;k++){const a=k*2.399,r=120+(k%6)*36,x=hq.cx+Math.cos(a)*r,z=hq.cz+Math.sin(a)*r;let n=0;
+    forBuildingsNear(x,z,AD_GAP/2+AD_W,b=>{if(b.alive&&distToBuilding(b,x,z)<AD_GAP/2+AD_W)n+=b.area})
+    if(n<bs){bs=n;best={x,z}}if(!n)break}
+  return best}
+function adTowerPts(x,z,rot){const h=AD_W/2,c=h*0.42,loc=[[-h+c,-h],[h-c,-h],[h,-h+c],[h,h-c],[h-c,h],[-h+c,h],[-h,h-c],[-h,-h+c]];   // 모서리를 깎은 정사각형
+  const cr=Math.cos(rot),sr=Math.sin(rot);return loc.map(([u,v])=>[x+u*cr-v*sr,z+u*sr+v*cr])}
+function adStart(){const p=adSpot();if(!p)return;const rot=Math.random()*Math.PI;const dx=Math.cos(rot)*AD_GAP/2,dz=Math.sin(rot)*AD_GAP/2;
+  AD.tw={x:p.x,z:p.z,rot,a:{x:p.x-dx,z:p.z-dz},b:{x:p.x+dx,z:p.z+dz},phase:'fall',t:0,y:700,bs:[],bridge:true};AD.idx=0;AD.swap=0;
+  sfx(10,0.6);toast('📢 하늘에서 광고 타워가 내려와요! 연결 다리를 무너뜨리면 보너스',4000)}
+function adLand(){const tw=AD.tw;tw.phase='stand';tw.y=0;
+  for(const s of [tw.a,tw.b]){const b=makeBuilding('ad'+Math.random().toString(36).slice(2,7),adTowerPts(s.x,s.z,tw.rot),{height:String(AD_H),building:'office'});if(!b)continue;
+    b.style=2;b.col=[0.80,0.84,0.88];b.roof=[0.62,0.66,0.70];b.units=[];b.adTower=true;
+    b.ck=chunkAt(b.cx,b.cz,true);b.ck.blds.push(b);B.push(b);indexBuilding(b,B.length-1);b.ck.dB=true;tw.bs.push(b);
+    boom3(s.x,1,s.z,26);for(let k=0;k<24;k++)spawn(s.x+(Math.random()-.5)*40,1,s.z+(Math.random()-.5)*40,(Math.random()-.5)*16,3+Math.random()*6,(Math.random()-.5)*16,1.5+Math.random()*2,[0.85,0.83,0.8],0.9,2)}
+  bldDirty=true;cam.shake=Math.max(cam.shake,opts.shake?6:0);sfxBoom(0.7);floatText(tw.x,AD_H+20,tw.z,'📢 광고 타워 도착','count',2.6)}
+function adTop(b){return !b||!b.alive?0:b.det?b.base+detTop(b):bTop(b)}
+function adUpdate(dt){if(MODE!=='city'||!CUR)return;
+  if(!AD.tw){if(AD.list===null){adLoad();return}if(!AD.list.length)return;AD.t+=dt;if(AD.t>=AD_DELAY&&!$('#loading').classList.contains('on'))adStart();return}
+  const tw=AD.tw;tw.t+=dt;AD.swap+=dt;if(AD.swap>8&&AD.list.length>1){AD.swap=0;AD.idx=(AD.idx+1)%AD.list.length}
+  if(tw.phase==='fall'){const u=Math.min(1,tw.t/AD_FALL),e=1-Math.pow(1-u,3);tw.y=700*(1-e);if(Math.random()<0.6)for(const s of [tw.a,tw.b])spawn(s.x+(Math.random()-.5)*8,tw.y-2,s.z+(Math.random()-.5)*8,(Math.random()-.5)*4,-8-Math.random()*6,(Math.random()-.5)*4,1.2+Math.random(),[1,0.7,0.3],0.5,1);if(u>=1)adLand();return}
+  if(tw.bridge){const by=AD_H*AD_BRIDGE;if(adTop(tw.bs[0])<by+3||adTop(tw.bs[1])<by+3){tw.bridge=false;adBridgeFall()}}}
+function adBridgeFall(){const tw=AD.tw,by=AD_H*AD_BRIDGE;
+  for(let k=0;k<30;k++){const t=Math.random();spawn(tw.a.x+(tw.b.x-tw.a.x)*t,by,tw.a.z+(tw.b.z-tw.a.z)*t,(Math.random()-.5)*8,Math.random()*4,(Math.random()-.5)*8,1.5+Math.random()*2.5,Math.random()<0.5?[0.80,0.84,0.88]:[0.86,0.14,0.12],0)}
+  addScore(30000);sfxBoom(0.6);floatText(tw.x,by+8,tw.z,'📢 광고 다리 철거! +30,000','count',2.8);const el=$('#adBan');if(el)el.style.display='none'}
+// 내려오는 동안은 통짜 타워를, 착륙 후에는 왕관(층층이 좁아지는 꼭대기)·첨탑·연결 다리만 그림 (몸통은 진짜 건물)
+function drawAd(m,mg){const tw=AD.tw;if(!tw||MODE!=='city')return;const P=(x,y,z,sx,sy,sz,c,g,sh)=>pushShape(g?mg:m,sh||CUBE,x,y,z,sx,sy,sz,tw.rot,c,g?1:0);
+  const silver=[0.80,0.84,0.88],dark=[0.42,0.47,0.53];
+  [tw.a,tw.b].forEach((s,i)=>{const b=tw.bs[i];let base=tw.y;
+    if(tw.phase==='fall'){P(s.x,base+AD_H/2,s.z,AD_W,AD_H,AD_W,silver);P(s.x,base+AD_H*0.25,s.z,AD_W+0.4,1,AD_W+0.4,dark);P(s.x,base+AD_H*0.7,s.z,AD_W+0.4,1,AD_W+0.4,dark);P(s.x,base-2,s.z,6,3,6,[1,0.75,0.35],1)}
+    else if(!b||!b.alive||b.det||b.h<b.h0-0.5)return;
+    const top=base+AD_H;P(s.x,top+5,s.z,AD_W*0.78,10,AD_W*0.78,silver);P(s.x,top+13,s.z,AD_W*0.52,7,AD_W*0.52,silver);P(s.x,top+19,s.z,AD_W*0.28,5,AD_W*0.28,dark);
+    P(s.x,top+33,s.z,0.9,24,0.9,[0.9,0.9,0.92]);P(s.x,top+46,s.z,1.6,1.6,1.6,Math.sin(performance.now()/300)>0?[1,0.3,0.25]:[0.5,0.1,0.1],1,SPHERE)});
+  if(tw.bridge){const by=tw.y+AD_H*AD_BRIDGE,len=AD_GAP-AD_W*0.8;P(tw.x,by,tw.z,len,4.2,5.5,silver);P(tw.x,by,tw.z,len+0.2,1.2,5.7,[1,0.86,0.45],1);P(tw.x,by-2.4,tw.z,len,0.6,6,dark)}}
+function adUI(){let el=$('#adBan');const tw=AD.tw,on=!!tw&&tw.bridge&&MODE==='city'&&AD.list&&AD.list.length;
+  if(!on){if(el)el.style.display='none';return}
+  if(!el){el=document.createElement('a');el.id='adBan';el.target='_blank';el.rel='noopener';document.body.appendChild(el)}
+  const by=tw.y+AD_H*AD_BRIDGE-3,q=project(tw.x,by,tw.z);if(!q){el.style.display='none';return}
+  const a=AD.list[AD.idx%AD.list.length];const html=(a.who?`<small>${esc(a.who)}</small>`:'')+(a.img?`<img src="${esc(a.img)}" alt="" onerror="this.remove()">`:'')+(a.text?`<b>${esc(a.text)}</b>`:'')+(a.link?'<i>눌러서 보기 ↗</i>':'');
+  if(el.dataset.h!==html){el.innerHTML=html;el.dataset.h=html;if(a.link)el.href=a.link;else el.removeAttribute('href');el.classList.toggle('lk',!!a.link)}
+  const sc=clamp(0.95-cam.dist/2600,0.42,0.85);el.style.display='';el.style.left=q[0]+'px';el.style.top=q[1]+'px';el.style.transform=`translate(-50%,0) scale(${sc.toFixed(2)})`}
+// =====================================================================
 //  발주처(클라이언트) — "더 부술 거리를 던져주는 고급 샌드백"
 //   · 등장: 사장님이 옥상에 있을 때 사장님 건물이 20~30% 부서지면 검은 차로 난입 (동네·단면 모드 모두, 한 판에 1번)
 //   · 패턴 A 억지 보강 : 빨간 임시 철골(동바리)을 덧댐 → 때리면 유리처럼 깨지며 점수
@@ -3111,8 +3168,12 @@ function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;',
 function renderRank(d){RANK_LAST=d;
   const f=(d.firms||[]).map((r,i)=>`<li><b>${i+1}</b><span>${esc(shortName(r.name))}</span><em>${fmt(r.total)}점 · ${r.count}회</em></li>`).join('')||'<li class="empty">아직 기록이 없어요</li>';
   const p=(d.players||[]).map((r,i)=>`<li><b>${i+1}</b><span>${esc(r.nick)} <small>${esc(shortName(r.firm))}</small></span><em>${fmt(r.score)}점</em></li>`).join('')||'<li class="empty">아직 기록이 없어요</li>';
-  $('#rankBody').innerHTML=`<div class="rk-h">이번 주 가장 많이 부서진 사무소</div><ol class="rk">${f}</ol><div class="rk-h">개인 최고 점수</div><ol class="rk">${p}</ol>`;
+  $('#rankBody').innerHTML=`<div class="rk-h" data-t="firms">이번 주 가장 많이 부서진 사무소</div><ol class="rk" data-t="firms">${f}</ol><div class="rk-h" data-t="players">개인 최고 점수</div><ol class="rk" data-t="players">${p}</ol>`;
+  rankTab(RANK_TAB);
 }
+let RANK_TAB='firms';
+function rankTab(t){RANK_TAB=t;document.querySelectorAll('#rankTabs button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));document.querySelectorAll('#rankBody [data-t]').forEach(e=>e.hidden=e.dataset.t!==t)}
+document.querySelectorAll('#rankTabs button').forEach(b=>b.onclick=()=>rankTab(b.dataset.t));
 async function openRank(){
   $('#mRank').classList.add('open');
   rankLockUI();
@@ -3161,7 +3222,8 @@ function showHot(list){const box=$('#hotList'),big=$('#bigFirms'),head=$('#hotHe
   if(!items.length){head.style.display='none';box.style.display='none';big.style.display='';return}
   head.style.display='';box.style.display='';big.style.display='none';
   items.forEach((it,n)=>{const r=FIRMDATA[it.i];const medal=['🥇','🥈','🥉'][n]||(n+1)+'.';
-    box.appendChild(firmButton(`${medal} ${({c:'🏗 ',g:'🏢 ',u:'🎓 '}[r[8]]||'')}${it.f.name}`,`${r[1]} · 👷 ${fmt(it.h.people||1)}명이 무너뜨림${it.h.count>(it.h.people||1)?` (총 ${fmt(it.h.count)}번)`:''}`,()=>loadFirm(it.f),it.f))})}
+    const fb=firmButton(`${medal} ${({c:'🏗 ',g:'🏢 ',u:'🎓 '}[r[8]]||'')}${it.f.name}`,`${r[1]} · 👷 ${fmt(it.h.people||1)}명이 무너뜨림${it.h.count>(it.h.people||1)?` (총 ${fmt(it.h.count)}번)`:''}`,()=>loadFirm(it.f),it.f);if(n>=5)fb.classList.add('extra');box.appendChild(fb)});
+  box.classList.add('short');if(items.length>5){const mb=document.createElement('button');mb.className='hot-more';mb.textContent=`더 보기 (${items.length-5}곳) ▾`;mb.onclick=()=>{box.classList.remove('short');mb.remove()};box.appendChild(mb)}}
 // =====================================================================
 // 회사 추가 요청 · 문의함 → Apps Script '요청함' 시트로
 // =====================================================================
@@ -3172,10 +3234,24 @@ function addFirmRow(r){const kid=+r[5];if(!isFinite(kid))return null;let i=FKI.g
 let HQFIX=null;
 function hqFixAsk(){if(!HQFIX||HQFIX.asked||!CUR||CUR.dkey!=='d'+HQFIX.kid)return;HQFIX.asked=true;
   setTimeout(()=>{pickHQ=true;$('#hint').textContent='우리 건물을 눌러주세요 — 위치가 바로 고쳐져요';toast('📍 주소로 정확한 건물을 못 찾았어요. 지도를 돌려보며 우리 건물을 눌러주세요 (30분 안에 1번, 모두에게 반영)',7000)},2600)}
-async function hqFixSend(la,ln){if(!HQFIX||!CUR||CUR.dkey!=='d'+HQFIX.kid||performance.now()>HQFIX.until)return;const kid=HQFIX.kid;HQFIX=null;const u=rankUrl();if(!u)return;
+async function hqFixSend(la,ln){if(!CUR||!CUR.dkey)return;
+  if(!HQFIX||CUR.dkey!=='d'+HQFIX.kid||performance.now()>HQFIX.until)return hqPropose(la,ln);
+  const kid=HQFIX.kid;HQFIX=null;const u=rankUrl();if(!u)return;
   try{const r=await fetchT(u,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({type:'fix',kid,lat:la,lng:ln,vid:lsGet('smasharch_vid')||''})},15000);
     if(r&&r.ok){const i=FKI.get(kid);if(i!=null){FIRMDATA[i][2]=la;FIRMDATA[i][3]=ln;FIRMDATA[i][4]=0}if(CUR){CUR.lat=la;CUR.lng=ln;CUR.approx=false}toast('위치를 고쳤어요! 다음부터 모두 이 건물로 가요 👍',3500)}
     else toast('위치 수정 실패: '+((r&&r.error)||'알 수 없는 오류'),4000)}catch(e){toast('위치 수정을 보내지 못했어요 — 설정 → 문의함으로 알려주세요',4000)}}
+// 그 밖의 사람이 사옥 건물을 직접 고르면 → 서버 요청함에 '위치 제안' (2명이 같은 곳을 고르면 자동 확정, 아니면 개발자가 확인)
+async function hqPropose(la,ln){const u=rankUrl(),kid=+String(CUR.dkey).slice(1);if(!u||!(kid>=0))return;geoNote(false);
+  try{const r=await fetchT(u,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({type:'fix',kid,lat:la,lng:ln,vid:lsGet('smasharch_vid')||''})},15000);
+    if(r&&r.ok&&r.applied){const i=FKI.get(kid);if(i!=null){FIRMDATA[i][2]=la;FIRMDATA[i][3]=ln;FIRMDATA[i][4]=0}toast('📍 다른 사람과 같은 건물을 골랐어요 — 모두에게 바로 반영됐어요 👍',4200)}
+    else if(r&&r.ok)toast(r.again?'📍 오늘 이미 위치를 보냈어요. 이 브라우저에선 고른 건물로 보여요':'📍 위치 제안을 보냈어요 — 개발자가 확인하면 모두에게 반영돼요 (이 브라우저엔 바로 저장)',4200)
+    else if(r&&r.error)toast('위치 제안: '+r.error,4000)}catch(e){}}
+// 좌표가 근사값인 회사를 열었을 때 화면 위에 잠깐 뜨는 안내 (버튼으로 바로 직접 지정)
+function geoNote(on,msg){let el=$('#geoNote');if(!on){if(el)el.classList.remove('on');return}
+  if(!el){el=document.createElement('div');el.id='geoNote';el.innerHTML='<span></span><button class="gn-pick">📍 우리 건물 직접 고르기</button><button class="gn-x" aria-label="닫기">×</button>';document.body.appendChild(el);
+    el.querySelector('.gn-pick').onclick=()=>{geoNote(false);closeModals();pickHQ=true;$('#hint').textContent='우리 사옥 건물을 눌러주세요';toast('지도를 돌려보며 우리 사옥 건물을 눌러주세요',3500)};
+    el.querySelector('.gn-x').onclick=()=>geoNote(false)}
+  el.querySelector('span').textContent=msg;el.classList.add('on');clearTimeout(geoNote._t);geoNote._t=setTimeout(()=>el.classList.remove('on'),14000)}
 function openReq(kind,name){closeModals();const m=$('#mReq');if(!m)return;
   setReqKind(kind||'회사 추가');if(name!=null)$('#rqName').value=name;if(name&&/대학/.test(name))setReqCat('대학교');$('#rqMsg2').textContent='';m.classList.add('open');
   setTimeout(()=>{const fk=kind==='회사 추가'||kind==='정보 수정'||!kind;const el=fk?($('#rqName').value?$('#rqAddr'):$('#rqName')):$('#rqMsg');try{el.focus()}catch(e){}},60)}
@@ -3594,13 +3670,23 @@ async function flushConq(){
 addEventListener('pagehide',()=>{const u=rankUrl();if(u&&CONQ_Q.size&&navigator.sendBeacon){try{navigator.sendBeacon(u,new Blob([conqBody()],{type:'text/plain;charset=utf-8'}))}catch(e){}}});
 
 // ---------- 접속 집계 (탭 하나당 1번만 서버에 알림 → 시트 '접속기록'·'접속자') ----------
+// 어디서 들어왔는지: ?utm_source= → 앱 안 브라우저(카톡·인스타 등) → 이전 페이지 주소 → 없으면 '직접'
+function visitSource(ref){
+  try{const u=new URL(location.href).searchParams.get('utm_source');if(u)return u.slice(0,20)}catch(e){}
+  const ua=navigator.userAgent||'';
+  const app=[[/KAKAOTALK/i,'카카오톡'],[/Instagram/i,'인스타그램'],[/FBAN|FBAV|FB_IAB/i,'페이스북'],[/NAVER\(inapp|NAVER\//i,'네이버'],[/DaumApps|DaumDevice/i,'다음'],[/\bLine\//i,'라인'],[/everytimeApp/i,'에브리타임'],[/BAND\//i,'밴드'],[/Threads/i,'스레드'],[/Twitter/i,'X']];
+  for(const [re,n] of app)if(re.test(ua))return n;
+  const h=String(ref||'').toLowerCase();if(!h||h===location.hostname||/ccct12\.github\.io$/.test(h))return '직접';
+  const site=[[/kakao|kakaocdn|daum\.net\/kakao/,'카카오톡'],[/naver/,'네이버'],[/google/,'구글'],[/daum/,'다음'],[/bing/,'빙'],[/instagram/,'인스타그램'],[/facebook|fb\.com/,'페이스북'],[/threads/,'스레드'],[/^t\.co$|twitter|(^|\.)x\.com$/,'X'],[/band\.us/,'밴드'],[/everytime/,'에브리타임'],[/teamblind|blind/,'블라인드'],[/dcinside/,'디시'],[/clien/,'클리앙'],[/theqoo/,'더쿠'],[/fmkorea/,'에펨코리아'],[/hada\.io/,'긱뉴스']];
+  for(const [re,n] of site)if(re.test(h))return n;
+  return h.slice(0,20)}
 (function sendVisit(){
   const u=rankUrl();if(!u)return;
   try{if(sessionStorage.getItem('smasharch_visited'))return;sessionStorage.setItem('smasharch_visited','1')}catch(e){}
   let vid=lsGet('smasharch_vid'),first=false;
   if(!vid||!/^[a-z0-9]{8,32}$/.test(vid)){vid=(Date.now().toString(36)+Math.random().toString(36).slice(2,10)).slice(0,20);lsSet('smasharch_vid',vid);first=true}
   let ref='';try{ref=document.referrer?new URL(document.referrer).hostname:''}catch(e){}
-  const body=JSON.stringify({type:'visit',vid,first,dev:matchMedia('(pointer:coarse)').matches?'모바일':'PC',ref});
+  const body=JSON.stringify({type:'visit',vid,first,dev:matchMedia('(pointer:coarse)').matches?'모바일':'PC',ref,src:visitSource(ref)});
   setTimeout(()=>{try{fetch(u,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body,keepalive:true}).catch(()=>{})}catch(e){}},1500);
 })();
 

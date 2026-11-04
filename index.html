@@ -464,6 +464,40 @@ body.iostip #iosTip{display:flex}
 #mission .mfoot,#mission .mdone{margin-top:6px;text-align:center}#mission .mdone{color:var(--gold);font-weight:700}
 @media (pointer:coarse) and (max-height:500px){#mission{top:auto;bottom:calc(64px + env(safe-area-inset-bottom));transform:none;font-size:11px;width:min(240px,38vw);padding:6px 8px}#mission .mi{padding:2px 0}}
 body.night #mission{background:rgba(14,16,22,.94)}
+/* 2026-11-04: 회사 고르기 창 — 위(검색·구분)는 고정, 아래 목록만 한 번에 스크롤 */
+.card.fcard{display:flex;flex-direction:column;overflow:hidden;padding-bottom:10px}
+.fhead{flex:0 0 auto;padding-bottom:6px;border-bottom:1px solid var(--line);margin-bottom:6px}
+.fhead h2{margin-bottom:8px}
+.fbody{flex:1 1 auto;min-height:0;overflow:auto;touch-action:pan-y;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding-right:2px}
+#mFirm #searchRes{max-height:none;margin-bottom:8px}
+#fCats{display:flex;gap:4px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+#fCats button{flex:0 0 auto;padding:5px 10px;border-radius:14px;background:var(--panel2);border:1px solid var(--line);font-size:12.5px;font-weight:700;color:#c9cdd1;white-space:nowrap}
+#fCats button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+details.fold{margin:8px 0;border:1px solid var(--line);border-radius:7px;padding:6px 10px;background:var(--panel2)}
+details.fold summary{cursor:pointer;font-size:13px;font-weight:700;list-style:none}details.fold summary::-webkit-details-marker{display:none}
+details.fold summary:before{content:'▸ ';color:var(--muted)}details.fold[open] summary:before{content:'▾ '}
+details.fold summary small{font-weight:400;color:var(--muted);font-size:11px}
+details.fold .client-in{margin:8px 0 2px}
+.hot-more{display:block;width:100%;padding:7px;margin:-2px 0 8px;border-radius:7px;border:1px solid var(--line);background:transparent;color:#ccc;font-size:12.5px}
+#hotList.short .firm.extra{display:none}
+#rankTabs{margin-bottom:8px}#rankBody [hidden]{display:none!important}
+#mPatch details.fold ul{margin-top:6px}
+.modal .card>.close{position:sticky;top:-6px;z-index:2}
+/* 근사 좌표 안내 */
+#geoNote{position:fixed;left:50%;top:118px;transform:translate(-50%,-8px);z-index:9;display:flex;align-items:center;gap:8px;max-width:min(560px,calc(100vw - 24px));background:#2b2410;border:1px solid #f2b134;color:#ffe3a3;border-radius:8px;padding:7px 8px 7px 12px;font-size:12.5px;line-height:1.4;opacity:0;pointer-events:none;transition:opacity .25s,transform .25s}
+#geoNote.on{opacity:1;pointer-events:auto;transform:translate(-50%,0)}
+#geoNote span{flex:1;min-width:0}
+#geoNote .gn-pick{flex:0 0 auto;padding:6px 10px;border-radius:6px;background:#f2b134;color:#1d1f24;font-weight:800;font-size:12.5px;border:0;white-space:nowrap}
+#geoNote .gn-x{flex:0 0 auto;background:transparent;border:0;color:#bbb;font-size:18px;padding:0 4px}
+@media (pointer:coarse) and (max-height:500px){#geoNote{top:auto;bottom:calc(70px + env(safe-area-inset-bottom));font-size:11px}#geoNote .gn-pick{font-size:11px;padding:5px 8px}}
+/* 광고 타워 현수막 */
+#adBan{position:fixed;z-index:4;display:block;pointer-events:none;transform-origin:50% 0;text-align:center;text-decoration:none;background:#fdfdfd;color:#16181c;border:3px solid #1f6feb;border-radius:4px;padding:6px 16px 8px;box-shadow:0 6px 16px rgba(0,0,0,.35);min-width:180px;max-width:360px}
+#adBan.lk{pointer-events:auto;cursor:pointer}
+#adBan:before,#adBan:after{content:'';position:absolute;top:-12px;width:2px;height:12px;background:#9aa3ad}#adBan:before{left:18px}#adBan:after{right:18px}
+#adBan small{display:block;font-size:11.5px;font-weight:800;color:#1f6feb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#adBan img{display:block;max-width:100%;max-height:90px;margin:4px auto;border-radius:2px}
+#adBan b{display:block;font-family:"Black Han Sans",sans-serif;font-weight:400;font-size:20px;line-height:1.2;word-break:keep-all}
+#adBan i{display:block;font-style:normal;font-size:11px;font-weight:700;color:#1f6feb;margin-top:2px}
 </style>
 </head>
 <body>
@@ -558,6 +592,7 @@ body.night #mission{background:rgba(14,16,22,.94)}
   <p class="sub" id="rankMine"></p>
   <div class="row" style="margin:0 0 12px"><input id="rankNick" placeholder="닉네임 (최대 20자)" maxlength="20"><button class="btn-p" id="rankSubmit">내 점수 등록</button></div>
   <div class="small" id="rankLockMsg" style="margin:-6px 0 10px;color:#ffb86b"></div>
+  <div id="rankTabs" class="seg"><button data-t="firms" class="on">🏢 부서진 사무소</button><button data-t="players">🏆 개인 점수</button></div>
   <div id="rankBody"></div>
   <button class="btn-s" id="rankShare" style="width:100%;margin-top:10px">🏆 랭킹 카드로 공유 (카톡·메신저)</button>
 </div></div>
@@ -626,22 +661,28 @@ body.night #mission{background:rgba(14,16,22,.94)}
 <div id="loading"><div id="loadingMsg">불러오는 중…</div></div>
 <div id="boot"><div><b>SMASH <span>ARCH</span></b><br><span id="bootMsg">건축사사무소 목록을 불러오는 중…</span></div></div>
 
-<div class="modal" id="mFirm"><div class="card">
+<div class="modal" id="mFirm"><div class="card fcard">
+  <div class="fhead">
   <button class="close" data-close>×</button>
   <h2>어디를 부술까요?</h2>
-  <p class="sub">사옥 주변 건물을 OpenStreetMap에서 불러옵니다.</p>
-  <div class="client-in"><label>🎭 등장인물 이름 정하기 <small>(선택 · 이 브라우저에만 저장, 서버·랭킹·공유에는 안 나가요)</small></label>
-    <div class="cn-row"><span>👔 사장님</span><input id="bossName" class="cn-input" maxlength="12" placeholder="예: 왕소장, 김대표 — 비우면 '사장님'" autocomplete="off"></div>
-    <div class="cn-row"><span>😤 발주처</span><input id="clientNames" class="cn-input" maxlength="80" placeholder="쉼표로 최대 5개 — 비우면 가상 이름" autocomplete="off"></div></div>
-  <div class="row" style="margin:0 0 4px"><input id="customQ" placeholder="검색 — 건축사사무소·건설사·일반 회사·대학교 (이름·주소·좌표)" autocomplete="off"></div>
-  <button class="req-link top" data-req="회사 추가">📮 찾는 곳이 없나요? <b>우리 회사·학교 바로 추가</b> <small>(건축사사무소·건설사·일반 회사·대학교)</small></button>
-  <div class="small" style="margin:2px 0 8px"><b id="firmCount">0</b><br>출처: 공공데이터포털 전국건축사사무소표준데이터 · 한국교육개발원 2026 고등교육통계</div>
+  <div class="row" style="margin:0 0 6px"><input id="customQ" placeholder="검색 — 회사·학교 이름, 주소, 좌표" autocomplete="off"></div>
+  <div id="fCats"><button data-k="all" class="on">전체</button><button data-k="">📐 건축사사무소</button><button data-k="c">🏗 건설사</button><button data-k="u">🎓 대학교</button><button data-k="g">🏢 일반 회사</button></div>
+  </div>
+  <div class="fbody">
   <div id="searchRes" style="display:none"></div>
+  <button class="req-link top" data-req="회사 추가">📮 찾는 곳이 없나요? <b>우리 회사·학교 바로 추가</b> <small>(건축사사무소·건설사·일반 회사·대학교)</small></button>
   <div class="small hot-h" id="hotHead" style="display:none">🔥 최근 7일 가장 많이 무너진 사옥 <small>(무너뜨린 사람 수 · 하루 1인 1회)</small></div>
   <div id="hotList"></div>
   <div id="bigFirms"><div class="small" style="margin:10px 0 6px;color:#ccc">대형 설계사무소</div><div id="firmList"></div></div>
+  <details class="fold"><summary>🎭 등장인물 이름 정하기 <small>(사장님 · 발주처)</small></summary>
+  <div class="client-in"><label><small>선택 · 이 브라우저에만 저장, 서버·랭킹·공유에는 안 나가요</small></label>
+    <div class="cn-row"><span>👔 사장님</span><input id="bossName" class="cn-input" maxlength="12" placeholder="예: 왕소장, 김대표 — 비우면 '사장님'" autocomplete="off"></div>
+    <div class="cn-row"><span>😤 발주처</span><input id="clientNames" class="cn-input" maxlength="80" placeholder="쉼표로 최대 5개 — 비우면 가상 이름" autocomplete="off"></div></div>
+  </details>
+  <div class="small" style="margin:8px 0 4px"><b id="firmCount">0</b><br>출처: 공공데이터포털 전국건축사사무소표준데이터 · 한국교육개발원 2026 고등교육통계</div>
+  <div class="small">"좌표 확정"인 곳은 저장된 좌표로 바로 이동해요. ⚠ 표시는 근사 좌표라 어긋날 수 있어요. 도착해서 [📍 우리 건물 직접 고르기]를 눌러 알려주세요.</div>
   <button class="req-link" data-req="문의·버그">📮 문의·버그 제보하기</button>
-  <div class="small">"좌표 확정" 사무소는 TMap 지오코딩 좌표로 바로 이동해요. 나머지는 OpenStreetMap 주소 검색이라 어긋날 수 있어요. 그럴 땐 설정 → "사옥 건물 직접 지정"을 쓰세요.</div>
+  </div>
 </div></div>
 
 <div class="modal" id="mSet"><div class="card">
@@ -737,8 +778,15 @@ body.night #mission{background:rgba(14,16,22,.94)}
 })();
 </script>
 <div class="modal" id="mPatch"><div class="card patch">
-  <div class="small" style="margin:0 0 4px">업데이트 · 2026.11.03 (3차)</div>
+  <div class="small" style="margin:0 0 4px">업데이트 · 2026.11.04</div>
   <h2>이번에 바뀐 것</h2>
+  <ul>
+    <li><b>📢 광고 타워</b> — 게임을 시작하고 조금 지나면 하늘에서 쌍둥이 타워가 내려와요. 두 타워를 잇는 다리에 현수막이 걸려요. 진짜 건물이라 다 부술 수 있고, <b>다리를 떨어뜨리면 +30,000점</b>.</li>
+    <li><b>📍 사옥 위치 바로잡기</b> — 좌표가 근사값인 곳은 도착하면 안내가 떠요. [우리 건물 직접 고르기]로 건물을 누르면 위치가 개발자에게 전달되고, <b>두 사람이 같은 건물을 고르면 모두에게 바로 반영</b>돼요.</li>
+    <li><b>🔎 회사 고르기 창</b> — 검색창과 구분 버튼(건축사사무소·건설사·대학교·일반 회사)은 위에 고정, 아래 목록만 스크롤돼요. 가장 많이 무너진 사옥은 5곳만 먼저 보여요.</li>
+    <li><b>🏆 랭킹</b> — 부서진 사무소 / 개인 점수를 탭으로 나눠 한눈에.</li>
+  </ul>
+  <details class="fold"><summary>지난 업데이트 보기 <small>(11.03 3차까지)</small></summary>
   <ul>
     <li><b>📘 게임 가이드 · 따라하기</b> — 왼쪽 위 <b>?</b> 버튼에 도구마다 예시 사진과 1·2·3 순서를 넣었어요. [🎯 따라하기]를 켜면 할 일 목록이 뜨고, 해내면 자동으로 체크돼요.</li>
     <li><b>📰 업데이트 안내 끄기</b> — 아래 체크를 풀거나 설정에서 끌 수 있어요. 끄더라도 설정 → [업데이트 내역]에서 언제든 볼 수 있어요.</li>
@@ -759,6 +807,7 @@ body.night #mission{background:rgba(14,16,22,.94)}
     <li><b>화면 흔들림 기본 끔</b> — 멀미 방지. 설정에서 다시 켤 수 있어요.</li>
     <li><b>휴대폰</b> — 가로 전용 화면, 안드로이드 전체 화면, 간단 화면(H)·[UI] 버튼.</li>
   </ul>
+  </details>
   <label class="opt" style="margin-top:8px;border:0">다음 업데이트부터 자동으로 띄우지 않기 <input type="checkbox" id="patchNo"></label>
   <button class="btn-p" id="patchOk" style="width:100%;margin-top:6px">확인하고 시작</button>
 </div></div>
