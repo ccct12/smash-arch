@@ -477,7 +477,7 @@ details.fold{margin:8px 0;border:1px solid var(--line);border-radius:7px;padding
 details.fold summary{cursor:pointer;font-size:13px;font-weight:700;list-style:none}details.fold summary::-webkit-details-marker{display:none}
 details.fold summary:before{content:'▸ ';color:var(--muted)}details.fold[open] summary:before{content:'▾ '}
 details.fold summary small{font-weight:400;color:var(--muted);font-size:11px}
-details.fold .client-in{margin:8px 0 2px}
+details.fold .client-in{margin:8px 0 2px}details.fold.cast{margin:0 0 8px;background:#2a1b22;border-color:#5a0d24}details.fold.cast summary{color:#f6c6d2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}details.fold.cast summary b{color:#fff}details.fold.cast summary em{font-style:normal;font-weight:400;font-size:11px;color:#f2b134;margin-left:4px}
 .hot-more{display:block;width:100%;padding:7px;margin:-2px 0 8px;border-radius:7px;border:1px solid var(--line);background:transparent;color:#ccc;font-size:12.5px}
 #hotList.short .firm.extra{display:none}
 #rankTabs{margin-bottom:8px}#rankBody [hidden]{display:none!important}
@@ -676,16 +676,16 @@ details.fold .client-in{margin:8px 0 2px}
   <div id="fCats"><button data-k="all" class="on">전체</button><button data-k="">📐 건축사사무소</button><button data-k="c">🏗 건설사</button><button data-k="u">🎓 대학교</button><button data-k="g">🏢 일반 회사</button></div>
   </div>
   <div class="fbody">
+  <details class="fold cast"><summary id="castSum">🎭 사장님·발주처 이름 정하기</summary>
+  <div class="client-in"><label><small>선택 · 이 브라우저에만 저장, 서버·랭킹·공유에는 안 나가요</small></label>
+    <div class="cn-row"><span>👔 사장님</span><input id="bossName" class="cn-input" maxlength="12" placeholder="예: 왕소장, 김대표 — 비우면 '사장님'" autocomplete="off"></div>
+    <div class="cn-row"><span>😤 발주처</span><input id="clientNames" class="cn-input" maxlength="80" placeholder="쉼표로 최대 5개 — 비우면 가상 이름" autocomplete="off"></div></div>
+  </details>
   <div id="searchRes" style="display:none"></div>
   <div class="req-row"><button class="req-link top" data-req="회사 추가">📮 찾는 곳이 없나요?<b>바로 추가</b></button><button class="req-link top" data-req="사옥 모양">🏢 사옥 모양이 달라요?<b>사진 보내기</b></button></div>
   <div class="small hot-h" id="hotHead" style="display:none">🔥 최근 7일 가장 많이 무너진 사옥 <small>(무너뜨린 사람 수 · 하루 1인 1회)</small></div>
   <div id="hotList"></div>
   <div id="bigFirms"><div class="small" style="margin:10px 0 6px;color:#ccc">대형 설계사무소</div><div id="firmList"></div></div>
-  <details class="fold"><summary>🎭 등장인물 이름 정하기 <small>(사장님 · 발주처)</small></summary>
-  <div class="client-in"><label><small>선택 · 이 브라우저에만 저장, 서버·랭킹·공유에는 안 나가요</small></label>
-    <div class="cn-row"><span>👔 사장님</span><input id="bossName" class="cn-input" maxlength="12" placeholder="예: 왕소장, 김대표 — 비우면 '사장님'" autocomplete="off"></div>
-    <div class="cn-row"><span>😤 발주처</span><input id="clientNames" class="cn-input" maxlength="80" placeholder="쉼표로 최대 5개 — 비우면 가상 이름" autocomplete="off"></div></div>
-  </details>
   <div class="small" style="margin:8px 0 4px"><b id="firmCount">0</b><br>출처: 공공데이터포털 전국건축사사무소표준데이터 · 한국교육개발원 2026 고등교육통계</div>
   <div class="small">"좌표 확정"인 곳은 저장된 좌표로 바로 이동해요. ⚠ 표시는 근사 좌표라 어긋날 수 있어요. 도착해서 [📍 우리 건물 직접 고르기]를 눌러 알려주세요.</div>
   <button class="req-link" data-req="문의·버그">📮 문의·버그 제보하기</button>

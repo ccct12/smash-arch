@@ -1936,7 +1936,7 @@ async function loadFirm(f){
 function closeModals(){document.querySelectorAll('.modal').forEach(m=>m.classList.remove('open'))}
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=closeModals);
 document.querySelectorAll('.modal').forEach(m=>m.addEventListener('pointerdown',e=>{if(e.target===m)closeModals()}));
-$('#btnFirm').onclick=()=>{$('#mFirm').classList.add('open');loadHot();setTimeout(()=>$('#customQ').focus(),50)};
+$('#btnFirm').onclick=()=>{castSum();$('#mFirm').classList.add('open');loadHot();setTimeout(()=>$('#customQ').focus(),50)};
 $('#btnSet').onclick=()=>$('#mSet').classList.add('open');
 function firmButton(name,addr,onclick,firm){const b=document.createElement('button');
   if(firm){b.addEventListener('pointerenter',()=>{clearTimeout(prefT);prefT=setTimeout(()=>prefetchFirm(firm,true),350)});b.addEventListener('pointerleave',()=>clearTimeout(prefT));b.addEventListener('pointerdown',()=>prefetchFirm(firm,true))}b.className='firm';b.innerHTML='<b></b><span></span>';b.querySelector('b').textContent=name;b.querySelector('span').textContent=addr;b.onclick=onclick;return b}
@@ -2997,13 +2997,16 @@ function bossTitle(){return CUR&&CUR.kind==='u'?'총장님':'사장님'}   // �
 function BT(){const n=bossName();return n?n+' '+bossTitle():bossTitle()}
 (function(){const ins=[$('#bossName'),$('#bossName2')].filter(Boolean);
   const fill=()=>{ins.forEach(el=>{if(document.activeElement!==el)el.value=bossName()})};
-  const save=el=>{lsSet('smasharch_boss',el.value.replace(/[<>\u0000-\u001f]/g,'').trim().slice(0,12));fill()};
+  const save=el=>{lsSet('smasharch_boss',el.value.replace(/[<>\u0000-\u001f]/g,'').trim().slice(0,12));fill();castSum()};
   ins.forEach(el=>{el.addEventListener('change',()=>save(el));el.addEventListener('blur',()=>save(el));el.addEventListener('keydown',e=>{e.stopPropagation();if(e.key==='Enter')el.blur()})});fill()})();
 function clientNamesUser(){const v=lsGet('smasharch_clients');return Array.isArray(v)?v:[]}
+// 회사 고르기 창 맨 위 한 줄: 지금 정해 둔 사장님·발주처 이름을 보여줌 (누르면 펼쳐서 바꾸기)
+function castSum(){const el=$('#castSum');if(!el)return;const b=bossName(),c=clientNamesUser();
+  el.innerHTML=b||c.length?`🎭 사장님 <b>${esc(b||'사장님')}</b> · 발주처 <b>${c.length?esc(c[0])+(c.length>1?` 외 ${c.length-1}`:''):'가상 이름'}</b><em>바꾸기</em>`:'🎭 사장님·발주처 이름 정하기<em>우리 회사 버전으로!</em>'}
 function clientName(){const u=clientNamesUser();return pickL(u.length?u:CLIENT_NAMES)}
 (function(){const ins=[$('#clientNames'),$('#clientNames2')].filter(Boolean);
   const fill=()=>{const t=clientNamesUser().join(', ');ins.forEach(el=>{if(document.activeElement!==el)el.value=t})};
-  const save=el=>{const v=el.value.split(/[,，]/).map(x=>x.replace(/[<>\u0000-\u001f]/g,'').trim().slice(0,20)).filter(Boolean).slice(0,5);lsSet('smasharch_clients',v);fill()};
+  const save=el=>{const v=el.value.split(/[,，]/).map(x=>x.replace(/[<>\u0000-\u001f]/g,'').trim().slice(0,20)).filter(Boolean).slice(0,5);lsSet('smasharch_clients',v);fill();castSum()};
   ins.forEach(el=>{el.addEventListener('change',()=>save(el));el.addEventListener('blur',()=>save(el));el.addEventListener('keydown',e=>{e.stopPropagation();if(e.key==='Enter')el.blur()})});fill()})();
 function clientSay(text,prio){const c=CLIENT;if(!c||!text)return;const now=performance.now();if((prio||0)<1&&now-c.lastSay<2600)return;c.text=text;c.textT=3.2;c.lastSay=now}
 function clientInSec(){return MODE==='section'&&!!SEC&&!!CLIENT&&SEC.b===CLIENT.b}
