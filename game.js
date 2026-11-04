@@ -834,6 +834,7 @@ function prismCol(m,x,z,y0,y1,w,c){const h=w/2;m.grow(24);
 function rebars(m,x,z,y,R){for(let k=0;k<4;k++){const ox=(k%2?0.18:-0.18)+(R()-.5)*0.1,oz=(k<2?0.18:-0.18)+(R()-.5)*0.1,hh=0.8+R()*1.0;pushShape(m,CUBE,x+ox+(R()-.5)*0.3,y+hh/2,z+oz+(R()-.5)*0.3,0.07,hh,0.07,0,REBAR,0)}}
 function buildDetMesh(b){
   if(b.custom==='map'){buildMapMesh(b);return}
+  if(b.custom==='spec'){buildSpecMesh(b);return}
   const d=b.det,m=d.mb;m.reset();const st=litSt(b,b.style),c=b.col,base=b.base,R=mulberry(b.id%9973+5);
   const dark=d.weak?[c[0]*0.7,c[1]*0.66,c[2]*0.62]:c;
   let topF=-1;for(let f=d.F-1;f>=0;f--)if(d.fl[f]){topF=f;break}
@@ -883,6 +884,8 @@ function isMapFirmKey(k){return k==='map'||k==='d5523'}
 function applyLandmark(b){if(!b||b.custom)return;b.custom='map';b.customF=LM_F;b.h0=LM_F*LM_FH;b.h=b.h0;b.col=LM_WHITE.slice();b.col0=b.col;b.roof=[0.86,0.87,0.88];b.lm=null;freeDet(b);ensureDet(b);markB(b)}
 function applyLandmarks(){
   if(CUR&&(isMapFirmKey(CUR.key)||isMapFirmKey(CUR.dkey))){const h=B.find(x=>x.hq&&x.alive);if(h)applyLandmark(h)}
+  else if(CUR&&CUR.dkey&&SHAPES[CUR.dkey]){const h=B.find(x=>x.hq&&x.alive);if(h)applySpec(h,SHAPES[CUR.dkey])}   // 시트에서 승인된 사옥 모양
+  for(const f of NB){const k=f.i!=null&&FIRMDATA[f.i]?'d'+FIRMDATA[f.i][5]:null;if(k&&SHAPES[k]&&f.b&&f.b.alive&&!f.b.hq)applySpec(f.b,SHAPES[k])}
   for(const f of NB){if(f.i!=null&&FIRMDATA[f.i]&&FIRMDATA[f.i][5]===5523&&f.b&&f.b.alive)applyLandmark(f.b)}}
 // 건물 축: u = 긴 방향(북쪽 끝 s=0 → 남쪽 끝 s=1), v = 짧은 방향
 function lmFrame(b){if(b.lm)return b.lm;const ob=obbOf(b),ca=Math.cos(ob.ang),sa=Math.sin(ob.ang);let u0=1e9,u1=-1e9,v0=1e9,v1=-1e9;
@@ -3237,6 +3240,90 @@ function showHot(list){const box=$('#hotList'),big=$('#bigFirms'),head=$('#hotHe
     const fb=firmButton(`${medal} ${({c:'🏗 ',g:'🏢 ',u:'🎓 '}[r[8]]||'')}${it.f.name}`,`${r[1]} · 👷 ${fmt(it.h.people||1)}명이 무너뜨림${it.h.count>(it.h.people||1)?` (총 ${fmt(it.h.count)}번)`:''}`,()=>loadFirm(it.f),it.f);if(n>=5)fb.classList.add('extra');box.appendChild(fb)});
   box.classList.add('short');if(items.length>5){const mb=document.createElement('button');mb.className='hot-more';mb.textContent=`더 보기 (${items.length-5}곳) ▾`;mb.onclick=()=>{box.classList.remove('short');mb.remove()};box.appendChild(mb)}}
 // =====================================================================
+//  사옥 모양 (시트 '사옥모양' 탭에서 승인된 것) — 제미나이가 사진을 보고 만든 설계값으로 사옥을 다시 세움
+//   바닥 모양은 지도(OSM) 그대로, 층수·덩어리(셋백)·필로티·외장·색·루버·지붕만 바꿈. 구조(층·기둥·외피)는 일반 건물과 같아서 똑같이 부서짐
+// =====================================================================
+let SHAPES={};
+function hexCol(h,def){const m=/^#?([0-9a-f]{6})$/i.exec(String(h||''));if(!m)return def;const n=parseInt(m[1],16);return[(n>>16&255)/255,(n>>8&255)/255,(n&255)/255]}
+const FAC_ST={curtain_wall:2,horizontal_band:1,punched_window:0,brick:0,exposed_concrete:0,metal_panel:0,stone:0};
+async function loadShapes(){const u=rankUrl();if(!u)return;const c=lsGet('smasharch_shapes');
+  if(c&&c.d&&Date.now()-c.t<600000){SHAPES=c.d;applyShapesNow();return}
+  try{const r=await fetchT(u+(u.includes('?')?'&':'?')+'action=shapes',{},12000);if(r&&r.ok&&r.shapes){SHAPES=r.shapes;lsSet('smasharch_shapes',{t:Date.now(),d:SHAPES});applyShapesNow()}}catch(e){}}
+function applyShapesNow(){if(MODE==='city'&&CUR&&B.length){applyLandmarks();bldDirty=true}}
+function applySpec(b,sp){if(!b||b.custom||!sp||!b.alive)return;
+  const F=clamp(Math.round(sp.floors)||5,1,40);b.custom='spec';b.spec=sp;b.customF=F;b.h0=F*clamp(+sp.floor_height||3.6,2.8,6);b.h=b.h0;
+  const glass=sp.facade==='curtain_wall';b.col=hexCol(glass?sp.glass_color:sp.wall_color,[0.85,0.85,0.84]);b.col0=b.col;
+  b.roof=sp.roof==='garden'?[0.36,0.62,0.32]:hexCol(sp.roof_color,[0.62,0.64,0.65]);b.style=FAC_ST[sp.facade]??0;b.lm=null;b.units=[];freeDet(b);ensureDet(b);markB(b)}
+// 층 f(0부터)의 덩어리: 축척·치우침
+function specTier(sp,f){const t=(sp.tiers||[]).find(t=>f+1>=t.from_floor&&f+1<=t.to_floor);return t||{scale:1,offset_long:0,offset_short:0}}
+function buildSpecMesh(b){
+  const d=b.det,m=d.mb;m.reset();const sp=b.spec,st=litSt(b,b.style),base=b.base,R=mulberry(String(b.id).length*31+7);
+  const wall=hexCol(sp.wall_color,[0.85,0.85,0.84]),glass=hexCol(sp.glass_color,[0.45,0.56,0.66]),acc=hexCol(sp.accent_color,[0.25,0.27,0.3]);
+  const curtain=sp.facade==='curtain_wall',main=curtain?glass:wall,dark=d.weak?main.map(v=>v*0.7):main;
+  const fr=lmFrame(b),L=fr.u1-fr.u0,W=fr.v1-fr.v0;
+  const xf=f=>{const t=specTier(sp,f),s=t.scale||1,du=(t.offset_long||0)*L,dv=(t.offset_short||0)*W;
+    const ox=du*fr.ca-dv*fr.sa,oz=du*fr.sa+dv*fr.ca;return p=>[b.cx+ox+(p[0]-b.cx)*s,b.cz+oz+(p[1]-b.cz)*s]};
+  let topF=-1;for(let f=d.F-1;f>=0;f--)if(d.fl[f]){topF=f;break}
+  const collapsedAbove=topF>=0&&topF<d.F-1,t=detTargets(d),pil=sp.pilotis_floors|0;
+  for(let f=0;f<d.F;f++){const X=xf(f);
+    if(!d.fl[f]){const y=base+t[f]+0.6;m.grow(b.tris.length);for(let q=0;q<b.tris.length;q+=3)for(let k=0;k<3;k++){const P=b.pts[b.tris[q+k]];m.v(P[0],y,P[1],0,1,0,...RUBBLE)}continue}
+    const y0=base+d.fy[f],y1=y0+d.fh,ys=y1-0.4,N=d.nodes.map(X);
+    let intact=true;for(let j=0;j<d.M;j++)if(!d.panel[f*d.M+j]){intact=false;break}
+    if(intact)for(let j=0;j<d.C;j++)if(d.hp[f*d.C+j]<d.hp0){intact=false;break}
+    const pf=f<pil;m.grow(d.M*24);
+    for(let j=0;j<d.M;j++){const a=N[j],e=N[(j+1)%d.M],n=d.edgeN[j],len=Math.hypot(e[0]-a[0],e[1]-a[1]);
+      if(d.panel[f*d.M+j]&&!pf){const cb=f===0?dark.map(v=>v*0.88):dark;quad(m,[a[0],y0,a[1]],[e[0],y0,e[1]],[e[0],ys,e[1]],[a[0],ys,a[1]],[n[0],0,n[1]],cb,0,len,st)}
+      quad(m,[a[0],ys,a[1]],[e[0],ys,e[1]],[e[0],y1,e[1]],[a[0],y1,a[1]],[n[0],0,n[1]],curtain?acc:(f===topF&&!collapsedAbove?dark:CONC),-1,-1,0);
+      // 세로 루버: 외피 노드마다 얇은 판
+      if(sp.vertical_fins&&!pf&&d.panel[f*d.M+j]){const x=a[0]+n[0]*0.35,z=a[1]+n[1]*0.35;prismCol(m,x,z,y0,y1,0.32,acc)}}
+    // 필로티층: 안쪽 코어 상자
+    if(pf){const C=d.nodes.map(p=>{const q=X(p);return[b.cx+(q[0]-b.cx)*0.45,b.cz+(q[1]-b.cz)*0.45]});m.grow(C.length*6);
+      for(let j=0;j<C.length;j++){const a=C[j],e=C[(j+1)%C.length],n=d.edgeN[j];quad(m,[a[0],y0,a[1]],[e[0],y0,e[1]],[e[0],ys,e[1]],[a[0],ys,a[1]],[n[0],0,n[1]],wall.map(v=>v*0.8),-1,-1,0)}}
+    // 슬래브: 덩어리가 바뀌는 층(셋백)·꼭대기층 윗면은 지붕색(테라스)
+    const nextSmaller=f<d.F-1&&specTier(sp,f+1).scale<specTier(sp,f).scale-0.01;
+    const top=(f===topF&&!collapsedAbove)||nextSmaller?b.roof:CONC;m.grow(b.tris.length*2);
+    for(let q=0;q<b.tris.length;q+=3){for(let k=0;k<3;k++){const P=X(b.pts[b.tris[q+k]]);m.v(P[0],y1,P[1],0,1,0,...top)}
+      if(!intact||pf)for(let k=0;k<3;k++){const P=X(b.pts[b.tris[q+k]]);m.v(P[0],ys,P[1],0,-1,0,...CONC_D)}}
+    if(!intact||pf){for(let j=0;j<d.C;j++){const hp=d.hp[f*d.C+j],[x,z]=X(colPos(d,j));
+      if(hp>0){const s=1-hp/d.hp0;prismCol(m,x,z,y0,ys,0.7,[CONC[0]+(0.85-CONC[0])*s,CONC[1]+(0.40-CONC[1])*s,CONC[2]+(0.25-CONC[2])*s])}
+      else{prismCol(m,x,z,y0,y0+0.5,0.7,CONC_D);rebars(m,x,z,y0+0.5,R);prismCol(m,x,z,ys-0.4,ys,0.7,CONC_D)}}}
+    if(f===topF&&collapsedAbove){for(let j=0;j<d.C;j++)if(d.hp[f*d.C+j]>0){const [x,z]=X(colPos(d,j));rebars(m,x,z,y1,R)}}
+  }
+  // 경사 지붕 (꼭대기층이 멀쩡할 때만)
+  if(topF===d.F-1&&/gable|sloped_single|mansard/.test(sp.roof)){const X=xf(d.F-1),t0=specTier(sp,d.F-1),s=t0.scale||1,y=base+d.fy[d.F-1]+d.fh;
+    const c=X([b.cx,b.cz]),U=(L/2)*s,V=(W/2)*s,H=Math.min(7,Math.max(2,V*0.55)),P=(u,v,h)=>[c[0]+u*fr.ca-v*fr.sa,y+h,c[1]+u*fr.sa+v*fr.ca],rc=b.roof;m.grow(36);
+    const nU=[fr.ca,0,fr.sa],nV=[-fr.sa,0.7,fr.ca],nV2=[fr.sa,0.7,-fr.ca];
+    if(sp.roof==='gable'){quad(m,P(-U,-V,0),P(U,-V,0),P(U,0,H),P(-U,0,H),nV2,rc,-1,-1,0);quad(m,P(-U,V,0),P(U,V,0),P(U,0,H),P(-U,0,H),nV,rc,-1,-1,0);
+      quad(m,P(U,-V,0),P(U,V,0),P(U,0,H),P(U,0,H),nU,wall,-1,-1,0);quad(m,P(-U,-V,0),P(-U,V,0),P(-U,0,H),P(-U,0,H),nU.map(v=>-v),wall,-1,-1,0)}
+    else if(sp.roof==='sloped_single'){quad(m,P(-U,-V,0),P(U,-V,0),P(U,V,H),P(-U,V,H),nV2,rc,-1,-1,0);quad(m,P(-U,V,0),P(U,V,0),P(U,V,H),P(-U,V,H),nV,wall,-1,-1,0)}
+    else{const k=0.7,h=Math.min(4,H);quad(m,P(-U,-V,0),P(U,-V,0),P(U*k,-V*k,h),P(-U*k,-V*k,h),nV2,rc,-1,-1,0);quad(m,P(-U,V,0),P(U,V,0),P(U*k,V*k,h),P(-U*k,V*k,h),nV,rc,-1,-1,0);
+      quad(m,P(U,-V,0),P(U,V,0),P(U*k,V*k,h),P(U*k,-V*k,h),nU,rc,-1,-1,0);quad(m,P(-U,-V,0),P(-U,V,0),P(-U*k,V*k,h),P(-U*k,-V*k,h),nU.map(v=>-v),rc,-1,-1,0);
+      quad(m,P(-U*k,-V*k,h),P(U*k,-V*k,h),P(U*k,V*k,h),P(-U*k,V*k,h),[0,1,0],rc,-1,-1,0)}}
+  // 옥상 정원: 작은 나무 몇 그루
+  if(topF===d.F-1&&sp.roof==='garden'){const X=xf(d.F-1),y=base+d.fy[d.F-1]+d.fh;for(let k=0;k<6;k++){const q=X([b.cx+(R()-.5)*L*0.5,b.cz+(R()-.5)*W*0.5]);prismCol(m,q[0],q[1],y,y+1.6+R(),1.3,[0.2,0.5,0.22])}}
+  m.upload();
+}
+
+// ---- 사옥 사진 보내기 (요청함 '사옥 모양' 탭) ----
+let PHOTO=null;   // {b64, w, h}
+function photoPick(file){const say=t=>{$('#rqMsg2').textContent=t};if(!file)return;if(!/^image\//.test(file.type)){say('사진 파일만 보낼 수 있어요');return}
+  const img=new Image(),url=URL.createObjectURL(file);img.onload=()=>{const k=Math.min(1,1024/Math.max(img.width,img.height)),cv=document.createElement('canvas');
+    cv.width=Math.round(img.width*k);cv.height=Math.round(img.height*k);cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);URL.revokeObjectURL(url);
+    const du=cv.toDataURL('image/jpeg',0.82);PHOTO={b64:du.split(',')[1]};const pv=$('#rqPhotoPrev');pv.src=du;pv.style.display='';say('')};
+  img.onerror=()=>{URL.revokeObjectURL(url);say('사진을 열 수 없어요 (HEIC 사진이면 JPG로 바꿔서 보내주세요)')};img.src=url}
+async function sendPhoto(){const u=rankUrl(),say=t=>{$('#rqMsg2').textContent=t};
+  if(!CUR||!CUR.dkey){say('먼저 회사를 골라 그 사옥으로 들어간 뒤 보내주세요');return}
+  if(!PHOTO){say('사옥 사진을 골라주세요');return}
+  if(!u){say('서버가 연결되지 않아 보낼 수 없어요');return}
+  const hq=B.find(b=>b.hq),ob=hq?obbOf(hq):null;
+  const btn=$('#rqSend');btn.disabled=true;say('사진 보내는 중…');
+  try{const r=await fetchT(u,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({type:'photo',kid:+CUR.dkey.slice(1),img:PHOTO.b64,note:$('#rqMsg').value.trim(),fw:ob?ob.W:0,fd:ob?ob.D:0,hp:$('#rqHp').value,vid:lsGet('smasharch_vid')||''})},30000);
+    if(r&&r.ok){PHOTO=null;$('#rqPhotoPrev').style.display='none';$('#rqPhoto').value='';$('#rqMsg').value='';say('');closeModals();
+      toast(r.building===false?'건물 사진이 아닌 것 같아요 — 사옥 외관이 잘 보이는 사진으로 다시 보내주세요':r.pending?'📸 사진을 받았어요 — AI가 15분 안에 모양을 읽고, 개발자가 확인하면 사옥이 새로 올라가요':'📸 사진을 받았어요'+(r.summary?` (“${r.summary}”)`:'')+' — 개발자가 확인하면 사옥이 새로 올라가요',5000)}
+    else say('보내기 실패: '+((r&&r.error)||'알 수 없는 오류'))}
+  catch(e){say('보내기 실패 — 잠시 뒤에 다시 시도해주세요')}
+  finally{setTimeout(()=>btn.disabled=false,2500)}}
+// =====================================================================
 // 회사 추가 요청 · 문의함 → Apps Script '요청함' 시트로
 // =====================================================================
 // 서버가 방금 추가한 회사 한 줄을 이 화면 목록에도 바로 넣기
@@ -3271,9 +3358,10 @@ function setReqCat(c){$('#rqCat').value=c;document.querySelectorAll('#rqCats but
   const u=c==='대학교';$('#rqName').placeholder=u?'예: OO대학교 (캠퍼스가 여럿이면 OO대학교 OO캠퍼스)':c==='건설사'?'예: OO건설(주)':c==='일반 회사'?'예: (주)OO':'예: OO종합건축사사무소';
   $('#rqFloor').placeholder=u?'예: 건물 전체 (본관 기준)':'예: 3층 · 3~5층 · 건물 전체';$('#rqNameL').firstChild.textContent=u?'학교 이름 ':'회사 이름 '}
 function setReqKind(k){document.querySelectorAll('#rqKinds button').forEach(b=>b.classList.toggle('on',b.dataset.k===k));$('#mReq').dataset.kind=k;
-  const firm=k==='회사 추가'||k==='정보 수정';$('#rqFirmBox').style.display=firm?'':'none';
-  $('#rqMsg').placeholder=k==='회사 추가'?'(선택) 덧붙일 말 — 예: 사옥이 2동이에요, 지도에서 위치가 달라요':k==='정보 수정'?'무엇이 틀렸는지 알려주세요 — 예: 이사했어요, 층수가 달라요':'문의·버그·아이디어를 자유롭게 적어주세요 (기기/브라우저도 적어주면 좋아요)'}
-async function sendReq(){const k=$('#mReq').dataset.kind||'회사 추가',u=rankUrl();
+  const firm=k==='회사 추가'||k==='정보 수정';$('#rqFirmBox').style.display=firm?'':'none';const ph=k==='사옥 모양';$('#rqPhotoBox').style.display=ph?'':'none';$('#rqContactBox').style.display=ph?'none':'';if($('#rqNote'))$('#rqNote').style.display=ph?'none':'';
+  if(ph)$('#rqPhotoFirm').textContent=CUR&&CUR.dkey?CUR.name:'(먼저 회사를 골라 들어가 주세요)';$('#rqSend').textContent=ph?'사진 보내기':'보내기';
+  $('#rqMsg').placeholder=k==='회사 추가'?'(선택) 덧붙일 말 — 예: 사옥이 2동이에요, 지도에서 위치가 달라요':k==='정보 수정'?'무엇이 틀렸는지 알려주세요 — 예: 이사했어요, 층수가 달라요':k==='사옥 모양'?'(선택) 덧붙일 말 — 예: 오른쪽 동은 3층이에요, 1층은 필로티예요':'문의·버그·아이디어를 자유롭게 적어주세요 (기기/브라우저도 적어주면 좋아요)'}
+async function sendReq(){const k=$('#mReq').dataset.kind||'회사 추가',u=rankUrl();if(k==='사옥 모양')return sendPhoto();
   const d={type:'request',kind:k,name:$('#rqName').value.trim(),addr:$('#rqAddr').value.trim(),floor:$('#rqFloor').value.trim(),cat:$('#rqCat').value,msg:$('#rqMsg').value.trim(),contact:$('#rqContact').value.trim(),hp:$('#rqHp').value,vid:lsGet('smasharch_vid')||''};
   if(k==='회사 추가'||k==='정보 수정'){d.msg=(d.msg+(CUR&&k==='정보 수정'?`\n(보던 회사: ${CUR.name})`:'')).trim()}else{d.name=d.addr=d.floor='';d.cat=''}
   const say=t=>{$('#rqMsg2').textContent=t};
@@ -3292,7 +3380,7 @@ async function sendReq(){const k=$('#mReq').dataset.kind||'회사 추가',u=rank
 (function(){if(!$('#mReq'))return;
   document.querySelectorAll('#rqKinds button').forEach(b=>b.onclick=()=>setReqKind(b.dataset.k));
   document.querySelectorAll('#rqCats button').forEach(b=>b.onclick=()=>setReqCat(b.dataset.c));
-  $('#rqSend').onclick=sendReq;
+  $('#rqSend').onclick=sendReq;if($('#rqPhoto'))$('#rqPhoto').onchange=e=>photoPick(e.target.files&&e.target.files[0]);
   document.querySelectorAll('[data-req]').forEach(b=>b.onclick=()=>openReq(b.dataset.req,b.dataset.req==='회사 추가'?($('#customQ').value.trim()||null):null));
   $('#mReq').addEventListener('keydown',e=>e.stopPropagation())})();
 // =====================================================================
@@ -3692,6 +3780,7 @@ function visitSource(ref){
   const site=[[/kakao|kakaocdn|daum\.net\/kakao/,'카카오톡'],[/naver/,'네이버'],[/google/,'구글'],[/daum/,'다음'],[/bing/,'빙'],[/instagram/,'인스타그램'],[/facebook|fb\.com/,'페이스북'],[/threads/,'스레드'],[/^t\.co$|twitter|(^|\.)x\.com$/,'X'],[/band\.us/,'밴드'],[/everytime/,'에브리타임'],[/teamblind|blind/,'블라인드'],[/dcinside/,'디시'],[/clien/,'클리앙'],[/theqoo/,'더쿠'],[/fmkorea/,'에펨코리아'],[/hada\.io/,'긱뉴스']];
   for(const [re,n] of site)if(re.test(h))return n;
   return h.slice(0,20)}
+setTimeout(loadShapes,800);
 (function sendVisit(){
   const u=rankUrl();if(!u)return;
   try{if(sessionStorage.getItem('smasharch_visited'))return;sessionStorage.setItem('smasharch_visited','1')}catch(e){}

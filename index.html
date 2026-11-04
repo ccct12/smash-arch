@@ -412,7 +412,7 @@ body.iostip #iosTip{display:flex}
 #rqCats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:2px 0 6px}#rqCats button{padding:8px 2px;border:1px solid #000;border-radius:7px;background:#2a2f36;color:#ddd;font-weight:700;cursor:pointer;font-size:12.5px;white-space:nowrap}#rqCats button.on{background:#f2b134;color:#111}
 @media (max-width:520px){#rqCats{grid-template-columns:repeat(2,1fr)}}
 .req-link{display:block;width:100%;margin:8px 0 6px;padding:9px;border-radius:7px;border:1px dashed #6b7280;background:transparent;color:#ddd;cursor:pointer;font-size:13px}.req-link b{color:#f2b134}
-#mReq .card{width:min(520px,100%)}
+#mReq .card{width:min(520px,100%)}#rqPhotoPrev{display:block;max-width:100%;max-height:200px;margin:8px auto 0;border-radius:6px;border:1px solid #000}.rq-firm{padding:8px;border-radius:7px;background:#14171b;border:1px solid #000;font-weight:700;font-size:13px}#rqKinds button{white-space:nowrap}
 #rqKinds{display:flex;gap:6px;margin:6px 0 10px}#rqKinds button{flex:1;padding:7px 4px;border:1px solid #000;border-radius:7px;background:#2a2f36;color:#ddd;font-weight:700;cursor:pointer;font-size:12.5px}#rqKinds button.on{background:#f2b134;color:#1d2126}
 #mReq label{display:block;font-size:12px;margin:8px 0 3px;color:#ccc}#mReq label b{color:#ff8a7a}
 #mReq input,#mReq select,#mReq textarea{width:100%;box-sizing:border-box;padding:8px;border-radius:7px;border:1px solid #000;background:#14171b;color:#eee;font:inherit;font-size:13px}
@@ -622,7 +622,7 @@ details.fold .client-in{margin:8px 0 2px}
 <div class="modal" id="mReq" data-kind="회사 추가"><div class="card">
   <button class="close" data-close>×</button>
   <h2>📮 요청 · 문의함</h2>
-  <div id="rqKinds"><button data-k="회사 추가" class="on">추가하기</button><button data-k="정보 수정">위치·정보 수정</button><button data-k="문의·버그">문의·버그</button></div>
+  <div id="rqKinds"><button data-k="회사 추가" class="on">추가하기</button><button data-k="정보 수정">위치·정보 수정</button><button data-k="사옥 모양">🏢 사옥 모양</button><button data-k="문의·버그">문의·버그</button></div>
   <div id="rqFirmBox">
     <label id="rqNameL">회사 이름 <b>*</b></label><input id="rqName" maxlength="60" placeholder="예: OO종합건축사사무소" autocomplete="off">
     <label>주소 <b>*</b> <small>(도로명 주소 권장)</small></label><input id="rqAddr" maxlength="150" placeholder="예: 서울 송파구 송파대로22길 5-23" autocomplete="off">
@@ -632,12 +632,19 @@ details.fold .client-in{margin:8px 0 2px}
     <div id="rqCats"><button type="button" data-c="건축사사무소" class="on">📐 건축사사무소</button><button type="button" data-c="건설사">🏗 건설사</button><button type="button" data-c="일반 회사">🏢 일반 회사</button><button type="button" data-c="대학교">🎓 대학교</button></div>
     <input type="hidden" id="rqCat" value="건축사사무소">
   </div>
+  <div id="rqPhotoBox" style="display:none">
+    <div class="small" style="margin:2px 0 6px">사옥 모양이 실제와 다르면 <b>외관 사진</b>을 보내주세요. 제미나이(AI)가 층수·덩어리·외장·색·지붕을 읽고, <b>개발자가 확인한 뒤</b> 게임 속 사옥이 새로 올라가요.</div>
+    <label>회사 <small>(지금 보고 있는 사옥)</small></label><div id="rqPhotoFirm" class="rq-firm"></div>
+    <label>사옥 사진 <b>*</b> <small>(건물 전체가 보이게 · 정면이나 모서리에서)</small></label><input id="rqPhoto" type="file" accept="image/*">
+    <img id="rqPhotoPrev" alt="" style="display:none">
+    <div class="small" style="opacity:.75;margin-top:4px">사진은 운영자 드라이브에만 비공개로 저장되고, 게임에는 모양 숫자만 나가요. 사람 얼굴·차 번호판은 안 나오게 찍어주세요.</div>
+  </div>
   <label>내용</label><textarea id="rqMsg" maxlength="800"></textarea>
-  <label>답장 받을 연락처 <small>(선택 · 답장이 필요할 때만)</small></label><input id="rqContact" maxlength="80" placeholder="이메일 등" autocomplete="off">
+  <div id="rqContactBox"><label>답장 받을 연락처 <small>(선택 · 답장이 필요할 때만)</small></label><input id="rqContact" maxlength="80" placeholder="이메일 등" autocomplete="off"></div>
   <input id="rqHp" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0" aria-hidden="true">
   <div id="rqMsg2"></div>
   <button class="btn-p" id="rqSend" style="width:100%;margin-top:6px">보내기</button>
-  <p class="small" style="margin:8px 0 0;opacity:.75">‘추가하기’는 (초·중·고등학교는 추가하지 않아요) 주소로 위치를 찾아 바로 목록에 추가돼요(누구나 검색 가능). 연락처·내용은 운영자 시트에만 저장되고 게임에는 안 나와요.</p>
+  <p class="small" id="rqNote" style="margin:8px 0 0;opacity:.75">‘추가하기’는 (초·중·고등학교는 추가하지 않아요) 주소로 위치를 찾아 바로 목록에 추가돼요(누구나 검색 가능). 연락처·내용은 운영자 시트에만 저장되고 게임에는 안 나와요.</p>
 </div></div>
 <div class="modal" id="mShare"><div class="card">
   <button class="close" data-close>×</button>
@@ -699,7 +706,7 @@ details.fold .client-in{margin:8px 0 2px}
   <label class="opt">업데이트 소식 자동으로 띄우기 <input type="checkbox" id="optPatch" checked></label>
   <div class="small" style="margin-top:10px">사장님 이름 · 발주처 이름 (이 브라우저에만 저장)</div>
   <div class="row"><input id="bossName2" class="cn-input" maxlength="12" placeholder="사장님 — 비우면 '사장님'" style="flex:0 0 38%"><input id="clientNames2" class="cn-input" maxlength="80" placeholder="발주처 — 쉼표로 최대 5개"></div>
-  <div class="row" id="setLinks" style="margin-top:10px"><button class="btn-s" data-go="btnRank">랭킹</button><button class="btn-s" data-go="btnConq">정복</button><button class="btn-s" data-go="btnShare">공유</button><button class="btn-s" data-go="btnReport">철거 일보</button><button class="btn-s" data-req="문의·버그">📮 문의함</button><button class="btn-s" id="setGuide">📘 가이드</button><button class="btn-s" id="setPatch">📰 업데이트 내역</button></div>
+  <div class="row" id="setLinks" style="margin-top:10px"><button class="btn-s" data-go="btnRank">랭킹</button><button class="btn-s" data-go="btnConq">정복</button><button class="btn-s" data-go="btnShare">공유</button><button class="btn-s" data-go="btnReport">철거 일보</button><button class="btn-s" data-req="문의·버그">📮 문의함</button><button class="btn-s" data-req="사옥 모양">🏢 사옥 모양 고치기</button><button class="btn-s" id="setGuide">📘 가이드</button><button class="btn-s" id="setPatch">📰 업데이트 내역</button></div>
   <a class="donate" href="https://fairy.hada.io/@smash-arch#support" target="_blank" rel="noopener">☕ 만든 사람에게 커피 한 잔 <small>(선택 · 게임은 계속 무료)</small></a>
   <button class="btn-p" id="btnPickHQ" style="width:100%;margin-top:12px">사옥 건물 직접 지정</button>
   <div class="small" style="margin-top:14px">게임 서버 주소 (Apps Script 웹앱 …/exec) · 비워두면 config.js 값 사용</div>
@@ -785,6 +792,8 @@ details.fold .client-in{margin:8px 0 2px}
     <li><b>📍 사옥 위치 바로잡기</b> — 좌표가 근사값인 곳은 도착하면 안내가 떠요. [우리 건물 직접 고르기]로 건물을 누르면 내 화면에서 바로 바뀌고 위치가 개발자에게 전달돼요. 지도에 건물이 없으면 빈 땅을 눌러 사옥을 세울 수 있어요.</li>
     <li><b>🔎 회사 고르기 창</b> — 검색창과 구분 버튼(건축사사무소·건설사·대학교·일반 회사)은 위에 고정, 아래 목록만 스크롤돼요. 가장 많이 무너진 사옥은 5곳만 먼저 보여요.</li>
     <li><b>🏆 랭킹</b> — 부서진 사무소 / 개인 점수를 탭으로 나눠 한눈에.</li>
+    <li><b>🏢 사옥 모양 고치기</b> — 게임 속 사옥이 실제와 다르면 요청함(또는 설정)의 [🏢 사옥 모양]에서 외관 사진을 보내주세요. AI가 층수·덩어리·외장·지붕을 읽고, 개발자가 확인하면 사옥이 새로 올라가요.</li>
+    <li><b>🏗 빈 땅에 사옥 세우기</b> — 지도에 우리 건물이 없으면 [사옥 건물 직접 지정]에서 그 자리 빈 땅을 누르면 새로 세워져요.</li>
   </ul>
   <details class="fold"><summary>지난 업데이트 보기 <small>(11.03 3차까지)</small></summary>
   <ul>
