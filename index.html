@@ -8,25 +8,25 @@
 <meta name="keywords" content="건축사무소 게임, 사옥 부수기, 건물 부수기 게임, 회사 부수기, 대학교 부수기, 캠퍼스 부수기, 건설사, 설계사무소, 건축사사무소, 스트레스 해소 게임, 웹 게임, SMASH ARCH">
 <meta name="robots" content="index,follow">
 <!-- 사이트 주소를 옮기면 아래 주소 4곳(canonical, og:url, og:image, JSON-LD url)과 sitemap.xml 을 같이 바꿔주세요 -->
-<link rel="canonical" href="https://ccct12.github.io/smash-arch/">
+<link rel="canonical" href="https://smasharch.co.kr/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="SMASH ARCH">
 <meta property="og:locale" content="ko_KR">
-<meta property="og:url" content="https://ccct12.github.io/smash-arch/">
+<meta property="og:url" content="https://smasharch.co.kr/">
 <meta property="og:title" content="SMASH ARCH 🌍 NEW 재난 모드 — 지구가 화났다!">
 <meta property="og:description" content="건축을 너무 많이 해서 동물과 자연이 사옥을 부숴요. 흰개미·코끼리·쇠똥구리·화산·쓰나미·지진·태양 조각! 건축사사무소·건설사·대학교 1만 1천여 곳, 무료·로그인 없음.">
-<meta property="og:image" content="https://ccct12.github.io/smash-arch/og-earth.jpg">
+<meta property="og:image" content="https://smasharch.co.kr/og-earth.jpg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="SMASH ARCH 재난 모드 — 태양 조각이 떨어지고 화산이 솟는 밤의 도시">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="SMASH ARCH 🌍 NEW 재난 모드 — 지구가 화났다!">
 <meta name="twitter:description" content="건축을 너무 많이 해서 동물과 자연이 사옥을 부숴요. 우리 회사·학교 1만 1천여 곳, 무료.">
-<meta name="twitter:image" content="https://ccct12.github.io/smash-arch/og-earth.jpg">
+<meta name="twitter:image" content="https://smasharch.co.kr/og-earth.jpg">
 <!-- 검색 등록 인증: 구글 서치 콘솔 / 네이버 서치어드바이저에서 받은 한 줄로 아래 주석을 바꿔 넣으세요 -->
 <!-- <meta name="google-site-verification" content="여기에_구글_코드"> -->
 <!-- <meta name="naver-site-verification" content="여기에_네이버_코드"> -->
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"VideoGame","name":"SMASH ARCH","alternateName":"사옥 부수기","url":"https://ccct12.github.io/smash-arch/","image":"https://ccct12.github.io/smash-arch/og-earth.jpg","description":"전국 건축사사무소·건설사·대학교 1만 1천여 곳을 실제 지도 위 3D로 부수는 무료 웹 게임","genre":["Action","Casual","Simulation"],"gamePlatform":"Web browser","applicationCategory":"Game","operatingSystem":"Any","inLanguage":"ko","isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"KRW"}}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"VideoGame","name":"SMASH ARCH","alternateName":"사옥 부수기","url":"https://smasharch.co.kr/","image":"https://smasharch.co.kr/og-earth.jpg","description":"전국 건축사사무소·건설사·대학교 1만 1천여 곳을 실제 지도 위 3D로 부수는 무료 웹 게임","genre":["Action","Casual","Simulation"],"gamePlatform":"Web browser","applicationCategory":"Game","operatingSystem":"Any","inLanguage":"ko","isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"KRW"}}</script>
 <!-- 휴대폰: 홈 화면에 추가하면 주소창 없이 가로 전체 화면으로 실행 -->
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#17191c">
@@ -173,6 +173,10 @@ table.rep td{text-align:right;padding:7px 6px;border-bottom:1px solid #ddd}
 .row input{flex:1;min-width:0;background:#0e0f11;border:1px solid var(--line);border-radius:6px;color:#fff;padding:8px 10px;font:inherit;font-size:13px;-webkit-user-select:text;user-select:text}
 .btn-p{background:var(--accent);color:#fff;border-radius:6px;padding:8px 14px;font-weight:700;font-size:13px}
 .card label.opt{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--line);font-size:14px}
+.suit-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+.suit-row button{width:32px;height:32px;padding:0;border-radius:50%;border:2px solid rgba(255,255,255,.25);position:relative;cursor:pointer}
+.suit-row button i{position:absolute;left:50%;top:22%;width:5px;height:56%;transform:translateX(-50%);border-radius:1px}
+.suit-row button.on{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent)}
 .card .close{float:right;color:var(--muted);font-size:20px;line-height:1}
 #loading{position:fixed;inset:0;z-index:15;display:flex;align-items:center;justify-content:center;background:rgba(230,233,235,.7);pointer-events:none;opacity:0;transition:opacity .2s}
 #loading.on{opacity:1;pointer-events:auto}
@@ -334,7 +338,8 @@ body.mini #btnMini{background:var(--accent);border-color:#ff8a5a}
   .tool,.tool.sm,.tool[data-w="4"]{width:44px;min-width:44px;height:40px;font-size:8.5px;gap:1px;letter-spacing:-.3px;border-radius:5px}
   .tool svg{width:17px;height:17px}
   #ult{right:calc(8px + env(safe-area-inset-right));bottom:calc(3px + env(safe-area-inset-bottom));width:58px;height:58px;font-size:10.5px}
-  #credit{left:calc(6px + env(safe-area-inset-left));top:40px;bottom:auto!important;transform:none;font-size:8.5px;padding:1px 5px;max-width:34vw;opacity:.85}
+  #credit{left:calc(6px + env(safe-area-inset-left));top:36px;bottom:auto!important;transform:none;font-size:8px;padding:1px 5px;max-width:28vw;opacity:.6;pointer-events:none}
+  #mission{top:56px;bottom:auto;transform:none}
   #hint{font-size:10.5px;padding:2px 9px;max-width:calc(100vw - 100px);opacity:0;transition:opacity .35s}
   #hint.flash{opacity:1}
   #toast,body.sec #toast{top:42px;font-size:12px;padding:6px 10px;max-width:60vw}
@@ -491,6 +496,20 @@ details.fold .client-in{margin:8px 0 2px}details.fold.cast{margin:0 0 8px;backgr
 #geoNote .gn-x{flex:0 0 auto;background:transparent;border:0;color:#bbb;font-size:18px;padding:0 4px}
 @media (pointer:coarse) and (max-height:500px){#geoNote{top:auto;bottom:calc(70px + env(safe-area-inset-bottom));font-size:11px}#geoNote .gn-pick{font-size:11px;padding:5px 8px}}
 /* 광고 타워 현수막 */
+#btnDaily{background:#b8860b!important;color:#fff!important;border-color:#e0b23a!important}#btnDaily:hover{filter:brightness(1.12)}
+@media (pointer:coarse),(max-width:1500px){#btnDaily .bd-t{display:none}#btnDaily{padding:3px 8px}}
+#dailyCard{margin:0 0 10px;padding:10px 12px;border-radius:10px;background:linear-gradient(135deg,#fff6d6,#ffe9a8);border:2px solid #d9a400;color:#3a2a00}
+#dailyCard .dc-h{font-weight:800;font-size:14px}#dailyCard .dc-h small{font-weight:500;color:#7a5c00;font-size:11px;margin-left:4px}
+#dailyCard .dc-n{font-size:17px;font-weight:800;margin-top:4px}#dailyCard .dc-a{font-size:11.5px;color:#6b5a2a}
+#dailyCard .dc-t,#dailyCard .dc-hof{font-size:12px;margin-top:4px}#dailyCard .dc-hof{color:#8a5a00}
+#dailyCard .btn-p{width:100%;margin-top:8px;background:#b8860b}
+#dailyBox{font-size:12px;padding:3px 10px;font-weight:700;color:#3a2a00;background:#ffe08a!important;white-space:nowrap}
+#dailyBox.hurry{background:#ff7a59!important;color:#fff;animation:dyPulse .6s infinite alternate}
+@keyframes dyPulse{to{transform:scale(1.06)}}
+.card.daily h2 b{font-size:30px}.card.daily h2 small{display:block;font-size:12px;font-weight:500;color:#666}
+.dy-top{margin:6px 0 0;padding:0;list-style:none;max-height:190px;overflow:auto}
+.dy-top li{display:flex;gap:8px;padding:4px 6px;border-bottom:1px solid #eee;font-size:13px}.dy-top li b{width:22px}.dy-top li span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.dy-top li em{font-style:normal;font-weight:700}
+.dy-top li.empty{color:#888;justify-content:center}
 #adBan{position:fixed;z-index:4;display:block;pointer-events:none;transform-origin:50% 0;text-align:center;text-decoration:none;background:#fdfdfd;color:#16181c;border:3px solid #1f6feb;border-radius:4px;padding:6px 16px 8px;box-shadow:0 6px 16px rgba(0,0,0,.35);min-width:180px;max-width:360px}
 #adBan.lk{pointer-events:auto;cursor:pointer}
 #adBan:before,#adBan:after{content:'';position:absolute;top:-12px;width:2px;height:12px;background:#9aa3ad}#adBan:before{left:18px}#adBan:after{right:18px}
@@ -509,6 +528,70 @@ body.earth #toolbar .glbl{color:#7fe0a8}
 body.earth #ult{--ult:#ffb020}
 .g-emo{display:flex;align-items:center;justify-content:center;height:100%;min-height:110px;font-size:64px;background:linear-gradient(135deg,#1d3a2c,#14251d);border-radius:8px}.g-mode{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 10px;font-size:13px;padding:8px 10px;border-radius:8px;background:var(--panel2);border:1px solid var(--line)}.g-mode .btn-s{padding:5px 10px;font-size:12px;white-space:nowrap}
 .w-new{margin:10px 0 4px!important;padding:9px 11px;border-radius:8px;background:#163828;border:1px solid #2fb58a;color:#d8ffe9;font-size:13px!important;line-height:1.5}
+</style>
+<style id="uiLayout">
+/* ===== 화면 틀 분리: PC(body.ui-pc) = 하단 도구막대 / 모바일(body.ui-mob) = 왼쪽 도구 레일 + ☰ 메뉴 ===== */
+#btnMenu,#sysMenu{display:none}
+body.ui-mob #btnMenu{display:inline-block}
+body.ui-mob #toolbar{left:calc(6px + env(safe-area-inset-left))!important;top:46px!important;bottom:auto!important;right:auto!important;transform:none!important;width:auto!important;max-width:none!important;height:auto;max-height:calc(100vh - 54px);max-height:calc(100dvh - 54px);display:grid!important;grid-template-columns:repeat(2,46px);grid-auto-rows:46px;gap:4px!important;padding:5px!important;overflow-y:auto;overflow-x:hidden;align-content:start;touch-action:pan-y;z-index:6}
+body.ui-mob #toolbar .grp{display:contents!important;padding:0!important}
+body.ui-mob #toolbar .sep,body.ui-mob .glbl,body.ui-mob .tool .num{display:none!important}
+body.ui-mob .tool,body.ui-mob .tool.sm,body.ui-mob .tool[data-w]{width:46px!important;min-width:46px!important;height:46px!important;font-size:8.5px!important;letter-spacing:-.3px;gap:1px;border-radius:6px}
+body.ui-mob .tool svg{width:17px;height:17px}
+body.ui-mob .tool .emo{font-size:17px;margin:0}
+body.ui-mob #sysMenu{position:fixed;left:calc(112px + env(safe-area-inset-left));top:46px;z-index:8;grid-template-columns:repeat(3,54px);grid-auto-rows:46px;gap:4px;padding:6px;border-radius:10px}
+body.ui-mob #sysMenu.open{display:grid}
+body.ui-mob #sysMenu .tool,body.ui-mob #sysMenu .tool.sm{width:54px!important;min-width:54px!important}
+body.ui-mob #mission{left:calc(112px + env(safe-area-inset-left))!important;top:auto!important;bottom:8px!important;transform:none!important;width:min(240px,34vw)}
+body.ui-mob #combo{left:calc(112px + env(safe-area-inset-left))!important;top:50px!important}
+body.ui-mob #hint{bottom:6px!important;max-width:calc(100vw - 230px)}
+body.ui-mob #credit{left:calc(112px + env(safe-area-inset-left))!important;top:auto!important;bottom:2px!important}
+body.ui-mob #ult{right:calc(10px + env(safe-area-inset-right))!important;bottom:calc(10px + env(safe-area-inset-bottom))!important}
+body.ui-mob #btnDet{bottom:calc(14px + env(safe-area-inset-bottom))!important;left:55%!important}
+body.ui-pc #toolbar{touch-action:auto}
+#gesBar{position:fixed;left:55%;bottom:calc(34px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:7;gap:8px;align-items:center}#gesBar button{padding:10px 18px;font-size:14px;font-weight:800}
+body.ui-mob #hudTop{left:calc(50% + 90px)!important;top:6px!important;transform:none!important;max-width:calc(50vw - 230px)!important}
+
+/* ===== 회사 고르기 · 환영 창: 한 화면에 정리 ===== */
+.card.fcard{width:min(820px,100%)!important}
+.fgrid{display:grid;grid-template-columns:minmax(250px,310px) 1fr;gap:14px;flex:1 1 auto;min-height:0}
+.fleft,.fright{min-height:0;overflow:auto;touch-action:pan-y;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+.fleft .fhead{border-bottom:0;padding-bottom:0;margin-bottom:6px}
+.fleft #fCats{flex-wrap:wrap;overflow:visible}
+.fleft #fCats button{padding:4px 9px;font-size:12px}
+.fleft #gmSeg{margin:0 0 6px}.fleft #gmSeg button{padding:6px;font-size:13px}
+.fleft .req-row{flex-direction:column;gap:4px}.fleft .req-row .req-link{flex-direction:row;justify-content:center;gap:6px;padding:7px 6px;margin:0}
+.fleft details.fold.cast{margin:0 0 6px}
+.fnote{margin-top:8px;line-height:1.5}
+#dailyCard{margin:0 0 8px!important;padding:8px 10px!important;border-radius:9px!important;background:linear-gradient(135deg,#fff3c4,#ffe08a)!important;border:2px solid #d9a400!important;color:#3a2a00!important}
+#dailyCard .dc-r{display:flex;align-items:center;gap:8px}
+#dailyCard .dc-m{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+#dailyCard .dc-m b{font-size:12px;color:#7a5c00}
+#dailyCard .dc-n{font-size:15px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:0}
+#dailyCard .dc-t{font-size:11px;color:#6b5a2a;margin:0}
+#dailyCard .dc-err{font-size:11px;color:#9a3a00;white-space:normal}
+#dailyCard .btn-p,#dailyCard .btn-s{width:auto;margin:0;padding:8px 14px;white-space:nowrap;background:#b8860b;color:#fff;border-color:#8a6508}
+#mWelcome .card.welcome{width:min(380px,100%)}
+#mWelcome .card.welcome h2{font-size:24px;margin:0}
+#mWelcome .card.welcome p{margin:0;font-size:13.5px}
+#mWelcome .w-new{margin:2px 0!important}
+.w-row{display:flex;gap:8px}.w-row .btn-s{flex:1}
+.card.patch .row:has(#patchDaily){position:sticky;bottom:-12px;z-index:2;background:var(--panel);padding:8px 0 2px;margin-top:6px!important}
+#mPatch .card.patch{width:min(520px,100%)}
+@media (max-width:640px){.fgrid{display:block;overflow:auto}.fleft,.fright{overflow:visible}.card.fcard{overflow:auto}}
+@media (pointer:coarse) and (max-height:500px){
+  .card.fcard{width:min(860px,100%)!important;padding:8px 10px!important}
+  .fgrid{grid-template-columns:minmax(230px,290px) 1fr;gap:10px}
+  .fleft .fhead h2{font-size:16px;margin:0 0 4px}
+  .fleft .fhead .close{font-size:18px}
+  #customQ{padding:6px 8px;font-size:13px}
+  .fleft #gmSeg button{padding:4px;font-size:12px}
+  #mWelcome .card.welcome{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;width:min(560px,100%);text-align:left;align-items:center}
+  #mWelcome .card.welcome h2,#mWelcome .card.welcome p,#mWelcome .w-new{grid-column:1}
+  #mWelcome #wMission{grid-column:2;grid-row:1/3}
+  #mWelcome .w-row{grid-column:2;grid-row:3/5}
+  #mWelcome .w-row{flex-direction:column}
+}
 </style>
 </head>
 <body>
@@ -530,13 +613,14 @@ body.earth #ult{--ult:#ffb020}
 </section>
 <noscript><p style="padding:24px;font:16px sans-serif">SMASH ARCH는 자바스크립트와 WebGL이 필요한 3D 웹 게임입니다. 브라우저 설정에서 자바스크립트를 켜주세요.</p></noscript>
 <div id="flash"></div>
-<svg id="gest" style="display:none"><line x1="0" y1="0" x2="0" y2="0"/><circle r="6" cx="0" cy="0"/></svg>
+<svg id="gest" style="display:none"><line x1="0" y1="0" x2="0" y2="0"/><circle r="6" cx="0" cy="0"/><circle id="gestB" r="9" cx="0" cy="0" style="display:none;fill:#ffd23a"/></svg>
+<div id="gesBar" style="display:none"><button class="btn-p" id="gesOk">✔ 실행</button><button class="btn-s" id="gesNo">✕ 취소</button></div>
 <div id="bossUI" style="display:none"><div class="bubble"></div><div class="tag">사장님</div></div>
 <div id="clientUI" style="display:none"><div class="bubble"></div><div class="tag">발주처</div></div>
 <button id="bossArrow" style="display:none"><i></i>사장님</button>
 <button id="btnDet" style="display:none">기폭! (Space)<b>0</b></button>
 
-<div id="brand" class="panel"><b>SMASH <span>ARCH</span></b><button class="btn-s" id="btnFirm">⌂ 다른 회사</button><button class="btn-s" id="btnHelp" title="게임 가이드 · 조작법">?</button><button class="btn-s" id="btnMini" title="간단 화면 (H)">UI</button><button class="btn-s" id="btnFS" title="전체 화면">⛶</button></div>
+<div id="brand" class="panel"><b>SMASH <span>ARCH</span></b><button class="btn-s" id="btnFirm">⌂ 다른 회사</button><button class="btn-s" id="btnMenu" title="메뉴">☰</button><button class="btn-s" id="btnDaily" title="오늘의 사옥 3분 챌린지 (건축 모드)">🏆<span class="bd-t"> 오늘의 사옥</span></button><button class="btn-s" id="btnHelp" title="게임 가이드 · 조작법">?</button><button class="btn-s" id="btnMini" title="간단 화면 (H)">UI</button><button class="btn-s" id="btnFS" title="전체 화면">⛶</button></div>
 
 <div id="hudTop" class="panel">
   <div style="min-width:0">
@@ -555,6 +639,7 @@ body.earth #ult{--ult:#ffb020}
   <div id="nbBox" class="panel" style="display:none"></div>
   <div id="tileBox" class="panel" style="display:none;padding:3px 9px;font-size:11.5px"></div>
   <div id="dayBox" class="panel" style="display:none"></div>
+  <div id="dailyBox" class="panel" style="display:none"></div>
   <div id="bossBox" class="panel" style="display:none"></div>
   <div id="clientBox" class="panel" style="display:none"></div>
   <div id="chal" class="panel" style="display:none"></div>
@@ -580,6 +665,7 @@ body.earth #ult{--ult:#ffb020}
   <button class="tool sm" id="btnSet"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>설정</button>
   <button class="tool sm" id="btnDonate" title="개발자 커피 후원"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9h12v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5z"/><path d="M16 10h2a2.5 2.5 0 0 1 0 5h-2"/><path d="M8 3c0 1.5 1 1.5 1 3M12 3c0 1.5 1 1.5 1 3"/></svg>후원</button>
 </div>
+<div id="sysMenu" class="panel"></div>
 <div id="credit">건물·도로 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap 기여자</a> · 건물 모양은 단순화된 일반 재질 · 사무소 목록 © 공공데이터포털 · 회사와 관계없는 비공식 팬 게임 · 원작 아이디어 SMASH HYU (@Hong_Iron_DEV)</div>
 
 <div class="modal" id="mConq"><div class="card conq">
@@ -618,13 +704,11 @@ body.earth #ult{--ult:#ffb020}
   <div id="gBody"></div>
 </div></div>
 <div class="modal" id="mWelcome"><div class="card welcome">
-  <h2>💥 SMASH ARCH에 오신 걸 환영해요</h2>
-  <p>실제 지도로 만든 우리 회사 동네를 부수는 게임이에요.<br>처음이라면 <b>따라하기</b>로 1분만 배워 보세요. 하나씩 알려드려요.</p>
-  <p class="w-new">🌍 <b>NEW 재난 모드</b> — 건축을 너무 많이 해서 지구가 화났어요! 회사 고르기 창 맨 위나 도구막대의 [🌍 재난 모드]로 바꿔 보세요.</p>
+  <h2>💥 SMASH ARCH</h2>
+  <p>실제 지도로 만든 우리 회사 동네를 부수는 게임이에요.</p>
+  <p class="w-new">🏆 <b>오늘의 사옥</b> — 매일 하나, 모두 같은 사옥에서 3분 대결 <small>(건축 모드)</small></p>
   <button class="btn-p" id="wMission">🎯 따라하기로 배우기 <small>(추천 · 1분)</small></button>
-  <button class="btn-s" id="wGuide">📘 사진으로 된 가이드 먼저 보기</button>
-  <button class="btn-s" id="wSkip">바로 시작할게요</button>
-  <div class="small">가이드는 언제든 왼쪽 위 <b>?</b> 버튼으로 다시 볼 수 있어요.</div>
+  <div class="w-row"><button class="btn-s" id="wGuide">📘 가이드 보기</button><button class="btn-s" id="wSkip">바로 시작</button></div>
 </div></div>
 <div class="modal" id="mReport"><div class="card report">
   <button class="close" data-close>×</button>
@@ -682,30 +766,45 @@ body.earth #ult{--ult:#ffb020}
 <div id="boot"><div><b>SMASH <span>ARCH</span></b><br><span id="bootMsg">건축사사무소 목록을 불러오는 중…</span></div></div>
 
 <div class="modal" id="mFirm"><div class="card fcard">
-  <div class="fhead">
-  <button class="close" data-close>×</button>
-  <h2>어디를 부술까요?</h2>
-  <div id="gmSeg" class="seg gm"><button data-gm="build" class="on">🏗 건축 모드</button><button data-gm="earth">🌍 재난 모드 <small>NEW</small></button></div>
-  <div class="row" style="margin:0 0 6px"><input id="customQ" placeholder="검색 — 회사·학교 이름, 주소, 좌표" autocomplete="off"></div>
-  <div id="fCats"><button data-k="all" class="on">전체</button><button data-k="">📐 건축사사무소</button><button data-k="c">🏗 건설사</button><button data-k="u">🎓 대학교</button><button data-k="g">🏢 일반 회사</button></div>
+  <div class="fgrid">
+  <div class="fleft">
+    <div class="fhead">
+      <button class="close" data-close>×</button>
+      <h2>어디를 부술까요?</h2>
+      <div id="gmSeg" class="seg gm"><button data-gm="build" class="on">🏗 건축</button><button data-gm="earth">🌍 재난 <small>NEW</small></button></div>
+      <div class="row" style="margin:0 0 6px"><input id="customQ" placeholder="검색 — 회사·학교 이름, 주소, 좌표" autocomplete="off"></div>
+      <div id="fCats"><button data-k="all" class="on">전체</button><button data-k="">📐 건축사사무소</button><button data-k="c">🏗 건설사</button><button data-k="u">🎓 대학교</button><button data-k="g">🏢 일반 회사</button></div>
+    </div>
+    <div id="dailyCard" style="display:none"></div>
+    <div class="fmini">
+      <details class="fold cast"><summary id="castSum">🎭 사장님·발주처 이름 정하기</summary>
+      <div class="client-in"><label><small>선택 · 이 브라우저에만 저장돼요</small></label>
+        <div class="cn-row"><span>👔 사장님</span><input id="bossName" class="cn-input" maxlength="12" placeholder="예: 왕소장 — 비우면 '사장님'" autocomplete="off"></div>
+        <div class="cn-row"><span>😤 발주처</span><input id="clientNames" class="cn-input" maxlength="80" placeholder="쉼표로 최대 5개 — 비우면 가상 이름" autocomplete="off"></div></div>
+      </details>
+      <div class="req-row"><button class="req-link top" data-req="회사 추가">📮 찾는 곳이 없나요?<b>바로 추가</b></button><button class="req-link top" data-req="사옥 모양">🏢 사옥 모양이 달라요?<b>사진 보내기</b></button></div>
+    </div>
   </div>
-  <div class="fbody">
-  <details class="fold cast"><summary id="castSum">🎭 사장님·발주처 이름 정하기</summary>
-  <div class="client-in"><label><small>선택 · 이 브라우저에만 저장, 서버·랭킹·공유에는 안 나가요</small></label>
-    <div class="cn-row"><span>👔 사장님</span><input id="bossName" class="cn-input" maxlength="12" placeholder="예: 왕소장, 김대표 — 비우면 '사장님'" autocomplete="off"></div>
-    <div class="cn-row"><span>😤 발주처</span><input id="clientNames" class="cn-input" maxlength="80" placeholder="쉼표로 최대 5개 — 비우면 가상 이름" autocomplete="off"></div></div>
-  </details>
-  <div id="searchRes" style="display:none"></div>
-  <div class="req-row"><button class="req-link top" data-req="회사 추가">📮 찾는 곳이 없나요?<b>바로 추가</b></button><button class="req-link top" data-req="사옥 모양">🏢 사옥 모양이 달라요?<b>사진 보내기</b></button></div>
-  <div class="small hot-h" id="hotHead" style="display:none">🔥 최근 7일 가장 많이 무너진 사옥 <small>(무너뜨린 사람 수 · 하루 1인 1회)</small></div>
-  <div id="hotList"></div>
-  <div id="bigFirms"><div class="small" style="margin:10px 0 6px;color:#ccc">대형 설계사무소</div><div id="firmList"></div></div>
-  <div class="small" style="margin:8px 0 4px"><b id="firmCount">0</b><br>출처: 공공데이터포털 전국건축사사무소표준데이터 · 한국교육개발원 2026 고등교육통계</div>
-  <div class="small">"좌표 확정"인 곳은 저장된 좌표로 바로 이동해요. ⚠ 표시는 근사 좌표라 어긋날 수 있어요. 도착해서 [📍 우리 건물 직접 고르기]를 눌러 알려주세요.</div>
-  <button class="req-link" data-req="문의·버그">📮 문의·버그 제보하기</button>
+  <div class="fright">
+    <div id="searchRes" style="display:none"></div>
+    <div class="small hot-h" id="hotHead" style="display:none">🔥 최근 7일 가장 많이 무너진 사옥 <small>(무너뜨린 사람 수)</small></div>
+    <div id="hotList"></div>
+    <div id="bigFirms"><div class="small" style="margin:8px 0 6px;color:#ccc">대형 설계사무소</div><div id="firmList"></div></div>
+    <div class="small fnote"><b id="firmCount">0</b> · ⚠ 표시는 근사 좌표예요. 도착해서 [📍 우리 건물 직접 고르기]로 알려주세요.<br>출처: 공공데이터포털 · 한국교육개발원 2026 고등교육통계</div>
+    <button class="req-link" data-req="문의·버그">📮 문의·버그 제보하기</button>
+  </div>
   </div>
 </div></div>
 
+<div class="modal" id="mDaily"><div class="card daily">
+  <div class="small" style="margin:0 0 2px">🏆 오늘의 사옥 · 3분 챌린지 끝!</div>
+  <h2 id="dyScore">0점</h2>
+  <div class="row"><input id="dyNick" maxlength="20" placeholder="닉네임 (비우면 익명)" autocomplete="off"><button class="btn-p" id="dySend">기록 등록</button></div>
+  <div class="small" id="dyMsg"></div>
+  <div class="small" style="margin-top:8px">오늘의 순위 <small>(1위는 내일 하늘 광고 타워에 👑 명예의 전당으로 걸려요)</small></div>
+  <ol id="dyTop" class="dy-top"></ol>
+  <div class="row" style="margin-top:8px;gap:6px"><button class="btn-p" id="dyRetry" style="flex:1">🔁 다시 도전</button><button class="btn-s" id="dyFree" style="flex:1">자유롭게 놀기</button></div>
+</div></div>
 <div class="modal" id="mSet"><div class="card">
   <button class="close" data-close>×</button>
   <h2>설정</h2>
@@ -717,9 +816,13 @@ body.earth #ult{--ult:#ffb020}
   <label class="opt">간단 화면 — 필요한 버튼만 작게 (H) <input type="checkbox" id="optMini"></label>
   <label class="opt">화면 흔들림 (멀미 나면 끄기) <input type="checkbox" id="optShake"></label>
   <label class="opt">낮·밤 바뀜 (밤 = 야근 모드) <input type="checkbox" id="optNight" checked></label>
+  <label class="opt">날씨 효과 (눈·비·벚꽃·단풍) <input type="checkbox" id="optWeather" checked></label>
   <label class="opt">업데이트 소식 자동으로 띄우기 <input type="checkbox" id="optPatch" checked></label>
+  <button class="btn-s btn-install" style="width:100%;margin-top:8px">📲 앱으로 설치 (홈 화면·바탕화면에 추가)</button>
   <div class="small" style="margin-top:10px">사장님 이름 · 발주처 이름 (이 브라우저에만 저장)</div>
   <div class="row"><input id="bossName2" class="cn-input" maxlength="12" placeholder="사장님 — 비우면 '사장님'" style="flex:0 0 38%"><input id="clientNames2" class="cn-input" maxlength="80" placeholder="발주처 — 쉼표로 최대 5개"></div>
+  <div class="small" style="margin-top:10px">사장님 정장 색 (이 브라우저에만 저장)</div>
+  <div class="suit-row" id="suitRow"></div>
   <div class="row" id="setLinks" style="margin-top:10px"><button class="btn-s" data-go="btnRank">랭킹</button><button class="btn-s" data-go="btnConq">정복</button><button class="btn-s" data-go="btnShare">공유</button><button class="btn-s" data-go="btnReport">철거 일보</button><button class="btn-s" data-req="문의·버그">📮 문의함</button><button class="btn-s" data-req="사옥 모양">🏢 사옥 모양 고치기</button><button class="btn-s" id="setGuide">📘 가이드</button><button class="btn-s" id="setPatch">📰 업데이트 내역</button></div>
   <a class="donate" href="https://fairy.hada.io/@smash-arch#support" target="_blank" rel="noopener">☕ 만든 사람에게 커피 한 잔 <small>(선택 · 게임은 계속 무료)</small></a>
   <button class="btn-p" id="btnPickHQ" style="width:100%;margin-top:12px">사옥 건물 직접 지정</button>
@@ -799,8 +902,23 @@ body.earth #ult{--ult:#ffb020}
 })();
 </script>
 <div class="modal" id="mPatch"><div class="card patch">
-  <div class="small" style="margin:0 0 4px">업데이트 · 2026.11.05</div>
-  <h2>🌍 재난 모드가 생겼어요</h2>
+  <div class="small" style="margin:0 0 2px">업데이트 · 2026.11.05</div>
+  <h2>🌍 재난 도구 전면 개편</h2>
+  <ul>
+    <li><b>재난 도구 10종</b>(숫자 1~0) — 🐜 흰개미 · 🐘 동물 대군 · 🐦 새 떼 운석 · ⚡ 하늘 레이저 · 🔥 산성 화재 · 🌀 태풍 · 🌊 쓰나미 · 🫨 지진 · 🌋 화산 · 🛰️ 인공위성</li>
+    <li><b>선 긋기 도구</b> — 동물 대군 · 태풍 · 쓰나미는 탭 두 번(시작→끝)</li>
+    <li><b>🛡 지구 방어군</b> — 재난 모드엔 구청 대신 방어 헬기! 20동 넘게 몰아서 부수면 3초간 불길 번짐을 막아요(도구는 계속 써요)</li>
+    <li><b>🏘 부동산 호황</b> — 재난 모드는 필요 점수가 10배(100만 점부터)</li>
+    <li><b>🏆 오늘의 사옥</b>은 건축 모드에서만 · 위쪽 🏆 버튼으로 바로 도전</li>
+    <li><b>📱 화면 분리</b> — 휴대폰은 왼쪽 도구 레일 + ☰ 메뉴 · 👔 사장님이 옮겨 다닐 때마다 옷·헤어 변신</li>
+  </ul>
+  <details class="fold"><summary>이전 업데이트 보기 <small>(🏆 오늘의 사옥)</small></summary>
+  <ul>
+    <li><b>매일 사옥 하나, 모두 같은 곳에서 3분 대결!</b> 도구는 골고루 쓰면 점수 보너스, 하루 1위는 다음 날 하늘 광고 타워 현수막에 이름이 걸려요.</li>
+    <li><b>🌨 날씨</b>와 <b>📲 앱으로 설치</b>(설정)도 이때 들어왔어요.</li>
+  </ul>
+  </details>
+  <details class="fold"><summary>이전 업데이트 보기 <small>(🌍 재난 모드 첫 공개)</small></summary>
   <ul>
     <li><b>건축을 너무 많이 해서 지구가 화났어요!</b> 이번엔 동물과 자연이 사옥을 부숴요. 회사 고르기 창 맨 위나 도구막대의 [🌍 재난 모드]로 바꾸면 같은 동네에서 도구만 바뀌어요.</li>
     <li><b>동물의 분노</b> — 🐜 흰개미 떼 · 🐘 코끼리 떼 · 🪲 쇠똥구리(거대 똥공) · 🕊️ 비둘기 떼 · 🕳️ 두더지 굴</li>
@@ -809,6 +927,7 @@ body.earth #ult{--ult:#ffb020}
     <li><b>사장님·발주처도 재난 모드 대사</b> — 발주처는 "이런 재해도 버틸 만큼 튼튼하게!", 부동산 호황은 "재해로 지을 땅이 많아졌어! 오히려 좋아!"</li>
     <li><b>랭킹은 모드별로 따로</b> 집계돼요.</li>
   </ul>
+  </details>
   <details class="fold"><summary>11.04 업데이트 보기 <small>(광고 타워 · 위치 바로잡기 · 사옥 모양 고치기)</small></summary>
   <ul>
     <li><b>📢 광고 타워</b> — 게임을 시작하고 조금 지나면 하늘에서 쌍둥이 타워가 내려와요. 두 타워를 잇는 다리에 현수막이 걸려요. 진짜 건물이라 다 부술 수 있고, <b>다리를 떨어뜨리면 +30,000점</b>.</li>
@@ -842,7 +961,7 @@ body.earth #ult{--ult:#ffb020}
   </ul>
   </details>
   <label class="opt" style="margin-top:8px;border:0">다음 업데이트부터 자동으로 띄우지 않기 <input type="checkbox" id="patchNo"></label>
-  <div class="row" style="margin-top:6px;gap:6px"><button class="btn-p" id="patchEarth" style="flex:1;background:#1f8a57">🌍 재난 모드로 시작</button><button class="btn-s" id="patchOk" style="flex:1">확인하고 시작</button></div>
+  <div class="row" style="margin-top:6px;gap:6px"><button class="btn-p" id="patchDaily" style="flex:1;background:#b8860b">🏆 오늘의 사옥 도전</button><button class="btn-s" id="patchOk" style="flex:1">확인하고 시작</button></div>
 </div></div>
 <script src="config.js"></script>
 <script>
@@ -855,7 +974,7 @@ body.earth #ult{--ult:#ffb020}
   function getT(url,ms){var c=new AbortController(),t=setTimeout(function(){c.abort()},ms);return fetch(url,{signal:c.signal}).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}).finally(function(){clearTimeout(t)})}
   function ok(d){return d&&Array.isArray(d.rows)&&d.rows.length>0}
   function save(d){try{localStorage.setItem(CK,JSON.stringify({t:Date.now(),d:d}))}catch(e){}}
-  function start(d,src){window.FIRMDATA_BOOT=ok(d)?d.rows:[];window.FIRMDATA_SRC=src;var s=document.createElement('script');s.src='game.js';s.onload=function(){var b=document.getElementById('boot');if(b)b.remove()};
+  function start(d,src){window.FIRMDATA_BOOT=ok(d)?d.rows:[];window.FIRMDATA_SRC=src;var s=document.createElement('script');s.src='game.js?v=20261105a';s.onload=function(){var b=document.getElementById('boot');if(b)b.remove()};
     s.onerror=function(){document.getElementById('bootMsg').textContent='game.js 를 불러오지 못했어요'};document.body.appendChild(s)}
   var u=api(),cached=null;try{cached=JSON.parse(localStorage.getItem(CK)||'null')}catch(e){}
   var fromSheet=u?getT(u+(u.indexOf('?')>=0?'&':'?')+'action=firms',30000).then(function(d){if(!ok(d))throw new Error('empty');save(d);return d}):Promise.reject(new Error('no api'));
