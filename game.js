@@ -4402,6 +4402,7 @@ $('#btnSection').onclick=()=>enterSection();
 
 // ---- 화면 틀: PC / 모바일 따로 (게임 로직은 공용) ----
 function applyLayout(){let mob=TOUCH;try{const q=new URL(location.href).searchParams.get('ui');if(q==='mob')mob=true;else if(q==='pc')mob=false}catch(e){}
+  if(document.documentElement.classList.contains('rec'))mob=false;   // 촬영용 세로 화면: 아래 도구막대(PC 배치)를 손가락으로
   document.body.classList.toggle('ui-mob',mob);document.body.classList.toggle('ui-pc',!mob);
   if(!mob)return;const menu=$('#sysMenu');if(!menu||menu.children.length)return;
   ['btnGM','btnSection','btnUndo','btnReset','btnRank','btnConq','btnShare','btnSet','btnDonate'].forEach(id=>{const b=$('#'+id);if(b)menu.appendChild(b)});
@@ -4493,7 +4494,7 @@ function gStart(){const pc=!TOUCH;
     <div class="g-ctl"><span><em>🖱 왼쪽 드래그</em>화면 돌리기</span><span><em>🖱 오른쪽 드래그<small>(또는 Shift+드래그)</small></em>옆으로 이동</span><span><em>🖱 휠</em>확대 · 축소</span><span><em>⌨ W A S D</em>앞뒤좌우 이동</span></div>`:`
     <div class="g-ctl"><span><em>☝ 한 손가락으로 밀기</em>화면 돌리기</span><span><em>✌ 두 손가락 벌리기·오므리기</em>확대 · 축소</span><span><em>✌ 두 손가락 같이 밀기</em>옆으로 이동</span></div>`}</div></div>
   <div class="g-step"><i>3</i><div><b>도구 고르고 건물 누르기</b><p>${pc?'아래 도구막대':'왼쪽 도구 레일'}에서 도구를 고르고${pc?' (숫자키 1~0도 돼요)':''}, 건물을 ${K}하면 부서져요.
-    <br>⚠ <b>불도저·쇠공·TRIM</b>(재난 모드는 <b>동물 대군·쓰나미</b>)은 <u>${K} 한 번 → 끝점에 한 번 더 ${K}</u> 해서 선을 그어요. 누르고 끄는 게 아니에요!${pc?'':' 첫 탭 뒤에 점선이 보이고, 손가락을 끌면 끝점 쪽으로 따라와요.'}</p></div></div>
+    <br>⚠ <b>불도저·쇠공·TRIM</b>(재난 모드는 <b>동물 대군·태풍·쓰나미</b>)은 <u>${K} 한 번 → 끝점에 한 번 더 ${K}</u> 해서 선을 그어요. 누르고 끄는 게 아니에요!${pc?'':' 첫 탭 뒤에 점선이 보이고, 손가락을 끌면 끝점 쪽으로 따라와요.'}</p></div></div>
   <div class="g-step"><i>4</i><div><b>잘못했으면</b><p>${pc?'':'위쪽 <kbd>☰ 메뉴</kbd>에서 '}<kbd>되돌리기</kbd>${pc?'(Ctrl+Z)':''}로 한 단계 전으로, <kbd>전부 복구</kbd>로 처음 상태로 돌아가요.</p></div></div>
   <div class="g-step"><i>5</i><div><b>🏆 오늘의 사옥</b><p>매일 하나, 모두 같은 사옥에서 3분 대결 (건축 모드만). 위쪽 <b>🏆</b> 버튼으로 도전! 도구를 골고루 쓰면 보너스, 하루 1위는 다음 날 하늘 광고 타워에 👑로 걸려요.</p></div></div>
   </div>
@@ -4516,7 +4517,7 @@ function gEvents(){return `<div class="g-ev">
   <div><b>🌍 재난 모드</b><p>회사 고르기 창 맨 위나 ${TOUCH?'☰ 메뉴':'도구막대'}의 [🌍 재난 모드]로 바꿔요. 같은 동네에서 도구가 동물의 분노·자연의 분노로 바뀌어요. 랭킹은 모드별로 따로예요.</p></div>
   <div><b>👔 사장님</b><p>옥상에서 잔소리해요. 사장님을 ${K}하면 기절 + 보너스. 사옥이 무너지면 근처 건축사무소로 도망가요 — 화면 가장자리 화살표를 누르면 따라가요. 더 도망칠 곳이 없으면 검거! (대학교는 총장님)</p></div>
   <div><b>😤 발주처 난입</b><p>사옥이 꽤 부서지면 검은 차를 타고 와서 빨간 임시 철골·빨간펜 테이프·매스·타워를 갖다 놓아요. 전부 부수면 점수! 건물이 무너지면 한 번은 새로 지어요.</p></div>
-  <div><b>📢 부동산 호황</b><p>사장님을 검거한 뒤 점수를 더 모으면 사장님이 비행선을 타고 돌아와 사옥을 새로 지어요. 비행선 현수막엔 최근 7일 가장 많이 무너진 사옥 1위!</p></div>
+  <div><b>📢 부동산 호황</b><p>사장님을 검거한 뒤 점수를 더 모으면 사장님이 비행선을 타고 돌아와 사옥을 새로 지어요. 비행선 현수막엔 최근 7일 가장 많이 무너진 사옥 1위! (재난 모드는 필요한 점수가 10배예요)</p></div>
   <div><b>🌙 야근 모드</b><p>낮 90초 · 밤 60초. 밤에는 <b>불 켜진 건물 점수 ×2</b>, 꺼진 건물 ×0.25. 오른쪽 위에 남은 시간이 보여요.</p></div>
   <div><b>🚧 구청 공사중지 · 🛡 지구 방어군</b><p>건축 모드: 몇 초 만에 건물을 10동 넘게 몰아서 부수면 3초 동안 도구를 못 써요. 재난 모드: 20동 넘게 몰아서 부수면 방어 헬기가 와서 3초간 불길 번짐을 막아요(도구는 계속 써요).</p></div>
   <div><b>🔥 콤보</b><p>쉬지 않고 계속 부수면 n COMBO — 점수가 최대 ×2.</p></div></div>`}
