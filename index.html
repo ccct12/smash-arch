@@ -3,7 +3,6 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
-<script>try{if(!/[?&]rec=0(&|$)/.test(location.search))document.documentElement.classList.add("rec")}catch(e){}</script>
 <title>SMASH ARCH — 사옥 부수기 게임 | 건축사사무소·건설사·대학교 1만 1천여 곳</title>
 <meta name="description" content="전국 건축사사무소·건설사·대학교 1만 1천여 곳을 실제 지도 위 3D로 부수는 무료 웹 게임. 불도저·쇠공·다이너마이트, 설계팀 무기 MOVE·EXTRUDE·TRIM, 단면 모드, 밤마다 야근 모드, 사장님이 비행선 타고 돌아오는 부동산 호황까지. 설치·로그인 없음.">
 <meta name="keywords" content="건축사무소 게임, 사옥 부수기, 건물 부수기 게임, 회사 부수기, 대학교 부수기, 캠퍼스 부수기, 건설사, 설계사무소, 건축사사무소, 스트레스 해소 게임, 웹 게임, SMASH ARCH">
@@ -394,9 +393,6 @@ body.mini #btnMini{background:var(--accent);border-color:#ff8a5a}
 body.ios #rot .ios,body.ios #inapp .ios,body.android #inapp .and{display:block}
 @media (pointer:coarse) and (orientation:portrait) and (max-width:600px){#rot{display:flex}}
 body.inapp #inapp{display:flex}
-/* 테스트 서버: 세로 허용(?rec=0 이면 원래대로) ·: 세로로 들어도 안내 없이 게임 화면 그대로 */
-html.rec #rot{display:none!important}
-html.rec #hudTop>div:last-child{display:none}html.rec #hudTop{max-width:calc(100vw - 190px)}
 #iosTip{position:fixed;left:50%;bottom:calc(60px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:8;display:none;align-items:center;gap:8px;background:#fff;color:#111;border-radius:10px;padding:7px 8px 7px 12px;font-size:12px;font-weight:700;box-shadow:0 3px 10px rgba(0,0,0,.35);white-space:nowrap}
 #iosTip button{font-size:16px;line-height:1;padding:0 4px;color:#666}
 body.iostip #iosTip{display:flex}
@@ -882,7 +878,7 @@ body.ui-mob #hudTop{left:calc(50% + 90px)!important;top:6px!important;transform:
   document.getElementById('inappStay').onclick=function(){ss('sa_inapp_stay','1');B.classList.remove('inapp')};
 
   // 2) 전체 화면 + 가로 고정 (안드로이드 크롬 등. 아이폰은 웹에서 불가 → 홈 화면에 추가 안내)
-  var canFS=!document.documentElement.classList.contains('rec')&&coarse&&!isIOS&&!standalone&&!inapp&&!!(root.requestFullscreen||root.webkitRequestFullscreen);
+  var canFS=coarse&&!isIOS&&!standalone&&!inapp&&!!(root.requestFullscreen||root.webkitRequestFullscreen);
   function inFS(){return !!(document.fullscreenElement||document.webkitFullscreenElement)}
   function goFS(){if(!canFS||inFS())return;
     try{var p=root.requestFullscreen?root.requestFullscreen({navigationUI:'hide'}):root.webkitRequestFullscreen();
@@ -978,7 +974,7 @@ body.ui-mob #hudTop{left:calc(50% + 90px)!important;top:6px!important;transform:
   function getT(url,ms){var c=new AbortController(),t=setTimeout(function(){c.abort()},ms);return fetch(url,{signal:c.signal}).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}).finally(function(){clearTimeout(t)})}
   function ok(d){return d&&Array.isArray(d.rows)&&d.rows.length>0}
   function save(d){try{localStorage.setItem(CK,JSON.stringify({t:Date.now(),d:d}))}catch(e){}}
-  function start(d,src){window.FIRMDATA_BOOT=ok(d)?d.rows:[];window.FIRMDATA_SRC=src;var s=document.createElement('script');s.src='game.js?v=20261105c';s.onload=function(){var b=document.getElementById('boot');if(b)b.remove()};
+  function start(d,src){window.FIRMDATA_BOOT=ok(d)?d.rows:[];window.FIRMDATA_SRC=src;var s=document.createElement('script');s.src='game.js?v=20261105d';s.onload=function(){var b=document.getElementById('boot');if(b)b.remove()};
     s.onerror=function(){document.getElementById('bootMsg').textContent='game.js 를 불러오지 못했어요'};document.body.appendChild(s)}
   var u=api(),cached=null;try{cached=JSON.parse(localStorage.getItem(CK)||'null')}catch(e){}
   var fromSheet=u?getT(u+(u.indexOf('?')>=0?'&':'?')+'action=firms',30000).then(function(d){if(!ok(d))throw new Error('empty');save(d);return d}):Promise.reject(new Error('no api'));

@@ -289,6 +289,7 @@ function buildChunkGround(c){
   m.upload();buildChunkRoads(c);
 }
 // 땅 파기 — 여러 타일에 걸쳐도 동작. 반환: 파낸 부피
+let CARVE_SPARE=null;
 function carve(x,z,r,depth,rim=true,vdInc=0){
   let vol=0;const R2=r*1.35;
   for(let ti=tileOf(x-R2);ti<=tileOf(x+R2);ti++)for(let tj=tileOf(z-R2);tj<=tileOf(z+R2);tj++){
@@ -305,7 +306,7 @@ function carve(x,z,r,depth,rim=true,vdInc=0){
     }
     c.dG=true;c.dT=true;
   }
-  forBuildingsNear(x,z,r+20,b=>{if(b.alive&&groundAt(b.cx,b.cz)<b.base-2.5)killBuilding(b,true)});
+  forBuildingsNear(x,z,r+20,b=>{if(b!==CARVE_SPARE&&b.alive&&groundAt(b.cx,b.cz)<b.base-2.5)killBuilding(b,true)});
   forTreesNear(x,z,r+2,t=>{if(t.alive&&groundAt(t.x,t.z)<-1.2)killTree(t)});
   return vol;
 }
@@ -1383,9 +1384,10 @@ function updateSlices(dt){
 }
 function impactSlice(s){
   const R=Math.max(s.ob.W,s.ob.D)/2+5,sp=Math.hypot(s.v,s.vy),pw=clamp(0.7+s.mass*sp/55,0.9,3.5);let n=0;
-  forBuildingsNear(s.x,s.z,R+10,o=>{if(!o.alive||o.lifted)return;const d=distToBuilding(o,s.x,s.z);if(d>R)return;n++;
+  forBuildingsNear(s.x,s.z,R+10,o=>{if(!o.alive||o.lifted||o===s.src)return;const d=distToBuilding(o,s.x,s.z);if(d>R)return;n++;   // 잘려 나온 자기 건물(남은 아랫부분)은 다치지 않음
     structDamage(o,s.x,clamp(s.y,o.base+1,o.base+o.h-1),s.z,R*0.8,pw*(1-d/R*0.5))});
-  const v=carve(s.x,s.z,R*0.5,1.5+s.mass*0.4);addScore(v*0.5+s.mass*800);
+  // 잘려 나온 윗부분이 자기 건물(남은 아랫부분) 위나 바로 옆에 떨어져도, 그 아래 땅을 파서 아랫부분이 무너지지 않게 함
+  const onTop=s.y>groundAt(s.x,s.z)+3;CARVE_SPARE=s.src;const v=onTop?0:carve(s.x,s.z,R*0.5,1.5+s.mass*0.4);CARVE_SPARE=null;addScore(v*0.5+s.mass*800);
   chunkRain(s.x,Math.max(groundAt(s.x,s.z),s.y),s.z,Math.min(50,16+s.mass*3),Math.max(s.ob.W,s.ob.D)*0.6,s.col,10);
   boom3(s.x,Math.max(0,s.y),s.z,10+s.mass*2);impact(s.x,Math.max(groundAt(s.x,s.z),s.y)+1,s.z,Math.min(1.2,0.4+s.mass*0.15));
   if(n)toast(`잘린 윗부분이 ${n}채를 덮쳤어요!`,1500);
@@ -3449,7 +3451,8 @@ function bossGo(){if(!BOSS||MODE!=='city')return;if(BOOM.ship){BOOM.ship.follow=
 const STOP_N=10,STOP_WIN=3,STOP_SEC=3,STOP_IMMUNE=15;
 let STOP={log:[],until:0,immune:0,grace:0,x:0,z:0,nag:0};
 function stopOn(){return MODE==='city'&&(performance.now()<STOP.until||!!(CH&&CH.over))}
-function stopNote(b){if(MODE!=='city'||!b)return;const now=performance.now();if(now<STOP.grace||now<STOP.until)return;
+function stopNote(b){if(MODE!=='city'||!b||CH)return;   // 오늘의 사옥(CH)에서는 구청 공사중지 없음
+  const now=performance.now();if(now<STOP.grace||now<STOP.until)return;
   STOP.log.push({t:now,x:b.cx,z:b.cz});while(STOP.log.length&&now-STOP.log[0].t>STOP_WIN*1000)STOP.log.shift();
   if(STOP.log.length>=(EARTH()?STOP_N*2:STOP_N)&&now>STOP.immune){let x=0,z=0;for(const k of STOP.log){x+=k.x;z+=k.z}STOP.x=x/STOP.log.length;STOP.z=z/STOP.log.length;STOP.log=[];
     if(EARTH()){STOP.immune=now+STOP_IMMUNE*1000;defenseArrive(STOP.x,STOP.z);return}   // 재난 모드는 도구를 막지 않고 방어군만 출동
