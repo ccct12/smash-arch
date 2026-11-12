@@ -984,5 +984,7 @@ body.ui-mob #hudTop{left:calc(50% + 90px)!important;top:6px!important;transform:
     getT('data/firms.json',30000).then(function(d){start(d,'snapshot')}).catch(function(){start(null,'none')})});
 })();
 </script>
+<!-- CJW GAMES 허브 방문 기록 (게임목록 game_id: smash) — 게임 로딩을 막지 않도록 async -->
+<script src="https://ccct12.github.io/CJW_Games/sdk.js" async onload="try{CJWHub.visit('smash')}catch(e){}"></script>
 </body>
 </html>
