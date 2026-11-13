@@ -41,9 +41,9 @@ function addrQueries(addr){
 
 // ---------- 설정 ----------
 const FLOOR_Y = -60, BOTTOM_Y = -75;
-const GAME_VER='2026.11.05b';
+const GAME_VER='2026.11.13';
 const NOTICE_MAJOR=true;   // true = 큰 업데이트: '업데이트 소식 끄기'와 상관없이, 처음 온 사람에게도 한 번 띄움   // 패치 노트 버전 — 바꾸면 재방문자에게 업데이트 창이 한 번 뜸 (index.html #mPatch 내용도 같이 수정)
-const opts = {sound:true, labels:true, debris:true, shadows:true, pins:true, mini:false, shake:false, night:true, patch:true, weather:true, suit:'navy'};
+const opts = {sound:true, labels:true, debris:true, shadows:true, pins:true, mini:false, shake:false, night:true, patch:true, weather:true, quest:true, bgm:false, suit:'navy'};
 try{ const s = JSON.parse(localStorage.getItem('smasharch_opts')||'null'); if(s) Object.assign(opts,s);}catch(e){}
 // ---------- 낮·밤 (야근 모드) ----------
 //  낮 DAY_SEC초 → 밤 NIGHT_SEC초 반복. 밤에는 불 켜진 건물(층) 점수 ×NIGHT_X, 꺼진 건물 ×NIGHT_OFF
@@ -155,6 +155,11 @@ function mkProg(v,f){const p=gl.createProgram();gl.attachShader(p,sh(gl.VERTEX_S
   gl.bindAttribLocation(p,0,'aP');gl.bindAttribLocation(p,1,'aN');gl.bindAttribLocation(p,2,'aC');gl.bindAttribLocation(p,3,'aX');gl.linkProgram(p);
   if(!gl.getProgramParameter(p,gl.LINK_STATUS))throw new Error(gl.getProgramInfoLog(p));return p}
 const prog=mkProg(VS,FS), sprog=mkProg(SVS,SFS);
+// 하늘: 지평선(안개색) → 위쪽(하늘색) 그라데이션. 화면 전체 사각형 한 장
+let skyProg=null,SKYU=null;
+try{skyProg=mkProg(`precision highp float;attribute vec3 aP;varying float vY;void main(){vY=aP.y;gl_Position=vec4(aP.x,aP.y,0.0,1.0);}`,
+  PREC+`uniform vec3 uA;uniform vec3 uB;uniform float uH;varying float vY;void main(){float t=clamp((vY-uH)/0.85,0.0,1.0);t=t*t*(3.0-2.0*t);gl_FragColor=vec4(mix(uA,uB,t),1.0);}`);
+  SKYU={uA:gl.getUniformLocation(skyProg,'uA'),uB:gl.getUniformLocation(skyProg,'uB'),uH:gl.getUniformLocation(skyProg,'uH')}}catch(e){skyProg=null}
 const U={};for(const n of['uVP','uLVP','uCam','uFog','uSun','uSh','uShOn','uTexel','uTgt','uFogR','uNight','uLit'])U[n]=gl.getUniformLocation(prog,n);
 const SU={uLVP:gl.getUniformLocation(sprog,'uLVP')};
 gl.enable(gl.DEPTH_TEST);gl.disable(gl.CULL_FACE);
@@ -188,6 +193,8 @@ class MB{ // x y z | nx ny nz | r g b | u style
     gl.vertexAttribPointer(0,3,gl.FLOAT,false,S,0);gl.vertexAttribPointer(1,3,gl.FLOAT,false,S,12);gl.vertexAttribPointer(2,3,gl.FLOAT,false,S,24);gl.vertexAttribPointer(3,2,gl.FLOAT,false,S,36);
     gl.drawArrays(gl.TRIANGLES,0,this.n)}
 }
+const mSpray=new MB(1<<12);   // 스프레이 낙서 (바뀔 때만 다시 만듦)
+const mSky=new MB(8);{for(const p of [[-1,-1],[1,-1],[1,1],[-1,-1],[1,1],[-1,1]])mSky.v(p[0],p[1],0,0,0,1,1,1,1);mSky.upload()}
 const mGround=new MB(1<<17), mRoad=new MB(1<<15), mBld=new MB(1<<17), mTree=new MB(1<<16), mRub=new MB(1<<14), mDyn=new MB(1<<14), mGlow=new MB(1<<12);
 
 // ---------- 카메라 ----------
@@ -651,7 +658,7 @@ function comboHit(w){const now=performance.now();if(now-COMBO.t>2500)COMBO.n=0;C
 function updateHUD(){
   $('#scoreV').textContent=fmt(score);
   let k=0;for(let i=0;i<RANKS.length;i++)if(score>=RANKS[i][0])k=i;
-  $('#rankLetter').textContent=RANKS[k][1];$('#rankTitle').textContent=RANKS[k][2];
+  {const rl=$('#rankLetter');if(rl.textContent!==RANKS[k][1]){rl.textContent=RANKS[k][1];rl.title=RANKS[k][1]+' · '+RANKS[k][2];rl.style.backgroundImage='url(img/ranks/rank-'+RANKS[k][1]+'.png)'}}$('#rankTitle').textContent=RANKS[k][2];
   const nx=RANKS[k+1];$('#rankBar i').style.width=(nx?((score-RANKS[k][0])/(nx[0]-RANKS[k][0])*100):100)+'%';
   $('#depth').textContent=depthText(maxDepth);
   {const n=nbStats();const el=$('#nbBox');if(n.t){el.style.display='';el.textContent=`${districtName()} 지구 · 건축사무소 철거 ${n.d} / ${n.t}`;checkStage(n)}else el.style.display='none'}
@@ -675,6 +682,9 @@ function killBuilding(b){
   const n=Math.min(opts.debris?60:20,Math.floor(Math.sqrt(b.area)*1.2)+6);
   for(let k=0;k<n;k++){const p=b.pts[Math.floor(Math.random()*b.pts.length)];const t=Math.random();
     spawn(b.cx+(p[0]-b.cx)*t,b.base+Math.random()*Math.max(b.h,3),b.cz+(p[1]-b.cz)*t,(Math.random()-.5)*6,Math.random()*5,(Math.random()-.5)*6,1.5+Math.random()*3,Math.random()<0.5?b.col:[0.52,0.51,0.49])}
+  if(opts.debris&&MODE==='city'){const R=Math.sqrt(b.area)*0.5+2,dn=fxN(b.hq?16:9,3),dk=1-0.55*DAY.k,dc=[0.76*dk,0.73*dk,0.68*dk];   // 먼지 구름 (밤엔 어둡게)
+    for(let k=0;k<dn;k++){const a=Math.random()*6.283,v=5+Math.random()*9;spawn(b.cx+Math.cos(a)*R,b.base+0.8,b.cz+Math.sin(a)*R,Math.cos(a)*v,2+Math.random()*3.5,Math.sin(a)*v,2.2+Math.random()*2.6,dc,1.1+Math.random()*0.6,3)}}
+  if(b.hq&&MODE==='city'&&!(CH&&CH.on))SLOMO=1.0;
   b.alive=false;b.h=0;markB(b);comboHit(2);
   firmsKilled(b);
   if(b.hq)toast(b.hqName+' 사옥 철거 완료! +50,000');
@@ -1052,7 +1062,7 @@ function drawCrane(m,mg,c){
   const p=c.phase==='rise'?(()=>{const q=craneBall(c,0);return[q[0],q[1]+(1-g)*20,q[2]]})():c.phase==='retract'?craneBall(c,c.pass?0:1):craneBall(c,c.phase==='swing'?c.lastS:0);
   const by=Math.min(p[1],top-2);
   drawSeg(m,[c.piv.x,top,c.piv.z],[p[0],by+BALL_R,p[2]],0.3,STEEL);
-  pushShape(m,SPHERE,p[0],by,p[2],BALL_R,BALL_R,BALL_R,0,[0.16,0.16,0.18],0);
+  pushShape(m,SPHERE,p[0],by,p[2],BALL_R,BALL_R,BALL_R,0,goldOn('ball')?GOLD_C:[0.16,0.16,0.18],0);
   pushShape(m,CUBE,p[0],by+BALL_R+0.4,p[2],0.9,0.8,0.9,0,STEEL,0);
   // 휘두르는 궤적(잔상)
   if(c.phase==='swing')c.trail.forEach((q,k)=>{const s=BALL_R*(0.35+k/c.trail.length*0.5);pushShape(mg,CUBE,q[0],q[1],q[2],s,s,s,k,[0.95,0.9,0.75],1)});
@@ -1160,15 +1170,17 @@ function updateDozers(dt){
 }
 function drawDozerAt(m,x,gy,z,dx,dz,s,jig){
   const rot=Math.atan2(dz,dx),f=[dx,dz],r=[-dz,dx],j=jig||0;
-  const P=(a,b,y)=>[x+f[0]*a+r[0]*b,gy+y+j,z+f[1]*a+r[1]*b];const ro=-rot;
-  let p=P(0,1.5*s,0.55*s);pushShape(m,CUBE,p[0],p[1]-j,p[2],4.2*s,1.1*s,0.8*s,ro,TRACK,0);
-  p=P(0,-1.5*s,0.55*s);pushShape(m,CUBE,p[0],p[1]-j,p[2],4.2*s,1.1*s,0.8*s,ro,TRACK,0);
-  p=P(0,0,1.5*s);pushShape(m,CUBE,p[0],p[1],p[2],3.6*s,1.2*s,2.6*s,ro,YEL,0);
-  p=P(-0.6*s,0,2.8*s);pushShape(m,CUBE,p[0],p[1],p[2],1.6*s,1.5*s,1.8*s,ro,YEL_D,0);
-  p=P(-0.6*s,0,3.65*s);pushShape(m,CUBE,p[0],p[1],p[2],1.7*s,0.15*s,1.9*s,ro,[0.2,0.2,0.2],0);
+  const P=(a,b,y)=>[x+f[0]*a+r[0]*b,gy+y+j,z+f[1]*a+r[1]*b];const ro=rot;
+  const gd=goldOn('dozer'),TR=gd?GOLD_K:TRACK;   // 황금 불도저 (연속 출석 5일 보상)
+  let p=P(0,1.5*s,0.55*s);pushShape(m,CUBE,p[0],p[1]-j,p[2],4.2*s,1.1*s,0.8*s,ro,TR,0);
+  p=P(0,-1.5*s,0.55*s);pushShape(m,CUBE,p[0],p[1]-j,p[2],4.2*s,1.1*s,0.8*s,ro,TR,0);
+  p=P(0,0,1.5*s);pushShape(m,CUBE,p[0],p[1],p[2],3.6*s,1.2*s,2.6*s,ro,gd?GOLD_C:YEL,0);
+  p=P(-0.6*s,0,2.8*s);pushShape(m,CUBE,p[0],p[1],p[2],1.6*s,1.5*s,1.8*s,ro,gd?GOLD_D:YEL_D,0);
+  p=P(-0.6*s,0,3.65*s);pushShape(m,CUBE,p[0],p[1],p[2],1.7*s,0.15*s,1.9*s,ro,gd?GOLD_L:[0.2,0.2,0.2],0);
+  if(gd&&Math.random()<0.2)spawn(x+(Math.random()-.5)*5*s,gy+(1+Math.random()*3)*s,z+(Math.random()-.5)*5*s,0,2+Math.random()*3,0,0.35+Math.random()*0.3,[1,0.96,0.7],0.5,2);
   p=P(1.0*s,0.6*s,2.9*s);pushShape(m,CUBE,p[0],p[1],p[2],0.18*s,1.2*s,0.18*s,ro,[0.15,0.15,0.15],0);
   p=P(2.2*s,0,1.1*s);pushShape(m,CUBE,p[0],p[1],p[2],1.4*s,0.25*s,0.25*s,ro,STEEL,0);
-  p=P(2.9*s,0,1.1*s);pushShape(m,CUBE,p[0],p[1],p[2],0.4*s,1.8*s,4.4*s,ro,[0.42,0.42,0.42],0);   // 블레이드
+  p=P(2.9*s,0,1.1*s);pushShape(m,CUBE,p[0],p[1],p[2],0.4*s,1.8*s,4.4*s,ro,gd?GOLD_L:[0.42,0.42,0.42],0);   // 블레이드
 }
 function drawDozer(m,d){const a=d.left<=0?Math.max(0,1-d.gone/1.2):1;if(a<=0)return;(d.ele?drawElephant:drawDozerAt)(m,d.x,groundAt(d.x,d.z),d.z,d.dx,d.dz,DZ_S,d.hits.size&&d.v<17?(Math.random()-.5)*0.4:0)}
 
@@ -1525,7 +1537,7 @@ function armUlt(){if(stopOn()){stopNag();return}if(CH&&CH.on&&CH.ultUsed){toast(
 // =====================================================================
 //  공통 타격감 — 히트스톱(순간 멈춤) · 섬광 · 충격파 링 · 불덩이 · 저음 폭발음 · 예약 실행
 // =====================================================================
-let HSTOP=0, RINGS=[], LATER=[], BALLS=[];
+let HSTOP=0, SLOMO=0, RINGS=[], LATER=[], BALLS=[];
 function hitStop(s){HSTOP=Math.max(HSTOP,s)}
 function flashScreen(a,col){const f=$('#flash');if(!f)return;a=Math.min(0.95,a*efx('flash'));f.style.background=col||'#fff';f.style.transition='none';f.style.opacity=a;requestAnimationFrame(()=>requestAnimationFrame(()=>{f.style.transition='opacity 0.9s';f.style.opacity=0}))}
 function later(t,fn){LATER.push({t,fn,mode:MODE})}
@@ -1712,13 +1724,13 @@ let TOOL_ORIG=null;
 function applyGM(silent){const e=EARTH();document.body.classList.toggle('earth',e);
   const btns=[...document.querySelectorAll('.tool[data-w]')];
   if(!TOOL_ORIG)TOOL_ORIG=btns.map(b=>b.innerHTML);
-  btns.forEach((b,i)=>{const et=E_TOOLS[i];b.style.display=e&&!et?'none':'';b.innerHTML=e&&et?`<span class="num">${(i+1)%10}</span><i class="emo">${et[0]}</i>${et[1]}`:TOOL_ORIG[i];b.title=e&&et?et[1]:b.textContent.trim()});
+  btns.forEach((b,i)=>{const et=E_TOOLS[i];b.style.display=e&&!et?'none':'';b.innerHTML=e&&et?`<span class="num">${(i+1)%10}</span><img class="ti" src="img/tools/tool-e-${WEAPONS_E[i].id}.png" alt="${et[0]}">${et[1]}`:TOOL_ORIG[i];b.title=e&&et?et[1]:b.textContent.trim()});
   {const gs=document.querySelectorAll('#toolbar .grp'),cut=e?3:6;if(gs.length>=2)btns.forEach((b,i)=>gs[i<cut?0:1].appendChild(b));if(weapon>=WL().length)weapon=0}
   const gl=document.querySelectorAll('#toolbar .glbl');if(gl[0])gl[0].textContent=e?'동물의 분노':'시공팀';if(gl[1])gl[1].textContent=e?'자연의 분노':'설계팀';
   const det=$('#btnDet');if(det&&det.firstChild)det.firstChild.textContent=e?'와르르! (Space)':'기폭! (Space)';
-  const ul=$('#ult span');if(ul)ul.textContent=e?'태양 조각':'필살기';
+  const ul=$('#ult span');if(ul)ul.textContent=e?'태양 조각':'필살기';{const ui=$('#ultImg');if(ui)ui.src='img/tools/'+(e?'tool-e-sun':'tool-nuke')+'.png'}
   const sb=$('#btnSection');if(sb)sb.style.display=e?'none':'';
-  const gb=$('#btnGM');if(gb)gb.innerHTML=e?'<i class="emo">🏗</i>건축 모드':'<i class="emo">🌍</i>재난 모드';
+  const gb=$('#btnGM');if(gb){gb.innerHTML=e?'<i class="emo">🏗</i>건축으로':'<i class="emo">🌍</i>재난으로';gb.title='모드 바꾸기 (지금: '+(e?'재난':'건축')+' 모드)'}
   document.querySelectorAll('[data-gm]').forEach(b=>b.classList.toggle('on',b.dataset.gm===GM));
   try{const u=new URL(location.href);if(e)u.searchParams.set('mode','earth');else u.searchParams.delete('mode');history.replaceState(null,'',u)}catch(err){}
   if(!silent)selectWeapon(weapon)}
@@ -1731,7 +1743,7 @@ function setGM(m,quiet){if(m!=='earth')m='build';if(m===GM){applyGM(true);return
 
 // ---- 1. 흰개미 (철거반 인부 대신 그림) ----
 function drawTermite(m,w,S){if(w.gone||w.t<0&&w.state==='run')return;
-  const s=(S||TOY)*1.25,gy=w.y!=null?w.y:groundAt(w.x,w.z),rot=w.dir||0,st=w.state,now=performance.now();
+  const s=(S||TOY)*1.7,gy=w.y!=null?w.y:groundAt(w.x,w.z),rot=w.dir||0,st=w.state,now=performance.now();
   const fx=Math.cos(rot),fz=Math.sin(rot),up=st==='climb'||st==='hit';   // 벽을 탈 땐 몸을 세움
   const P=(a,h)=>up?[w.x+fx*0.15*s,gy+(0.9+a)*s,w.z+fz*0.15*s]:[w.x+fx*a*s,gy+(0.35+h)*s,w.z+fz*a*s];
   const body=[0.55,0.36,0.18],head=[0.72,0.45,0.2],wig=Math.sin(now/60+w.x*7)*0.12*s;
@@ -1740,8 +1752,21 @@ function drawTermite(m,w,S){if(w.gone||w.t<0&&w.state==='run')return;
   p=P(0.45,0.05);pushShape(m,SPHERE,p[0],p[1],p[2],0.3*s,0.26*s,0.3*s,rot,head,0);
   for(const k of[-1,1]){const lx=-fz*k*0.4*s,lz=fx*k*0.4*s;pushShape(m,CUBE,w.x+lx+(up?0:wig*fx),gy+(up?0.9:0.15)*s,w.z+lz+(up?0:wig*fz),0.08*s,0.08*s,0.08*s,rot,body,0)}
   if(st==='hit'&&Math.random()<0.2)spawn(w.x,gy+1.2*s,w.z,(Math.random()-.5)*2,1,(Math.random()-.5)*2,0.25,[0.8,0.72,0.55])}
+// 개미집: 건물 옆 땅에서 흙더미가 솟고, 구멍에서 개미 떼가 줄지어 건물로 들어감
+let TMOUNDS=[];
+function drawMounds(m,mg){if(MODE!=='city'){TMOUNDS=[];return}const nowMs=performance.now(),now=nowMs/1000;
+  for(let i=TMOUNDS.length-1;i>=0;i--){const d=TMOUNDS[i],t=(nowMs-d.t0)/1000;if(t>d.T||t<0){TMOUNDS.splice(i,1);continue}if(!fxOK(44))return;
+    const g=Math.min(1,t/0.7)*Math.min(1,(d.T-t)/1.2),gy=groundAt(d.x,d.z),s=d.s*g;if(g<=0.02)continue;
+    let y=gy;for(let k=0;k<5;k++){const r=[7,5.4,4,2.8,1.6][k]*s,hh=[5,5.5,5.5,5,4.5][k]*s;   // 뾰족한 흙탑 5단 (모난 흙덩이)
+      pushShape(m,CUBE,d.x+Math.sin(d.ph+k)*0.9*s,y+hh/2,d.z+Math.cos(d.ph+k*2)*0.9*s,r,hh,r,d.ph+k*0.9,k%2?[0.7,0.52,0.32]:[0.8,0.62,0.4],0);y+=hh*0.86}
+    for(let k=0;k<2;k++){const a=d.ph+k*2.6;pushShape(m,CUBE,d.x+Math.cos(a)*5.5*s,gy+1.6*s,d.z+Math.sin(a)*5.5*s,4*s,3.2*s,4*s,a,[0.66,0.5,0.3],0)}   // 곁에 솟은 작은 흙덩이
+    for(let k=0;k<4;k++){const a=d.ph+k*1.7;pushShape(m,CUBE,d.x+Math.cos(a)*(3.6-k*0.6)*s,gy+(2.5+k*5)*s,d.z+Math.sin(a)*(3.6-k*0.6)*s,1.3*s,1.6*s,1.3*s,a,[0.16,0.1,0.06],0)}   // 개미 구멍
+    const b=d.b,dx=b.cx-d.x,dz=b.cz-d.z,L=Math.hypot(dx,dz)||1;                       // 건물로 가는 개미 줄 (두 줄)
+    if(b.alive&&t>0.5)for(let k=0;k<16;k++){const u=((now*0.55+k/16+d.ph)%1),side=(k%2?1:-1)*(1.2+Math.sin(now*6+k)*0.5),x=d.x+dx*u-dz/L*side,z=d.z+dz*u+dx/L*side;
+      pushShape(m,SPHERE,x,groundAt(x,z)+0.7+Math.abs(Math.sin(now*14+k))*0.5,z,1.5,0.8,0.9,Math.atan2(dz,dx),k%3?[0.62,0.36,0.14]:[0.84,0.56,0.22],0)}
+    if(b.alive&&Math.random()<0.35){const p=b.pts[Math.floor(Math.random()*b.pts.length)];fxSp(p[0],b.base+eRnd(1,Math.max(3,b.h*0.5)),p[1],eRnd(-4,4),eRnd(2,7),eRnd(-4,4),eRnd(0.5,1.1),[0.86,0.74,0.5],0.8,3)}}}   // 갉아먹는 톱밥
 // ---- 2. 코끼리 (불도저 대신 그림) ----
-function drawElephant(m,x,gy,z,dx,dz,s,jig){const rot=Math.atan2(dz,dx),ro=-rot,f=[dx,dz],r=[-dz,dx],now=performance.now(),j=jig||0;
+function drawElephant(m,x,gy,z,dx,dz,s,jig){const rot=Math.atan2(dz,dx),ro=rot,f=[dx,dz],r=[-dz,dx],now=performance.now(),j=jig||0;
   const P=(a,b,y)=>[x+f[0]*a+r[0]*b,gy+y+j,z+f[1]*a+r[1]*b],G=[0.55,0.55,0.58],G2=[0.45,0.45,0.48],step=Math.sin(now/110+x*0.3)*0.5*s;
   let p=P(0,0,2.6*s);pushShape(m,SPHERE,p[0],p[1],p[2],2.6*s,1.7*s,1.7*s,ro,G,0);                       // 몸통
   p=P(2.6*s,0,3.2*s);pushShape(m,SPHERE,p[0],p[1],p[2],1.2*s,1.15*s,1.1*s,ro,G,0);                      // 머리
@@ -1814,6 +1839,16 @@ const eRnd=(a,b)=>a+Math.random()*(b-a);
 function eRing(x,y,z,max,col){ring(x,y,z,max/efx('ring'),col)}   // 재난 모드 고리 확대 배율(efx)을 빼서 실제 범위와 같게
 function eBuildings(x,z,R){const o=[];forBuildingsNear(x,z,R,b=>{if(b.alive&&!b.lifted&&distToBuilding(b,x,z)<R)o.push(b)});return o}
 function eSmall(b){return b.area<110&&b.h0<10}
+// 불꽃 한 덩이: 아래는 넓고 붉게, 위로 갈수록 좁고 밝게 (투명이 없어서 겹치지 않게 층층이 쌓음)
+const FLAME_FIRE=[[1,0.26,0.05],[1,0.5,0.08],[1,0.76,0.2],[1,0.96,0.68]],FLAME_ACID=[[0.22,0.6,0.08],[0.45,0.84,0.12],[0.72,0.97,0.28],[0.94,1,0.72]];
+function flame(mg,x,y,z,w,h,ph,pal){if(w<=0.05||h<=0.05)return;const now=performance.now()/1000;let yy=y;
+  for(let i=0;i<4;i++){const fl=0.8+0.35*Math.sin(now*(9+i*3)+ph+i*1.7),hh=h*[0.34,0.3,0.24,0.18][i]*fl,ww=w*[1,0.74,0.48,0.24][i];
+    pushShape(mg,CUBE,x+Math.sin(now*5+ph+i)*w*0.12*i,yy+hh/2,z+Math.cos(now*4+ph+i)*w*0.1*i,ww,hh,ww,now*(1.5+i)+ph,pal[i],1);yy+=hh*0.92}}
+// 불꼬리: (dx,dy,dz)는 날아가는 반대 방향. 앞은 희고 뜨겁게, 뒤로 갈수록 붉고 작게
+const TAIL_COL=[[1,0.97,0.75],[1,0.85,0.35],[1,0.62,0.12],[1,0.4,0.06],[0.78,0.22,0.05],[0.42,0.14,0.06]];
+function fireTail(mg,x,y,z,dx,dy,dz,size,len,seed){const now=performance.now()/1000;
+  for(let i=0;i<6;i++){const u=(i+0.5)/6,d=size*0.55+len*u,s=size*(1.1-u*0.72)*(0.85+0.3*Math.sin(now*14+seed+i*2)),j=size*0.3*u;
+    pushShape(mg,CUBE,x+dx*d+Math.sin(now*11+i+seed)*j,y+dy*d+Math.cos(now*13+i)*j,z+dz*d+Math.sin(now*9+i*3)*j,s,s,s,now*3+i,TAIL_COL[i],1)}}
 function eTop(b){return b.base+Math.max(b.h,2)}
 // 1층부터 nf개 층의 기둥을 차례로 때림 (위층일수록 약하게)
 function eHitLow(b,x,z,r,p,nf){if(!b.alive||b.lifted)return;const d=b.det||ensureDet(b);const n=Math.min(nf,d.F);
@@ -1831,7 +1866,9 @@ function spawnTermites(h){
   const R=E_R.termite,bs=eBuildings(h.x,h.z,R);
   if(!bs.length){toast('범위 안에 건물이 없어요 — 건물 근처를 눌러주세요',1800);return false}
   bs.sort((a,b)=>distToBuilding(a,h.x,h.z)-distToBuilding(b,h.x,h.z));
-  let n=0;for(const b of bs.slice(0,fxN(9,4)))n+=spawnCrew({b},{quiet:true,from:{x:h.x,z:h.z,R}});
+  let n=0;for(const b of bs.slice(0,fxN(9,4))){const c=spawnCrew({b},{quiet:true,from:{x:h.x,z:h.z,R}});n+=c;
+    if(c){const d=Math.hypot(h.x-b.cx,h.z-b.cz)||1,r=Math.sqrt(b.area)*0.62+6;TMOUNDS.push({x:b.cx+(h.x-b.cx)/d*r,z:b.cz+(h.z-b.cz)/d*r,b,t0:performance.now(),T:11,s:eRnd(0.85,1.3),ph:Math.random()*6})}}
+  if(TMOUNDS.length>24)TMOUNDS.splice(0,TMOUNDS.length-24);
   if(!n){toast('현장에 흰개미가 꽉 찼어요 — 잠시 뒤 다시',1500);return false}
   const g=groundAt(h.x,h.z);eRing(h.x,g+1,h.z,R,[0.85,0.55,0.25]);eRing(h.x,g+1,h.z,R*0.6,[0.7,0.4,0.2]);
   toast(`🐜 흰개미 ${fmt(n*12)}마리가 사방에서 몰려와요! 기둥을 속부터 갉아먹어요`,2400);floatText(h.x,g+10,h.z,'🐜 흰개미 떼','cad',1.6);sfx(12,1.4);return true}
@@ -1880,7 +1917,7 @@ function updateHerds(dt){for(let i=HERDS.length-1;i>=0;i--){const h=HERDS[i];h.t
   ePushDebris(h.x+h.dx*3,h.z+h.dz*3,h.dx,h.dz,h.W*0.5,14,36);
   if(Math.random()<0.7){const o=eRnd(-h.W/2,h.W/2);fxSp(h.x+px*o-h.dx*6,groundAt(h.x,h.z)+1,h.z+pz*o-h.dz*6,eRnd(-3,3),eRnd(2,6),eRnd(-3,3),eRnd(1.2,2.6),[0.62,0.55,0.44],1,3)}
   cam.shake=Math.max(cam.shake,2.2)}}
-function drawQuad(m,k,x,gy,z,dx,dz,ph){const sp=BEAST[k],s=sp.s,ro=-Math.atan2(dz,dx);
+function drawQuad(m,k,x,gy,z,dx,dz,ph){const sp=BEAST[k],s=sp.s,ro=Math.atan2(dz,dx);
   const P=(a,b,y)=>[x+(dx*a-dz*b)*s,gy+y*s,z+(dz*a+dx*b)*s];
   const g=ph*sp.gait,bob=Math.abs(Math.sin(g))*0.22,by=sp.legH+sp.bodyH/2+bob;
   let p=P(0,0,by);pushShape(m,SPHERE,p[0],p[1],p[2],sp.bodyL*s,sp.bodyH*s,sp.bodyW*s,ro,sp.c,0);
@@ -1890,10 +1927,15 @@ function drawQuad(m,k,x,gy,z,dx,dz,ph){const sp=BEAST[k],s=sp.s,ro=-Math.atan2(d
   if(sp.trunk)for(let t=0;t<4;t++){p=P(sp.bodyL*0.5+sp.head*0.9+t*0.35,0,by-0.1-t*0.45+Math.sin(ph*6+t)*0.12);pushShape(m,CUBE,p[0],p[1],p[2],0.5*s,0.7*s,0.45*s,ro,sp.c2,0)}
   if(sp.tusk)for(const q of[-1,1]){p=P(sp.bodyL*0.5+sp.head*0.95,q*sp.head*0.35,by-0.15);pushShape(m,CUBE,p[0],p[1],p[2],0.8*s,0.14*s,0.14*s,ro,[0.97,0.95,0.88],0)}
   if(sp.horn){p=P(sp.bodyL*0.5+sp.head*1.0,0,by+0.1);pushShape(m,CUBE,p[0],p[1],p[2],0.2*s,0.55*s,0.2*s,ro,[0.85,0.82,0.76],0)}
-  if(sp.tail){p=P(-sp.bodyL*0.5-0.3,0,by+0.1);pushShape(m,CUBE,p[0],p[1],p[2],0.6*s,0.12*s,0.12*s,ro,sp.c2,0)}}
+  if(sp.tail){p=P(-sp.bodyL*0.5-0.3,0,by+0.1);pushShape(m,CUBE,p[0],p[1],p[2],0.6*s,0.12*s,0.12*s,ro,sp.c2,0)}
+  for(const q of[-1,1]){p=P(sp.bodyL*0.5+sp.head*0.66,q*sp.head*0.3,by+sp.bodyH*0.3);pushShape(m,CUBE,p[0],p[1],p[2],0.16*s,0.16*s,0.16*s,ro,[1,0.16,0.08],1)}   // 붉게 빛나는 눈
+  {const k2=0.6+0.4*Math.abs(Math.sin(g*0.5+x));p=P(-sp.bodyL*0.75,0,0.55*k2);pushShape(m,SPHERE,p[0],p[1],p[2],1.5*s*k2,1.0*s*k2,1.5*s*k2,g,[0.7,0.63,0.52],0)}}   // 발밑에서 이는 흙먼지
 function drawHerds(m,mg){const now=performance.now()/1000;
   for(const h of HERDS){const px=-h.dz,pz=h.dx;
-    for(const a of h.an){if(!fxOK(11))return;const x=h.x+h.dx*a.u+px*a.o,z=h.z+h.dz*a.u+pz*a.o;drawQuad(m,a.k,x,groundAt(x,z),z,h.dx,h.dz,now+a.ph)}}}
+    for(const a of h.an){if(!fxOK(14))return;const x=h.x+h.dx*a.u+px*a.o,z=h.z+h.dz*a.u+pz*a.o;drawQuad(m,a.k,x,groundAt(x,z),z,h.dx,h.dz,now+a.ph)}
+    let back=0;for(const a of h.an)if(a.u<back)back=a.u;const W=h.W||90;                       // 떼 맨 뒤에 흙먼지 벽 3겹
+    for(let r=0;r<3;r++)for(let o=-W/2;o<=W/2;o+=10){if(!fxOK(1))return;const u=back-8-r*9,x=h.x+h.dx*u+px*o,z=h.z+h.dz*u+pz*o,k=(0.7+0.3*Math.sin(now*4+o*0.3+r*2))*(1-r*0.22);
+      pushShape(m,SPHERE,x,groundAt(x,z)+3.2*k,z,7.5*k,5.2*k,7.5*k,now+o,r?[0.74,0.68,0.58]:[0.64,0.57,0.46],0)}}}
 
 // =====================================================================
 //  3. 새 떼 운석 — 새 떼가 하늘을 뒤덮고 돌을 떨궈 불붙은 운석 조각이 범위 안에 쏟아짐
@@ -1932,10 +1974,19 @@ function updateFlocks(dt){
     fxSp(r.x,r.y,r.z,eRnd(-2,2),eRnd(2,6),eRnd(-2,2),eRnd(1.2,2.4),[1,eRnd(0.4,0.7),0.12],0.6,1);
     if(u>=1){ROCKS.splice(i,1);meteorHit(r.tx,r.tz,r.size,r.lava)}}}
 function drawFlocks(m,mg){const now=performance.now()/1000;
-  for(const f of FLOCKS)for(const b of f.birds){if(!fxOK(4))break;const p=birdPos(f,b),fl=Math.sin(now*13+b.ph)*0.9;
-    pushShape(m,SPHERE,p.x,p.y,p.z,2.4,1.3,1.3,-p.r,[0.16,0.17,0.2],0);pushShape(m,CUBE,p.x,p.y+0.3+fl*0.6,p.z,1.0,0.2,6.4,-p.r,[0.2,0.21,0.25],0);pushShape(m,SPHERE,p.x+Math.cos(p.r)*1.5,p.y+0.2,p.z+Math.sin(p.r)*1.5,0.8,0.8,0.8,0,[0.3,0.3,0.34],0)}
-  for(const r of ROCKS){if(!fxOK(3))break;const s=r.size*(r.lava?0.9:1);
-    pushShape(m,ICO,r.x,r.y,r.z,s,s*0.85,s,r.t*3,r.lava?[0.35,0.12,0.06]:[0.3,0.26,0.24],0);pushShape(mg,SPHERE,r.x,r.y,r.z,s*1.5,s*1.3,s*1.5,0,[1,0.5,0.12],1)}}
+  for(const f of FLOCKS)for(const b of f.birds){if(!fxOK(6))break;const p=birdPos(f,b),fl=Math.sin(now*13+b.ph),c=Math.cos(p.r),s=Math.sin(p.r);
+    pushShape(m,SPHERE,p.x,p.y,p.z,3.6,1.8,1.9,p.r,[0.12,0.13,0.16],0);                                              // 몸
+    for(const k of[-1,1])pushShape(m,CUBE,p.x-s*k*3.4,p.y+0.5+fl*1.5,p.z+c*k*3.4,1.9,0.28,5.4,p.r,[0.2,0.21,0.27],0);   // 퍼덕이는 양 날개
+    pushShape(m,SPHERE,p.x+c*2.4,p.y+0.5,p.z+s*2.4,1.15,1.15,1.15,0,[0.25,0.26,0.31],0);                              // 머리
+    pushShape(m,CUBE,p.x+c*3.5,p.y+0.4,p.z+s*3.5,1.1,0.32,0.32,p.r,[1,0.7,0.15],0);                                   // 부리
+    pushShape(m,CUBE,p.x-c*2.6,p.y+0.2,p.z-s*2.6,1.8,0.2,1.4,p.r,[0.16,0.17,0.21],0)}                                 // 꽁지
+  for(const r of ROCKS){if(!fxOK(11))break;const s=r.size*(r.lava?1.05:1.3),u=Math.min(1,r.t/r.T),u0=Math.max(0,u-0.07);
+    let dx=(r.x0+(r.tx-r.x0)*u0)-r.x,dy=(r.y0+(r.ty-r.y0)*Math.pow(u0,1.8))-r.y,dz=(r.z0+(r.tz-r.z0)*u0)-r.z;const l=Math.hypot(dx,dy,dz);if(l>0.001){dx/=l;dy/=l;dz/=l}else{dx=0;dy=1;dz=0}
+    pushShape(m,ICO,r.x,r.y,r.z,s,s*0.85,s,r.t*3,r.lava?[0.3,0.1,0.05]:[0.26,0.22,0.2],0);                             // 바위
+    pushShape(mg,ICO,r.x-dx*s*0.35,r.y-dy*s*0.35,r.z-dz*s*0.35,s*0.8,s*0.7,s*0.8,r.t*3+1,[1,0.72,0.25],1);             // 달아오른 앞면
+    fireTail(mg,r.x,r.y,r.z,dx,dy,dz,s*1.5,s*8,r.x0);                                                                  // 불꼬리
+    const k=0.45+0.55*Math.abs(Math.sin(now*9+r.x0)),w=s*2.6;                                                          // 떨어질 자리 (붉은 X)
+    pushShape(mg,CUBE,r.tx,r.ty+0.7,r.tz,w,0.4,0.8,0.785,[1,0.3*k,0.08],1);pushShape(mg,CUBE,r.tx,r.ty+0.7,r.tz,w,0.4,0.8,-0.785,[1,0.3*k,0.08],1)}}
 
 // =====================================================================
 //  4. 벼락 — 하늘에서 거대한 레이저 기둥이 내려와 땅을 훑으며 건물을 위에서 아래까지 잘라냄
@@ -1943,17 +1994,18 @@ function drawFlocks(m,mg){const now=performance.now()/1000;
 let BOLTS=[];
 function spawnBolts(h){
   if(MODE!=='city')return false;
-  const R=E_R.bolt,bs=eBuildings(h.x,h.z,R),n=fxN(9,5),g=groundAt(h.x,h.z);
+  const R=E_R.bolt,bs=eBuildings(h.x,h.z,R),n=TOUCH?8:10,g=groundAt(h.x,h.z);
   eRing(h.x,g+1,h.z,R,[0.7,0.8,1]);flashScreen(0.15,'#cfe0ff');toast('⚡ 하늘에서 레이저가 쏟아져요!',2200);sfx(24,1.8);
   for(let k=0;k<n;k++){let x,z;
     if(bs.length&&Math.random()<0.8){const b=bs[Math.floor(Math.random()*bs.length)];x=b.cx;z=b.cz}else{const a=Math.random()*6.283,r=R*Math.sqrt(Math.random());x=h.x+Math.cos(a)*r;z=h.z+Math.sin(a)*r}
-    const a=Math.random()*6.283,len=eRnd(30,70);
-    BOLTS.push({x0:x,z0:z,x1:x+Math.cos(a)*len,z1:z+Math.sin(a)*len,t:-(0.5+k*0.4+Math.random()*0.2),D:1.0,acc:0,fired:false})}
+    const a=Math.random()*6.283,len=eRnd(BOLT_LEN[0],BOLT_LEN[1]),hx=Math.cos(a)*len/2,hz=Math.sin(a)*len/2;
+    BOLTS.push({x0:x-hx,z0:z-hz,x1:x+hx,z1:z+hz,t:-(0.5+k*0.4+Math.random()*0.2),D:1.0,acc:0,fired:false,sd:Math.random()*1000})}
   return true}
-function laserCut(x,z){const r=12;
+const BOLT_R=15,BOLT_P=5,BOLT_LEN=[55,95];   // 벼락 세기: 범위(m) · 기둥 피해 · 지나가는 길이(m)
+function laserCut(x,z){const r=BOLT_R;
   forBuildingsNear(x,z,r+14,b=>{if(!b.alive||b.lifted||distToBuilding(b,x,z)>r)return;
     if(eSmall(b)){killBuilding(b);return}
-    const d=b.det||ensureDet(b);for(let f=0;f<Math.min(d.F,12);f++){if(!b.alive||!b.det)break;structDamage(b,x,b.base+d.fy[f]+d.fh*0.5,z,r,4.4,{floors:[f]})}});
+    const d=b.det||ensureDet(b);for(let f=0;f<d.F;f++){if(!b.alive||!b.det)break;structDamage(b,x,b.base+d.fy[f]+d.fh*0.5,z,r,BOLT_P,{floors:[f]})}});
   forTreesNear(x,z,r,t=>{if(t.alive&&Math.hypot(t.x-x,t.z-z)<r)killTree(t)});
   const g=groundAt(x,z);if(CLIENT)clientHitAt(x,g+2,z,r,4);
   for(let k=0;k<fxN(5,2);k++)fxSp(x+eRnd(-4,4),g+eRnd(1,5),z+eRnd(-4,4),eRnd(-14,14),eRnd(8,26),eRnd(-14,14),eRnd(0.5,1.3),Math.random()<0.5?[1,0.8,0.4]:[0.8,0.9,1],0.6,2)}
@@ -1967,11 +2019,17 @@ function drawBolts(m,mg){
     if(b.t<0){const k=0.55+0.45*Math.sin(b.t*30),N=14,R=12;if(!fxOK(N))return;   // 조준 경고 고리
       for(let q=0;q<N;q++){const a=q/N*6.283,x=b.x0+Math.cos(a)*R,z=b.z0+Math.sin(a)*R;pushShape(mg,CUBE,x,groundAt(x,z)+0.8,z,5,0.5,1,-(a+1.57),[1*k+0.2,0.15,0.1],1)}continue}
     const p=Math.min(1,b.t/b.D),x=b.x0+(b.x1-b.x0)*p,z=b.z0+(b.z1-b.z0)*p,g=groundAt(x,z),w=Math.min(1,b.t/0.07)*(b.t>b.D?Math.max(0,1-(b.t-b.D)/0.4):1);
-    if(w<=0.02||!fxOK(8))continue;const fl=0.85+Math.random()*0.3;
-    pushShape(mg,CUBE,x,g+230,z,3.2*w*fl,460,3.2*w*fl,0,[1,1,1],1);
-    pushShape(mg,CUBE,x,g+230,z,9*w,460,9*w,0,[0.55,0.72,1],1);
-    pushShape(mg,CUBE,x,g+230,z,20*w,460,20*w,0,[0.3,0.45,0.95],1);
-    pushShape(mg,SPHERE,x,g+3,z,30*w,12*w,30*w,0,[0.9,0.95,1],1);
+    if(w<=0.02||!fxOK(60))continue;const fl=0.85+Math.random()*0.3;
+    {const sd=Math.floor(performance.now()/60)+(b.sd||0),rn=i=>{const s=Math.sin((sd+i*7.13)*12.9898)*43758.5453;return s-Math.floor(s)},NS=11,TOP=320;
+      for(let s2=0;s2<2;s2++){let px=x,pz=z;const th=(s2?1.5:3.4)*w*fl,col=s2?[0.72,0.84,1]:[1,1,1];   // 굵은 흰 줄기 + 가는 푸른 줄기
+        for(let i=0;i<NS;i++){const y0=g+TOP*i/NS,y1=g+TOP*(i+1)/NS,sp=(4+i*2.2)*(s2?1.5:1),nx=x+(rn(i+s2*40)-0.5)*sp*2,nz=z+(rn(i+20+s2*40)-0.5)*sp*2;
+          pushShape(mg,CUBE,px,(y0+y1)/2,pz,th,y1-y0+th,th,0,col,1);
+          const L=Math.hypot(nx-px,nz-pz);if(L>0.5)pushShape(mg,CUBE,(px+nx)/2,y1,(pz+nz)/2,L+th,th,th,Math.atan2(nz-pz,nx-px),col,1);
+          if(!s2&&(i===3||i===6)){const a=rn(i+70)*6.283,fx=Math.cos(a),fz=Math.sin(a);   // 곁가지: 옆으로 뻗다가 아래로 꺾임
+            for(let q=1;q<=4;q++)pushShape(mg,CUBE,px+fx*q*7,y1-q*q*2.2,pz+fz*q*7,7.5,1.4*w,1.4*w,a,[0.8,0.88,1],1)}
+          px=nx;pz=nz}}
+      pushShape(mg,SPHERE,x,g+2,z,24*w*fl,5*w,24*w*fl,0,[0.96,0.98,1],1);pushShape(mg,SPHERE,x,g+5,z,9*w,9*w,9*w,0,[1,1,1],1);
+      for(let q=0;q<8;q++){const a=q/8*6.283+sd,r=14+rn(q+90)*10;pushShape(mg,CUBE,x+Math.cos(a)*r,g+1+rn(q+95)*6,z+Math.sin(a)*r,1.6,1.6+rn(q+99)*5,1.6,a,[1,0.86,0.45],1)}}
     for(let q=1;q<=6;q++){const pp=Math.max(0,p-q*0.06),xx=b.x0+(b.x1-b.x0)*pp,zz=b.z0+(b.z1-b.z0)*pp;if(!fxOK(1))break;pushShape(mg,CUBE,xx,groundAt(xx,zz)+0.7,zz,9,0.6,9,0,[1,0.55,0.15],1)}}}
 
 // =====================================================================
@@ -2001,14 +2059,15 @@ function updateAcid(dt){for(let i=ACID.length-1;i>=0;i--){const f=ACID[i];f.t+=d
     const top=eTop(b);if(Math.random()<0.9)fxSp(b.cx+eRnd(-1,1)*Math.sqrt(b.area)*0.35,top+eRnd(0,4),b.cz+eRnd(-1,1)*Math.sqrt(b.area)*0.35,eRnd(-2,2),eRnd(10,22),eRnd(-2,2),eRnd(2,4.5),[0.22,0.2,0.2],2.2,0)}
   if(f.t>2&&(!live||f.t>60)){for(const e of f.list)if(e.b)e.b._fire=0;ACID.splice(i,1)}}}
 function drawAcid(m,mg){const now=performance.now()/1000;
-  for(const f of ACID)for(const e of f.list){if(e.dead||!e.b.alive)continue;const b=e.b;if(!fxOK(10))return;
-    const bw=Math.sqrt(b.area),n=clamp(Math.round(bw/6),3,8),top=eTop(b),k=Math.min(1,e.t/1.2);
-    for(let q=0;q<n;q++){const h1=Math.sin(b.cx*12.9+q*78.2)*43758.5,hh=h1-Math.floor(h1),h2=Math.sin(b.cz*7.3+q*37.7)*24634.6,h3=h2-Math.floor(h2);
-      const x=b.cx+(hh-0.5)*bw*0.7,z=b.cz+(h3-0.5)*bw*0.7,fl=0.7+0.5*Math.sin(now*9+q*2.1+hh*6),fh=(5+bw*0.18)*fl*k;
-      pushShape(mg,CUBE,x,top+fh/2,z,3.2+bw*0.04,fh,3.2+bw*0.04,now*2+q,[1,0.45+0.35*fl*0.6,0.1],1);
-      pushShape(mg,CUBE,x,top+fh*0.35,z,2,fh*0.7,2,now*3+q,[1,0.9,0.4],1)}
-    const side=Math.min(3,n);for(let q=0;q<side;q++){const p=b.pts[(q*3)%b.pts.length],yy=b.base+3+((now*3+q*4)%1)*Math.max(2,b.h-4),fl=0.7+0.5*Math.sin(now*11+q);
-      pushShape(mg,CUBE,b.cx+(p[0]-b.cx)*0.97,yy,b.cz+(p[1]-b.cz)*0.97,3,4*fl*k,3,0,[1,0.5,0.1],1)}}}
+  for(const f of ACID)for(const e of f.list){if(e.dead||!e.b.alive)continue;const b=e.b;if(!fxOK(58))return;
+    const bw=Math.sqrt(b.area),n=clamp(Math.round(bw/7),3,6),top=eTop(b),k=Math.min(1,e.t/1.2);
+    for(let q=0;q<n;q++){const h1=Math.sin(b.cx*12.9+q*78.2)*43758.5,hh=h1-Math.floor(h1),h2=Math.sin(b.cz*7.3+q*37.7)*24634.6,h3=h2-Math.floor(h2);   // 옥상 불길 (초록 산성 불 + 사이사이 주황 불)
+      flame(mg,b.cx+(hh-0.5)*bw*0.7,top,b.cz+(h3-0.5)*bw*0.7,(4.5+bw*0.08)*k,(11+bw*0.34)*k,q*2.1+hh*6,q%3===2?FLAME_FIRE:FLAME_ACID)}
+    const side=Math.min(5,b.pts.length),hgt=Math.max(4,b.h-2);
+    for(let q=0;q<side;q++){const p=b.pts[(q*3)%b.pts.length],wx=b.cx+(p[0]-b.cx)*1.03,wz=b.cz+(p[1]-b.cz)*1.03,ph=(now*0.5+q*0.37)%1;
+      pushShape(mg,CUBE,wx,top-hgt*ph*0.5,wz,0.9,hgt*ph,0.9,0,[0.55,0.92,0.18],1);                 // 외벽을 타고 흘러내리는 산성 물줄기
+      pushShape(mg,SPHERE,wx,top-hgt*ph,wz,1.7,1.7,1.7,0,[0.86,1,0.45],1);                         // 물줄기 끝 방울
+      flame(mg,wx,b.base+hgt*(0.2+0.55*((q*0.31+0.13)%1)),wz,2.8*k,7*k,q*3.3,FLAME_ACID)}}}        // 외벽에 붙은 불
 
 // =====================================================================
 //  6. 태풍 (선 긋기) — 거대한 태풍이 그은 방향으로 휩쓸고 지나가며, 닿은 건물을 옆으로 튕겨 날려 버림
@@ -2038,11 +2097,20 @@ function updateTyphoons(dt){for(let i=TYPH.length-1;i>=0;i--){const y=TYPH[i];y.
     ePushDebris(y.x,y.z,y.dx,y.dz,y.R,14,34)}
   for(let q=0;q<fxN(4,2);q++){const a=Math.random()*6.283,r=eRnd(0.2,1)*y.R;fxSp(y.x+Math.cos(a)*r,y.g+eRnd(1,40),y.z+Math.sin(a)*r,-Math.sin(a)*32+y.dx*20,eRnd(2,12),Math.cos(a)*32+y.dz*20,eRnd(0.6,1.7),[0.72,0.74,0.78],0.9,3)}}}
 function drawTyphoons(m,mg){const now=performance.now()/1000;
-  for(const y of TYPH){const kk=Math.min(1,y.t/0.8)*(y.left<=0?Math.max(0,1-y.gone/1.6):1);if(kk<=0.01)continue;const H=120,N=13;
-    for(let l=0;l<N;l++){const u=l/(N-1),yy=y.g+u*H,r=(y.R*0.14+u*u*y.R*0.85)*kk;
-      for(let q=0;q<6;q++){if(!fxOK(1))return;const a=now*(6-3*u)+q*1.047+u*2.4;pushShape(m,CUBE,y.x+Math.cos(a)*r,yy,y.z+Math.sin(a)*r,r*0.62+4,H/N*1.2,2.6,-a-1.57,[0.5+0.12*u,0.55+0.1*u,0.62+0.08*u],0)}}
-    for(let q=0;q<8;q++){if(!fxOK(2))return;const a=q*0.785+now*1.1;pushShape(m,SPHERE,y.x+Math.cos(a)*y.R*0.7*kk,y.g+H+6,y.z+Math.sin(a)*y.R*0.7*kk,y.R*0.55*kk,y.R*0.13*kk,y.R*0.55*kk,a,[0.38,0.42,0.48],0)}
-    for(let q=0;q<fxN(24,8);q++){if(!fxOK(1))return;const ph=(now*0.4+q/24)%1,a=q*2.4+now*(5-2*ph),r=(y.R*0.15+ph*ph*y.R*0.8)*kk;pushShape(m,CUBE,y.x+Math.cos(a)*r,y.g+ph*H*0.9,y.z+Math.sin(a)*r,eRnd(1.6,3.4),eRnd(1,2.4),eRnd(1.6,3.4),a,[0.6,0.58,0.54],0)}}}
+  for(const y of TYPH){const kk=Math.min(1,y.t/0.8)*(y.left<=0?Math.max(0,1-y.gone/1.6):1);if(kk<=0.01)continue;const H=150,N=20;
+    const ox=u=>y.x+Math.sin(now*1.7+u*5)*y.R*0.17*u,oz=u=>y.z+Math.cos(now*1.3+u*4)*y.R*0.17*u;   // 위로 갈수록 휘청이는 기둥
+    for(let l=0;l<N;l++){const u=l/(N-1),yy=y.g+u*H,r=(y.R*0.1+Math.pow(u,1.6)*y.R*0.95)*kk,cx=ox(u),cz=oz(u),sh=0.32+0.3*u+(l%2?0.07:0);
+      for(let q=0;q<7;q++){if(!fxOK(1))return;const a=now*(7-3.5*u)+q*0.898+u*3.1;pushShape(m,CUBE,cx+Math.cos(a)*r,yy,cz+Math.sin(a)*r,r*0.6+4,H/N*1.15,3,a+1.5708,[sh,sh+0.04,sh+0.1],0)}}
+    if(!fxOK(70))return;const tx=ox(1),tz=oz(1);
+    for(let q=0;q<10;q++){const a=q*0.628+now*0.9,rr=y.R*0.85*kk;pushShape(m,SPHERE,tx+Math.cos(a)*rr,y.g+H+10+Math.sin(q*1.7)*5,tz+Math.sin(a)*rr,y.R*0.62*kk,y.R*0.16*kk,y.R*0.62*kk,a,q%2?[0.2,0.22,0.27]:[0.28,0.3,0.36],0)}   // 먹구름
+    pushShape(m,SPHERE,tx,y.g+H+16,tz,y.R*0.9*kk,y.R*0.2*kk,y.R*0.9*kk,now*0.3,[0.24,0.26,0.31],0);
+    if(Math.sin(now*19+y.x)>0.78){let px=tx,pz=tz;const sd=Math.floor(now*16);   // 기둥 속 번개 (번쩍)
+      for(let i=7;i>=0;i--){const u=i/8,r1=Math.sin((sd+i*7.1)*12.9898)*43758.5453,r2=Math.sin((sd+i*3.7)*78.233)*24634.63,nx=ox(u)+(r1-Math.floor(r1)-0.5)*y.R*0.5*(u+0.2),nz=oz(u)+(r2-Math.floor(r2)-0.5)*y.R*0.5*(u+0.2),y0=y.g+u*H,y1=y.g+(i+1)/8*H;
+        pushShape(mg,CUBE,px,(y0+y1)/2,pz,1.8,y1-y0+1.8,1.8,0,[0.9,0.95,1],1);const L=Math.hypot(nx-px,nz-pz);if(L>0.5)pushShape(mg,CUBE,(px+nx)/2,y0,(pz+nz)/2,L+1.8,1.8,1.8,Math.atan2(nz-pz,nx-px),[0.9,0.95,1],1);px=nx;pz=nz}}
+    for(let q=0;q<12;q++){const a=q*0.5236-now*2.2,rr=y.R*0.42*kk,k2=0.75+0.25*Math.sin(now*5+q);pushShape(m,SPHERE,y.x+Math.cos(a)*rr,y.g+4*k2,y.z+Math.sin(a)*rr,9*k2*kk,6*k2*kk,9*k2*kk,a,q%2?[0.66,0.6,0.5]:[0.56,0.52,0.45],0)}   // 바닥 흙먼지 띠
+    for(let q=0;q<fxN(24,8);q++){if(!fxOK(1))return;const ph=(now*0.4+q/24)%1,a=q*2.4+now*(5-2*ph),r=(y.R*0.15+ph*ph*y.R*0.8)*kk;pushShape(m,CUBE,ox(ph)+Math.cos(a)*r,y.g+ph*H*0.9,oz(ph)+Math.sin(a)*r,eRnd(1.6,3.4),eRnd(1,2.4),eRnd(1.6,3.4),a,[0.6,0.58,0.54],0)}   // 빨려 올라가는 파편
+    for(let q=0;q<6;q++){const ph=(now*0.3+q/6)%1,a=q*1.9+now*(3.4-1.5*ph),r=(y.R*0.2+ph*y.R*0.75)*kk;pushShape(m,CUBE,ox(ph)+Math.cos(a)*r,y.g+ph*H*0.8,oz(ph)+Math.sin(a)*r,6,2.2,3.2,a+now*2,[[0.8,0.2,0.16],[0.2,0.4,0.75],[0.9,0.85,0.8]][q%3],0)}   // 날아가는 큰 조각 (지붕·차)
+    for(let q=0;q<fxN(28,10);q++){if(!fxOK(1))return;const a=q*2.399,rr=y.R*(0.3+1.1*((q*0.618)%1)),ph=(now*1.9+q*0.137)%1;pushShape(mg,CUBE,y.x+Math.cos(a)*rr+ph*8,y.g+H*0.95*(1-ph),y.z+Math.sin(a)*rr,0.35,9,0.35,0,[0.72,0.82,0.95],1)}}}   // 빗줄기
 
 // =====================================================================
 //  7. 쓰나미 (선 긋기) — 폭 160m, 매우 빠른 거대한 파도. 닿자마자 건물이 무너짐
@@ -2057,22 +2125,34 @@ function updateWaves(dt){for(let i=WAVES.length-1;i>=0;i--){const w=WAVES[i];w.t
   w.v+=(84-w.v)*Math.min(1,dt*1.6);const sp=w.v*dt;w.x+=w.dx*sp;w.z+=w.dz*sp;w.left-=sp;if(w.left<=0)w.end=w.t;
   w.acc+=dt;if(w.acc<0.07)continue;w.acc=0;const px=-w.dz,pz=w.dx,now=performance.now();
   for(let o=-w.W/2;o<=w.W/2;o+=9){const x=w.x+px*o,z=w.z+pz*o;
-    forBuildingsNear(x,z,12,b=>{if(!b.alive||b.lifted||distToBuilding(b,x,z)>6)return;
+    forBuildingsNear(x,z,12,b=>{if(!b.alive||b.lifted||w.hits.has(b)||distToBuilding(b,x,z)>6)return;w.hits.add(b);
       if(b.area<300&&b.h0<22){killBuilding(b);boom3(x,b.base+3,z,10);return}
-      if(!w.hits.has(b)){w.hits.add(b);hitStop(0.05);floatText(x,eTop(b)+2,z,'쾅!','boom',0.9);sfxBoom(0.5)}
-      if(b._ts&&now-b._ts<150)return;b._ts=now;   // 건물마다 0.15초에 한 번만 (성능)
-      const d=b.det||ensureDet(b);for(let f=0;f<Math.min(d.F,8);f++){if(!b.alive||!b.det)break;structDamage(b,x,b.base+d.fy[f]+d.fh*0.5,z,16,13,{floors:[f]})}
-      if(Math.random()<0.5)spawn(x,b.base+3,z,w.dx*18+eRnd(-6,6),eRnd(4,12),w.dz*18+eRnd(-6,6),eRnd(0.8,2),Math.random()<0.6?[0.85,0.93,1]:b.col,0)});
+      hitStop(0.05);floatText(x,eTop(b)+2,z,'쾅!','boom',0.9);sfxBoom(0.5);waveWash(b,w,x,z)});
     forTreesNear(x,z,9,t=>{if(t.alive&&Math.hypot(t.x-x,t.z-z)<9)killTree(t)});
     if(CLIENT)clientHitAt(x,groundAt(x,z)+2,z,9,3,w.hits)}
   ePushDebris(w.x,w.z,w.dx,w.dz,w.W*0.5,16,46);
   cam.shake=Math.max(cam.shake,2.2)}}
-function drawWaves(m,mg){for(const w of WAVES){const px=-w.dz,pz=w.dx,rot=Math.atan2(w.dz,w.dx),H=34*w.h,now=performance.now()/1000,step=fxScale()<0.6?11:7;
-  for(let o=-w.W/2;o<=w.W/2;o+=step){if(!fxOK(4))return;const bob=Math.sin(now*3+o*0.2)*1.8,x=w.x+px*o,z=w.z+pz*o,g=groundAt(x,z);
-    pushShape(m,CUBE,x-w.dx*4,g+H/2+bob/2,z-w.dz*4,8,H+bob,step+0.6,-rot,[0.12,0.42,0.72],0);
-    pushShape(m,CUBE,x+w.dx*0.5,g+H+bob,z+w.dz*0.5,4,3.4,step+0.8,-rot,[0.93,0.97,1],0);
-    pushShape(m,CUBE,x-w.dx*24,g+H*0.25,z-w.dz*24,40,H*0.5,step+0.6,-rot,[0.16,0.5,0.78],0);
-    if(Math.random()<0.2)fxSp(x+w.dx*2,g+H+1,z+w.dz*2,w.dx*16+eRnd(-5,5),eRnd(4,12),w.dz*16+eRnd(-5,5),eRnd(0.6,1.4),[0.95,0.98,1],0.6,2)}}}
+// 파도(높이 34m)에 잠기는 아래층들의 기둥을 건물 폭 전체에서 한꺼번에 부러뜨림 → 낮은 건물은 완전 붕괴, 높은 건물은 아래가 쓸려 나가 주저앉음
+const TS_FLOORS=10,TS_SCORE=0.4;
+function waveWash(b,w,x,z){const d=b.det||ensureDet(b);let R=0;for(const p of b.pts)R=Math.max(R,Math.hypot(p[0]-b.cx,p[1]-b.cz));R=R/0.6+3;
+  const s0=score,nf=Math.min(d.F,TS_FLOORS);for(let f=0;f<nf;f++){if(!b.alive||!b.det)break;structDamage(b,b.cx,b.base+d.fy[f]+d.fh*0.5,b.cz,R,13,{floors:[f]})}
+  score=s0+(score-s0)*TS_SCORE;   // 한 번에 통째로 무너뜨리는 만큼 점수는 낮춰서 다른 재난과 균형
+  for(let k=0;k<fxN(8,3);k++)spawn(x+eRnd(-8,8),b.base+eRnd(2,20),z+eRnd(-8,8),w.dx*eRnd(14,30)+eRnd(-6,6),eRnd(6,18),w.dz*eRnd(14,30)+eRnd(-6,6),eRnd(1,2.4),Math.random()<0.7?[0.86,0.94,1]:b.col,0)}
+function drawWaves(m,mg){for(const w of WAVES){const px=-w.dz,pz=w.dx,rot=Math.atan2(w.dz,w.dx),now=performance.now()/1000,step=fxScale()<0.6?11:7,half=w.W/2,ww=step+0.8;
+  const P=(x,z,f,y,sx,sy,c,g)=>pushShape(g?mg:m,CUBE,x+w.dx*f,y,z+w.dz*f,sx,sy,ww,rot,c,g?1:0);   // f: 진행 방향 앞(+)·뒤(-) 거리
+  for(let o=-half;o<=half;o+=step){if(!fxOK(11))return;const e=o/half,x=w.x+px*o,z=w.z+pz*o,g=groundAt(x,z);
+    const H=34*w.h*(1-0.3*e*e)*(0.9+0.1*Math.sin(now*2.2+o*0.11))+Math.sin(now*3.4+o*0.23)*1.6;if(H<1)continue;   // 가운데가 높고 가장자리가 낮은 물결
+    P(x,z,-5,g+H*0.28,12,H*0.56,[0.05,0.24,0.5]);            // 아래 몸통 (짙은 남색)
+    P(x,z,-2.5,g+H*0.69,8.5,H*0.28,[0.1,0.4,0.7]);           // 가운데
+    P(x,z,1,g+H*0.9,6,H*0.2,[0.2,0.58,0.84]);                // 위 (앞으로 기울어짐)
+    P(x,z,4.2,g+H*0.98,4,H*0.1+1,[0.45,0.78,0.93]);          // 말려 나오는 물마루
+    P(x,z,6.4,g+H*0.96+Math.sin(now*9+o)*0.7,3,2.6,[0.96,0.99,1]);   // 물마루 끝 흰 거품
+    P(x,z,-16,g+H*0.21,12,H*0.42,[0.09,0.36,0.64]);          // 뒤로 흘러내리는 물 (계단 3단)
+    P(x,z,-29,g+H*0.12,14,H*0.24,[0.13,0.44,0.7]);
+    P(x,z,-45,g+H*0.05+0.4,18,H*0.1+0.8,[0.2,0.52,0.76]);
+    P(x,z,-14-((now*11+o*3.1)%34),g+H*0.3+0.6,2.6,1,[0.9,0.96,1]);   // 뒤쪽 물 위에 떠내려가는 거품
+    P(x,z,13,g+0.9,16,1.8,[0.3,0.6,0.82]);                   // 파도 앞에 먼저 깔리는 얕은 물
+    if(Math.random()<0.3)fxSp(x+w.dx*6,g+H+1,z+w.dz*6,w.dx*eRnd(14,26)+eRnd(-5,5),eRnd(4,14),w.dz*eRnd(14,26)+eRnd(-5,5),eRnd(0.6,1.6),[0.95,0.98,1],0.7,2)}}}
 
 // =====================================================================
 //  8. 지진 — 진원지에서 충격파가 퍼지며 땅이 갈라지고, 큰 구덩이들이 연달아 꺼지고, 한가운데는 넓게 내려앉음
@@ -2101,12 +2181,17 @@ function updateQuakes(dt){
       sinkHole(p[0]+eRnd(-4,4),p[1]+eRnd(-4,4),eRnd(12,26))}
     // 한가운데: 넓게 내려앉음
     if(!q.basin&&t>2.4){q.basin=true;carve(q.x,q.z,q.R*0.5,9.5);eRing(q.x,groundAt(q.x,q.z)+1,q.z,q.R*0.9,[0.6,0.5,0.4]);flashScreen(0.12,'#d8c8b0');sfxBoom(0.9);hitStop(0.06);cam.shake=Math.max(cam.shake,12)}}}
-function drawQuakes(m,mg){
+function drawQuakes(m,mg){const now=performance.now()/1000;
   for(const q of QUAKES){const fade=q.t>q.T-1.5?Math.max(0,(q.T-q.t)/1.5):1;if(fade<=0)continue;
-    for(const c of q.cracks)for(let s=0;s<c.length-1;s++){const p=c[s],n=c[s+1];if(Math.hypot(p[0]-q.x,p[1]-q.z)>q.front)break;if(!fxOK(2))return;
-      const dx=n[0]-p[0],dz=n[1]-p[1],l=Math.hypot(dx,dz)||1,w=(2.4-s*0.18)*fade+0.4,y=groundAt(p[0],p[1])+0.25;
-      pushShape(m,CUBE,(p[0]+n[0])/2,y,(p[1]+n[1])/2,l+0.8,0.3,w,-Math.atan2(dz,dx),[0.06,0.05,0.05],0);
-      if(q.t>0.6&&q.t<4.5)pushShape(mg,CUBE,(p[0]+n[0])/2,y+0.05,(p[1]+n[1])/2,l*0.9,0.2,w*0.35,-Math.atan2(dz,dx),[0.55,0.2,0.08],1)}}}
+    if(q.t<4.4)for(let w=0;w<3;w++){const r=q.t*q.R/2.0-w*q.R*0.32;if(r<8||r>q.R*1.3)continue;const N=fxScale()<0.6?26:44,amp=(1-r/(q.R*1.3))*6+1.2;if(!fxOK(N))return;   // 땅울림 물결 3겹
+      for(let i=0;i<N;i++){const a=i/N*6.283+w*0.4,x=q.x+Math.cos(a)*r,z=q.z+Math.sin(a)*r,hh=amp*(0.55+0.45*Math.abs(Math.sin(i*2.3+now*18)));
+        pushShape(m,CUBE,x,groundAt(x,z)+hh/2,z,r*6.283/N*0.82,hh,3.4,a+1.5708,i%2?[0.52,0.42,0.3]:[0.4,0.31,0.22],0)}}
+    for(let ci=0;ci<q.cracks.length;ci++){const c=q.cracks[ci];for(let s=0;s<c.length-1;s++){const p=c[s],n=c[s+1];if(Math.hypot(p[0]-q.x,p[1]-q.z)>q.front)break;if(!fxOK(4))return;
+      const dx=n[0]-p[0],dz=n[1]-p[1],l=Math.hypot(dx,dz)||1,w=(4.2-s*0.32)*fade+0.6,mx=(p[0]+n[0])/2,mz=(p[1]+n[1])/2,y=groundAt(mx,mz)+0.25,rot=Math.atan2(dz,dx),nx=-dz/l,nz=dx/l;
+      pushShape(m,CUBE,mx,y,mz,l+1.2,0.3,w,rot,[0.04,0.03,0.03],0);                                                   // 벌어진 틈
+      if(q.t>0.5&&q.t<5)pushShape(mg,CUBE,mx,y+0.06,mz,l*0.92,0.22,w*0.42,rot,[1,(0.32+0.16*Math.sin(now*6+s+ci))*fade,0.06],1);   // 틈 속 붉은 빛
+      for(const sd of[-1,1]){const h1=Math.sin((ci*31+s*7+sd)*12.9898)*43758.5453,hh=(1.0+(h1-Math.floor(h1))*2.8)*fade*Math.min(1,q.t/1.2);   // 틈 양옆으로 솟구친 지반
+        pushShape(m,CUBE,mx+nx*sd*(w/2+1.3),y+hh/2-0.2,mz+nz*sd*(w/2+1.3),l*0.82,hh,2.4,rot,sd>0?[0.5,0.4,0.28]:[0.36,0.29,0.2],0)}}}}}
 
 // =====================================================================
 //  9. 화산 — 일대 지면이 실제로 솟아 원뿔이 되고, 분화구에서 용암탄이 쏟아지며 용암이 사방으로 흘러 건물을 삼킴
@@ -2146,13 +2231,23 @@ function updateVolcs(dt){
         for(const f of v.flows){const n=Math.floor(f.len);for(let s=0;s<=n&&!hit;s++){const p=f.pts[s];if(distToBuilding(b,p[0],p[1])<f.w*0.9)hit=true}if(hit)break}
         if(!hit)continue;if(eSmall(b)){killBuilding(b);continue}
         eHitLow(b,b.cx,b.cz,10,3.4,3);fxSp(b.cx,eTop(b),b.cz,eRnd(-3,3),eRnd(6,14),eRnd(-3,3),eRnd(2,4),[0.3,0.3,0.32],1.6,2)}}}}
-function drawVolcs(m,mg){
+function drawVolcs(m,mg){const now=performance.now()/1000;
   for(const v of VOLCS){const t=v.t,cool=Math.min(1,Math.max(0,(t-13)/5)),top=groundAt(v.x,v.z);
-    if(t>1.8&&t<15)pushShape(mg,CUBE,v.x,top+0.5,v.z,v.rc*0.35,0.8,v.rc*0.35,t*0.3,[1,0.45,0.1],1);
+    if(t>1.8&&t<15&&fxOK(40)){const e=Math.min(1,(t-1.8)/0.9)*Math.min(1,(15-t)/3),er=Math.min(1,Math.max(0,(t-2.2)/0.8))*Math.min(1,Math.max(0,(11.5-t)/1.5));
+      pushShape(mg,SPHERE,v.x,top+0.6,v.z,v.rc*0.3*e,1.6,v.rc*0.3*e,0,[1,0.5,0.1],1);                                  // 분화구 용암 웅덩이
+      for(let q=0;q<10;q++){const a=q*0.628+now*0.4;pushShape(mg,CUBE,v.x+Math.cos(a)*v.rc*0.24*e,top+1.2,v.z+Math.sin(a)*v.rc*0.24*e,3.4,2.2+Math.sin(now*7+q)*1.2,3.4,a,[1,0.75,0.25],1)}   // 테두리 불빛
+      if(er>0.02){flame(mg,v.x,top,v.z,v.rc*0.34*er,95*er,0,FLAME_FIRE);                                              // 불기둥 (가운데 + 둘레 4)
+        for(let q=0;q<4;q++){const a=q*1.571+now*0.7;flame(mg,v.x+Math.cos(a)*v.rc*0.16,top,v.z+Math.sin(a)*v.rc*0.16,v.rc*0.18*er,55*er,q*1.9,FLAME_FIRE)}}}
+    if(t>2.6&&t<v.T-0.3&&fxOK(8)){const fo=Math.min(1,(v.T-0.3-t)/3);                                                  // 화산재 구름 (위로 갈수록 크게)
+      for(let i=0;i<7;i++){const ap=Math.min(1,Math.max(0,(t-2.6-i*0.45)/1.2));if(ap<=0)continue;const r=(13+i*6.5)*ap*fo,yy=top+70+i*24+Math.sin(now*0.8+i)*3;
+        pushShape(m,SPHERE,v.x+Math.sin(now*0.5+i*1.3)*(4+i*2.2),yy,v.z+Math.cos(now*0.4+i*1.7)*(4+i*2.2),r,r*0.72,r,now*0.2+i,i%2?[0.2,0.19,0.2]:[0.29,0.27,0.27],0)}}
     for(const f of v.flows){const n=Math.floor(f.len);
-      for(let s=0;s<n;s++){if(!fxOK(2))return;const p=f.pts[s],q=f.pts[s+1]||p,dx=q[0]-p[0],dz=q[1]-p[1],l=Math.hypot(dx,dz)||1,fw=f.w*(1-s/f.pts.length*0.4)*(s===n-1?0.8:1),y=groundAt(p[0],p[1])+0.35;
-        if(cool<1)pushShape(mg,CUBE,(p[0]+q[0])/2,y,(p[1]+q[1])/2,l+1.5,0.7,fw*2,-Math.atan2(dz,dx),[1-0.7*cool,(0.38+0.12*Math.sin(t*3+s))*(1-cool*0.8),0.06],1);
-        else pushShape(m,CUBE,(p[0]+q[0])/2,y,(p[1]+q[1])/2,l+1.5,0.7,fw*2,-Math.atan2(dz,dx),[0.16,0.1,0.08],0)}}}}
+      for(let s=0;s<n;s++){if(!fxOK(4))return;const p=f.pts[s],q=f.pts[s+1]||p,dx=q[0]-p[0],dz=q[1]-p[1],l=Math.hypot(dx,dz)||1,fw=f.w*(1-s/f.pts.length*0.4)*(s===n-1?0.8:1),mx=(p[0]+q[0])/2,mz=(p[1]+q[1])/2,y=groundAt(mx,mz)+0.35,rot=Math.atan2(dz,dx);
+        if(cool<1){pushShape(mg,CUBE,mx,y,mz,l+1.5,0.7,fw*2,rot,[1-0.7*cool,(0.3+0.1*Math.sin(t*3+s))*(1-cool*0.8),0.05],1);                 // 용암
+          const pu=0.5+0.5*Math.sin(t*5-s*0.9);pushShape(mg,CUBE,mx,y+0.45,mz,l+1.2,0.5,fw*(0.7+0.3*pu),rot,[1,(0.62+0.3*pu)*(1-cool),0.14*(1-cool)],1);   // 밝게 흐르는 가운데 줄기
+          if(s%2===0){const sd=s%4?1:-1;pushShape(m,CUBE,mx-dz/l*sd*fw*1.05,y+0.3,mz+dx/l*sd*fw*1.05,l*0.7,1.3,1.8,rot,[0.17,0.1,0.08],0)}}   // 가장자리에 굳은 검은 껍질
+        else pushShape(m,CUBE,mx,y,mz,l+1.5,0.7,fw*2,rot,[0.16,0.1,0.08],0)}
+      if(n>0&&cool<1&&n<f.pts.length-1){const p=f.pts[n];pushShape(mg,SPHERE,p[0],groundAt(p[0],p[1])+1.4,p[1],f.w*1.25,2.6,f.w*1.25,0,[1,0.82,0.3],1)}}}}   // 흘러가는 용암 머리
 
 // ---- 태양 조각(필살기)은 기존 그대로 ----
 
@@ -2194,14 +2289,34 @@ function updateSats(dt){for(let i=SATS.length-1;i>=0;i--){const s=SATS[i];s.t+=d
   if(!s.done){const p=satPos(s);
     for(let k=0;k<2;k++)fxSp(p[0]+eRnd(-2,2),p[1]+eRnd(-2,2),p[2]+eRnd(-2,2),s.dx*eRnd(10,30),eRnd(10,30),s.dz*eRnd(10,30),eRnd(2,4.5),Math.random()<0.5?[1,0.55,0.15]:[0.9,0.9,0.9],0.9,2);
     if(s.t>=s.T)satImpact(s)}
-  else{s.after+=dt;if(s.after>1.2)SATS.splice(i,1)}}}
-function drawSats(m,mg){for(const s of SATS){
-  if(!s.done){const a=Math.min(1,s.t/s.T),pulse=0.55+0.45*Math.sin(s.t*14),N=36,R=s.R*(0.6+0.4*a);
-    if(fxOK(N+8)){for(let i=0;i<N;i++){const an=i/N*6.283,x=s.x+Math.cos(an)*R,z=s.z+Math.sin(an)*R;pushShape(mg,CUBE,x,groundAt(x,z)+0.9,z,R*6.283/N*0.75,0.6,1.1,-(an+1.5708),[1*pulse+0.2,0.12,0.08],1)}
-      const p=satPos(s),r=s.t*5;
-      pushShape(m,CUBE,p[0],p[1],p[2],5,5,9,r,[0.6,0.62,0.66],0);
-      pushShape(m,CUBE,p[0],p[1],p[2],22,0.5,5.5,r,[0.15,0.3,0.7],0);
-      pushShape(mg,SPHERE,p[0]-s.dx*3,p[1]+3,p[2]-s.dz*3,9,9,9,0,[1,0.5,0.12],1)}}}}
+  else{s.after+=dt;if(s.after>2.8)SATS.splice(i,1)}}}
+function drawSats(m,mg){const now=performance.now()/1000;for(const s of SATS){
+  if(!s.done){const a=Math.min(1,s.t/s.T),pulse=0.55+0.45*Math.sin(s.t*14),N=36,R=s.R*(0.6+0.4*a),red=[1*pulse+0.2,0.12,0.08];
+    if(!fxOK(N+72))continue;
+    for(let i=0;i<N;i++){const an=i/N*6.283,x=s.x+Math.cos(an)*R,z=s.z+Math.sin(an)*R;pushShape(mg,CUBE,x,groundAt(x,z)+0.9,z,R*6.283/N*0.75,0.6,1.1,an+1.5708,red,1)}   // 경고 고리
+    for(let i=0;i<14;i++){const an=i/14*6.283-now*1.5,r2=R*0.35,x=s.x+Math.cos(an)*r2,z=s.z+Math.sin(an)*r2;pushShape(mg,CUBE,x,groundAt(x,z)+0.9,z,r2*0.3,0.5,0.9,an+1.5708,red,1)}   // 안쪽 고리 (도는 중)
+    for(let k=0;k<4;k++){const an=k*1.5708+0.785,x=s.x+Math.cos(an)*R*0.72,z=s.z+Math.sin(an)*R*0.72;pushShape(mg,CUBE,x,groundAt(x,z)+0.9,z,R*0.5,0.5,0.9,an,red,1)}   // 십자선
+    pushShape(mg,CUBE,s.x,s.g+170,s.z,0.7,340,0.7,0,[1,0.2+0.3*pulse,0.12],1);                                         // 떨어질 자리 빔
+    const p=satPos(s),s2={...s,t:Math.min(s.T,s.t+0.05)},p2=satPos(s2);let hx=p2[0]-p[0],hy=p2[1]-p[1],hz=p2[2]-p[2];const hl=Math.hypot(hx,hy,hz)||1;hx/=hl;hy/=hl;hz/=hl;
+    const r=s.t*2.4,cr=Math.cos(r),sr=Math.sin(r),K=1.9;
+    pushShape(m,CUBE,p[0],p[1],p[2],6*K,6*K,9*K,r,[0.86,0.7,0.28],0);                                                  // 금박 몸통
+    pushShape(m,CUBE,p[0],p[1]+3.4*K,p[2],4*K,1*K,5*K,r,[0.8,0.82,0.86],0);                                           // 위 장비함
+    for(const k of[-1,1]){const px=p[0]+cr*k*11*K,pz=p[2]+sr*k*11*K;
+      pushShape(m,CUBE,px,p[1],pz,15*K,0.5*K,6.5*K,r,[0.1,0.22,0.6],0);                                               // 태양전지판
+      pushShape(m,CUBE,px,p[1]+0.35*K,pz,15*K,0.2*K,0.5*K,r,[0.75,0.8,0.9],0);pushShape(m,CUBE,px,p[1]+0.35*K,pz,0.5*K,0.2*K,6.5*K,r,[0.75,0.8,0.9],0)}   // 전지판 격자
+    pushShape(m,SPHERE,p[0]-sr*6*K,p[1]+1*K,p[2]+cr*6*K,3.6*K,3.6*K,1.2*K,r,[0.93,0.93,0.95],0);                      // 접시 안테나
+    pushShape(mg,SPHERE,p[0]+hx*8*K,p[1]+hy*8*K,p[2]+hz*8*K,7*K,2.2*K,7*K,r,[1,0.9,0.6],1);                          // 앞쪽 달아오른 열막 (납작하게)
+    fireTail(mg,p[0]-hx*4*K,p[1]-hy*4*K,p[2]-hz*4*K,-hx,-hy,-hz,5.5*K,34*K,s.x);                                    // 재진입 불꼬리 (가운데 굵게 + 양옆 가늘게)
+    for(const k of[-1,1])fireTail(mg,p[0]+cr*k*11*K,p[1],p[2]+sr*k*11*K,-hx,-hy,-hz,2.6*K,20*K,s.x+k)}                                                             // 재진입 불꼬리
+  else{const af=s.after,R=s.R;if(!fxOK(40))continue;
+    const dome=Math.min(1,af/0.25)*Math.max(0,1-Math.max(0,af-0.5)/0.9);                                               // 충돌 순간 퍼지는 불빛
+    if(dome>0.02)pushShape(mg,SPHERE,s.x,s.g+2,s.z,R*0.95*dome,R*0.22*dome,R*0.95*dome,0,af<0.3?[1,0.97,0.8]:[1,0.6,0.18],1);
+    const col=Math.min(1,af/0.35)*Math.max(0,1-Math.max(0,af-1.3)/1.2);                                                // 불기둥
+    if(col>0.02){flame(mg,s.x,s.g,s.z,R*0.2*col,175*col,0,FLAME_FIRE);for(let q=0;q<5;q++){const a=q*1.257+af;flame(mg,s.x+Math.cos(a)*R*0.17,s.g,s.z+Math.sin(a)*R*0.17,R*0.1*col,(70+q*14)*col,q*2,FLAME_FIRE)}}
+    const u=Math.min(1,af/2.8),e=1-Math.pow(1-u,2),cy=s.g+50+135*e,rr=R*(0.18+0.42*e),hot=af<0.9,fo=Math.max(0,1-Math.max(0,af-2.1)/0.7);   // 버섯구름 갓
+    if(af>0.25&&fo>0.02){for(let q=0;q<9;q++){const a=q*0.698+af*0.6;pushShape(hot?mg:m,SPHERE,s.x+Math.cos(a)*rr*0.75,cy+Math.sin(q*2.1)*5,s.z+Math.sin(a)*rr*0.75,rr*0.6*fo,rr*0.42*fo,rr*0.6*fo,a,hot?(q%2?[1,0.55,0.14]:[1,0.76,0.3]):(q%2?[0.24,0.22,0.22]:[0.34,0.31,0.3]),hot?1:0)}
+      pushShape(hot?mg:m,SPHERE,s.x,cy+rr*0.2,s.z,rr*0.95*fo,rr*0.5*fo,rr*0.95*fo,0,hot?[1,0.86,0.45]:[0.4,0.37,0.36],hot?1:0);
+      for(let i=0;i<4;i++){const yy=s.g+12+(cy-s.g-12)*(i+0.5)/4;pushShape(m,SPHERE,s.x,yy,s.z,rr*0.3*fo,(cy-s.g)/6,rr*0.3*fo,i,[0.3,0.28,0.28],0)}}}}}
 
 
 // =====================================================================
@@ -2226,7 +2341,7 @@ function drawDef(m,mg){const now=performance.now()/1000;
 function updateEarth2(dt){
   if(MODE!=='city'){clearEarth2();return}
   updateHerds(dt);updateFlocks(dt);updateBolts(dt);updateTyphoons(dt);updateQuakes(dt);updateVolcs(dt);updateSats(dt);updateDef(dt)}
-function drawEarth2(m,mg){drawHerds(m,mg);drawFlocks(m,mg);drawBolts(m,mg);drawTyphoons(m,mg);drawQuakes(m,mg);drawVolcs(m,mg);drawSats(m,mg);drawDef(m,mg);drawHover(m,mg)}
+function drawEarth2(m,mg){drawMounds(m,mg);drawHerds(m,mg);drawFlocks(m,mg);drawBolts(m,mg);drawTyphoons(m,mg);drawQuakes(m,mg);drawVolcs(m,mg);drawSats(m,mg);drawDef(m,mg);drawHover(m,mg)}
 function clearEarth2(){HERDS=[];FLOCKS=[];ROCKS=[];BOLTS=[];TYPH=[];QUAKES=[];VOLCS=[];SATS=[];DEF=[]}
 // <<EARTH_V2_END>>
 
@@ -2309,7 +2424,7 @@ function cancelHolds(){if(drag){if(drag.grab)releaseGrab();if(drag.sgrab)secGrab
 // 선 긋기 중에는 버튼을 누르지 않고 움직여도 미리보기 선이 따라옴
 canvas.addEventListener('pointermove',e=>{if(gesture&&(e.pointerType==='mouse'||ptrs.size<=1)){gesture.cur={x:e.clientX,y:e.clientY}}});
 canvas.addEventListener('pointerdown',e=>{
-  canvas.setPointerCapture(e.pointerId);ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});audioInit();
+  canvas.setPointerCapture(e.pointerId);ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});audioInit();bgmStart();
   if(ptrs.size===2){firing=false;clearHold(drag);cancelHolds();const [a,b]=[...ptrs.values()];pinch={d:Math.hypot(a.x-b.x,a.y-b.y),cx:(a.x+b.x)/2,cy:(a.y+b.y)/2,lx:(a.x+b.x)/2,ly:(a.y+b.y)/2,dist:cam.dist,theta:cam.theta,phi:cam.phi};drag=null;return}
   drag={x:e.clientX,y:e.clientY,sx:e.clientX,sy:e.clientY,btn:e.button,moved:false,shift:e.shiftKey,pt:e.pointerType,t0:performance.now()};
   if(e.button!==0||pickHQ||ultArmed||e.shiftKey||gesture)return;
@@ -2364,7 +2479,8 @@ function endPtr(e){
         else if(!holdOf()){const id=WEAPONS[weapon].id;if(id!=='blast')secPushUndo();secFire(weapon,h);statTool(id);bossTool(id)}}}
     drag=null;return}
   if(click&&drag.btn===0){const h=pick(mx,my);
-    if(pickHQ){pickHQ=false;selectWeapon(weapon);if(h&&h.b){setHQ(h.b,true);toast('사옥으로 지정했어요 (이 브라우저에 저장)')}else{const g=rayGround(mx,my,0),nb=g&&hqSynth(g[0],g[1]);if(nb){setHQ(nb,true);toast('🏗 여기에 사옥을 세웠어요 (이 브라우저에 저장)',3000)}else toast('건물이나 빈 땅을 눌러주세요')}}
+    if(SPRAY.arm){sprayPick(h)}
+    else if(pickHQ){pickHQ=false;selectWeapon(weapon);if(h&&h.b){setHQ(h.b,true);toast('사옥으로 지정했어요 (이 브라우저에 저장)')}else{const g=rayGround(mx,my,0),nb=g&&hqSynth(g[0],g[1]);if(nb){setHQ(nb,true);toast('🏗 여기에 사옥을 세웠어요 (이 브라우저에 저장)',3000)}else toast('건물이나 빈 땅을 눌러주세요')}}
     else if(h&&ultArmed){snapshot();STOP.grace=performance.now()+8000;if(CH&&CH.on)CH.ultUsed=true;ULTIMATE.fire(h);if(EARTH())SUN_UNTIL=performance.now()+SUN_CD*1000;else ULT=0;ultArmed=false;statTool('nuke');selectWeapon(weapon);bossTool('nuke',h.x,h.z)}
     else if(h&&!holdOf()){const w=WL()[weapon];if(!w.nosnap)snapshot();w.fire(h);if(w.id!=='blast')statTool(w.id);bossTool(w.bid||w.id,h.x,h.z)}}
   drag=null;
@@ -2391,6 +2507,24 @@ function sfx(size,dur){if(!AC||!opts.sound)return;try{const s=AC.createBufferSou
   g.gain.setValueAtTime(Math.min(0.9,0.15+size*0.02),t);g.gain.exponentialRampToValueAtTime(0.001,t+len);s.connect(f);f.connect(g);g.connect(AC.destination);s.start(t);s.stop(t+len)}catch(e){}}
 function humStart(){if(!AC||!opts.sound||hum)return;try{const o=AC.createOscillator();o.type='sawtooth';o.frequency.value=92;const g=AC.createGain();g.gain.value=0.05;o.connect(g);g.connect(AC.destination);o.start();hum={o,g}}catch(e){}}
 function humStop(){if(hum){try{hum.o.stop()}catch(e){}hum=null}}
+
+// ---------- 배경음 (설정에서 켤 때만) — 낮: 사무실 공조 소음 + 키보드 소리 · 밤: 조용한 야근 분위기 ----------
+let BGM=null;
+function bgmStart(){if(BGM||!opts.bgm)return;
+  try{if(!AC){AC=new (window.AudioContext||window.webkitAudioContext)();noiseBuf=AC.createBuffer(1,AC.sampleRate*2,AC.sampleRate);const d=noiseBuf.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1}
+    const master=AC.createGain();master.gain.value=0;master.connect(AC.destination);
+    const room=AC.createBufferSource();room.buffer=noiseBuf;room.loop=true;const rf=AC.createBiquadFilter();rf.type='lowpass';rf.frequency.value=260;const rg=AC.createGain();rg.gain.value=0.05;room.connect(rf);rf.connect(rg);rg.connect(master);room.start();
+    const pad=AC.createGain();pad.gain.value=0;pad.connect(master);
+    for(const hz of [110,164.81,220.5]){const o=AC.createOscillator();o.type='sine';o.frequency.value=hz;const g=AC.createGain();g.gain.value=hz>200?0.25:0.5;o.connect(g);g.connect(pad);o.start()}
+    BGM={master,pad,typing:0,next:0}}catch(e){BGM=null}}
+function bgmTick(){if(!BGM||!AC)return;const t=AC.currentTime,on=!!opts.bgm&&!document.hidden&&!!CUR;
+  try{BGM.master.gain.setTargetAtTime(on?1:0,t,0.4);BGM.pad.gain.setTargetAtTime(on&&DAY.night?0.022:0,t,1.5);
+    if(!on||t<BGM.next)return;
+    if(BGM.typing>0){BGM.typing--;BGM.next=t+0.07+Math.random()*0.13;   // 키보드 한 타
+      const s=AC.createBufferSource();s.buffer=noiseBuf;const f=AC.createBiquadFilter();f.type='bandpass';f.frequency.value=2200+Math.random()*1800;f.Q.value=1.2;const g=AC.createGain();
+      g.gain.setValueAtTime(0.012+Math.random()*0.012,t);g.gain.exponentialRampToValueAtTime(0.0005,t+0.035);s.connect(f);f.connect(g);g.connect(BGM.master);s.start(t,Math.random()*1.5);s.stop(t+0.04)}
+    else{BGM.typing=3+Math.floor(Math.random()*9);BGM.next=t+(DAY.night?2.5+Math.random()*5:0.8+Math.random()*2.6)}}catch(e){}}
+setInterval(bgmTick,90);
 
 // ---------- 라벨 ----------
 let LBL=[];
@@ -2568,7 +2702,7 @@ $('#customQ').addEventListener('input',runSearch);
 $('#customQ').addEventListener('keydown',e=>{if(e.key==='Enter'){const f=$('#searchRes .firm');if(f)f.click()}});
 $('#btnShare').onclick=()=>openShare('result');
 $('#btnPickHQ').onclick=()=>{closeModals();pickHQ=true;$('#hint').textContent='사옥 건물(또는 빈 땅)을 눌러주세요';toast('사옥으로 쓸 건물을 눌러주세요. 건물이 없으면 빈 땅을 누르면 새로 세워요',4000)};
-for(const k of ['Sound','Labels','Debris','Shadows','Pins','Mini','Shake','Night','Patch','Weather']){const el=$('#opt'+k);if(!el)continue;const key=k.toLowerCase();el.checked=!!opts[key];el.onchange=()=>{opts[key]=el.checked;lsSet('smasharch_opts',opts);if(key==='sound'&&!el.checked)humStop();if(key==='mini')applyMini();if(key==='night'){if(!el.checked&&DAY.night)dayStart();DAY.t=0}}}
+for(const k of ['Sound','Labels','Debris','Shadows','Pins','Mini','Shake','Night','Patch','Weather','Quest','Bgm']){const el=$('#opt'+k);if(!el)continue;const key=k.toLowerCase();el.checked=!!opts[key];el.onchange=()=>{opts[key]=el.checked;lsSet('smasharch_opts',opts);if(key==='bgm'&&el.checked)bgmStart();if(key==='quest'&&!el.checked)questEnd(null);if(key==='sound'&&!el.checked)humStop();if(key==='mini')applyMini();if(key==='night'){if(!el.checked&&DAY.night)dayStart();DAY.t=0}}}
 const bosSel=$('#optBossSuit');if(bosSel){bosSel.value=String(lsGet('smasharch_bosscust')||0);bosSel.onchange=()=>lsSet('smasharch_bosscust',+bosSel.value)}
 // ---- 간단 화면: H 키 · 왼쪽 위 [UI] 버튼 · 설정 체크 ----
 function applyMini(){document.body.classList.toggle('mini',!!opts.mini);const el=$('#optMini');if(el)el.checked=!!opts.mini;setTimeout(layoutHUD,0)}
@@ -2713,7 +2847,7 @@ function enterSection(bArg,firmArg){if(EARTH()){toast('단면은 건축 모드�
   D.used.fill(0);D.rest.fill(0);rubDirty=true;secDirty=true;
   SEC.base=secSnap();
   $('#btnSection').classList.add('on');$('#btnSection').lastChild.textContent='동네로';
-  document.body.classList.add('sec');  $('#secPanel').innerHTML='<div id="secInfo"></div><div id="secHint" class="k"></div><button id="btnFloor" class="btn-s" style="margin-top:5px"></button>';$('#btnFloor').onclick=toggleInside;$('#btnFloor').textContent=(SEC.ourK!=null?'우리 층':floorName(SEC.focusK))+' 확대해서 보기'+(TOUCH?'':' (F)');
+  document.body.classList.add('sec');  $('#secPanel').innerHTML='<div id="secInfo"></div><div id="secHint" class="k"></div><div class="sec-btns"><button id="btnFloorDn" class="btn-s fstep" title="아래층">▼</button><button id="btnFloor" class="btn-s"></button><button id="btnFloorUp" class="btn-s fstep" title="위층">▲</button><button id="btnSecExit" class="btn-s">✕ 동네로</button></div>';$('#btnFloor').onclick=toggleInside;$('#btnFloorDn').onclick=()=>stepFloor(-1);$('#btnFloorUp').onclick=()=>stepFloor(1);$('#btnSecExit').onclick=()=>exitSection();secFloorBtn();
   $('#secPanel').style.display='';$('#btnUndo').disabled=true;$('#btnReset').disabled=false;
   makeSecLabels();selectWeapon(weapon);
   const oc=SEC.others.length;
@@ -2741,10 +2875,22 @@ function secTargets(){ // 각 층이 놓일 높이 (아래층이 무너지면 �
 function storyHealth(s){let tot=0,alive=0,core=false,coreHp=0;
   for(const e of SEC.els){if(e.k!==s.k)continue;if(e.kind==='col'){tot++;if(e.alive)alive++}if(e.kind==='core'&&e.alive){core=true;coreHp=e.hp/e.hp0}}
   return{r:tot?alive/tot:1,core,coreHp}}
-function toggleInside(){if(!SEC)return;SEC.inside=!SEC.inside;
-  if(SEC.inside){const s=SEC.S(SEC.focusK);SEC.overCam={...cam};cam.tx=0;cam.ty=s.y+0.9;cam.tz=SEC.D*0.12;cam.theta=0.22;cam.phi=1.42;cam.dist=Math.max(SEC.W*0.42,11)}
-  else Object.assign(cam,SEC.overCam);
-  $('#btnFloor').textContent=(SEC.inside?'단면 전체 보기 (F)':((SEC.ourK!=null?'우리 층':floorName(SEC.focusK))+' 확대해서 보기 (F)')).replace(TOUCH?' (F)':'@@','')}
+function secFloorBtn(){const f=$('#btnFloor');if(!f||!SEC)return;const key=TOUCH?'':' (F)';
+  const nm=(SEC.ourK!=null&&SEC.focusK===SEC.ourK?'우리 층 ':'')+floorName(SEC.focusK);
+  f.textContent=SEC.inside?nm+' · 전체 보기'+key:(SEC.ourK!=null?'우리 층 확대':'층 확대')+key;
+  $('#secPanel').classList.toggle('inside',!!SEC.inside);
+  for(const L of SLBL)if(L.el)L.el.classList.toggle('cur',!!SEC.inside&&!L.top&&L.s&&L.s.k===SEC.focusK)}
+function zoomFloor(k){if(!SEC)return;const s=SEC.S(k);if(!s)return;
+  if(s.state!=='ok'){toast(floorName(k)+'은(는) 이미 무너졌어요',1400);return}
+  if(!SEC.inside)SEC.overCam={...cam};SEC.inside=true;SEC.focusK=k;
+  cam.tx=0;cam.ty=s.y+0.9;cam.tz=SEC.D*0.12;cam.theta=0.22;cam.phi=1.42;cam.dist=Math.max(SEC.W*0.42,11);secFloorBtn()}
+function stepFloor(d){if(!SEC)return;let k=SEC.focusK;
+  for(let i=0;i<SEC.st.length;i++){k+=d;const s=SEC.S(k);if(!s){toast(d>0?'맨 위층이에요':'맨 아래층이에요',1200);return}if(s.state==='ok'){zoomFloor(k);return}}}
+function toggleInside(){if(!SEC)return;
+  if(SEC.inside){SEC.inside=false;Object.assign(cam,SEC.overCam);secFloorBtn();return}
+  let k=SEC.focusK;const s0=SEC.S(k);
+  if(!s0||s0.state!=='ok'){const ok=SEC.st.filter(s=>s.state==='ok'&&s.k>=0);if(!ok.length){toast('확대해서 볼 층이 남아 있지 않아요',1600);return}k=ok[0].k}
+  zoomFloor(k)}
 function secCheck(){
   for(const s of SEC.st){
     if(s.state==='ok'&&!s.warned&&s.k>-SEC.nb){const h=storyHealth(s);if(!h.core&&h.r<0.55&&h.r>=0.34){s.warned=1;toast(`⚠ ${floorName(s.k)} 붕괴 임박 — 기둥 ${Math.round(h.r*100)}% 남음`,2500)}}
@@ -2951,7 +3097,7 @@ function drawSecCranes(m,mg){for(const c of SCRANES){const g=clamp(c.grow,0,1),H
   pushShape(m,CUBE,(x+c.piv.x)/2,top,z,L+3,0.9,0.9,0,YEL,0);pushShape(m,CUBE,x+Math.sign(x-c.piv.x)*4,top,z,8,0.8,0.8,0,YEL_D,0);
   pushShape(m,CUBE,x,top+1,z,1.8,1.2,1.8,0,[0.95,0.95,0.93],0);
   const p=c.phase==='swing'?sBall(c,c.lastS):c.phase==='rise'?(q=>[q[0],q[1]+(1-g)*15])(sBall(c,0)):sBall(c,c.pass?0:1);const by=Math.min(p[1],top-1.5);
-  drawSeg(m,[c.piv.x,top,z],[p[0],by+SBALL,c.z],0.18,STEEL);pushShape(m,SPHERE,p[0],by,c.z,SBALL,SBALL,SBALL,0,[0.16,0.16,0.18],0);
+  drawSeg(m,[c.piv.x,top,z],[p[0],by+SBALL,c.z],0.18,STEEL);pushShape(m,SPHERE,p[0],by,c.z,SBALL,SBALL,SBALL,0,goldOn('ball')?GOLD_C:[0.16,0.16,0.18],0);
   if(c.phase==='swing')c.trail.forEach((q,k)=>{const s=SBALL*(0.3+k/c.trail.length*0.5);pushShape(mg,CUBE,q[0],q[1],c.z,s,s,s,k,[0.95,0.9,0.75],1)})}}
 
 // ---------- 다이너마이트 ----------
@@ -3188,6 +3334,7 @@ function makeSecLabels(){const box=$('#labels');box.innerHTML='';SLBL=[];
   for(const s of SEC.st){const ours=SEC.ourK!=null&&s.k===SEC.ourK;
     if(!ours&&s.k!==0&&s.k!==-1&&s.k!==SEC.N-1&&((s.k+1)%step))continue;
     const el=document.createElement('div');el.className='lbl'+(ours?' hq':'');el.textContent=ours?`${SEC.firm.name} · ${floorName(s.k)}`:floorName(s.k);
+    el.classList.add('fl');el.title='눌러서 이 층 확대';el.addEventListener('pointerdown',e=>e.stopPropagation());el.onclick=()=>zoomFloor(s.k);
     box.appendChild(el);SLBL.push({s,el,ours})}
   const byF={};for(const o of SEC.others){if(o.fl==null)continue;const k=o.fl>0?o.fl-1:o.fl;if(k===SEC.ourK||!SEC.S(k))continue;(byF[k]=byF[k]||[]).push(o.name)}
   for(const k in byF){const n=byF[k];const el=document.createElement('div');el.className='lbl other';el.textContent=`${n[0]}${n.length>1?' 외 '+(n.length-1):''} · ${floorName(+k)}`;box.appendChild(el);SLBL.push({s:SEC.S(+k),el,ours:true,other:true})}
@@ -3307,6 +3454,7 @@ function bossReset(){BOSS=null;CAMGO=null;drawBossUI()}
 // 옷(정장·니트·작업복·골프웨어) × 헤어(7종) 무작위 조합. 처음엔 설정에서 고른 정장 + 옆머리 흰머리, 도망칠 때마다 새로 갈아입음
 const BH_STYLES=7,BH_COLS=[[0.55,0.55,0.57],[0.07,0.06,0.06],[0.36,0.22,0.12],[0.8,0.65,0.3],[0.16,0.12,0.1],[0.75,0.75,0.78]];
 function newBossLook(first){
+  if(RW.beggar&&rwOK(3))return{o:4,suit:[0.47,0.40,0.30],suitD:[0.31,0.27,0.22],tie:[0.47,0.40,0.30],hs:first?0:Math.floor(Math.random()*BH_STYLES),hc:[0.42,0.40,0.38],first:1};   // 거지 옷 (연속 출석 3일 보상)
   if(first)return{o:0,suit:SUIT,suitD:SUIT_D,tie:TIE,hs:0,hc:BH_COLS[0],first:1};
   const o=Math.floor(Math.random()*4),keys=Object.keys(SUITS),sk=SUITS[keys[Math.floor(Math.random()*keys.length)]],pick=a=>a[Math.floor(Math.random()*a.length)];
   const L={o,hs:Math.floor(Math.random()*BH_STYLES),hc:pick(BH_COLS)};
@@ -3403,7 +3551,7 @@ function drawBoss(m,mg){if(!bossHere())return;const p=bossPos();if(MODE==='secti
     P(0.13+lg*0.3,0.04,0.05,0.19,0.08,0.3,[0.08,0.08,0.08]);P(-0.13-lg*0.3,0.04,0.05,0.19,0.08,0.3,[0.08,0.08,0.08])}
   const by=(sit?-0.5:0)+bob;
   P(0,1.18+by,0,0.66,0.78,0.42,SUIT);P(0,1.1+by,0.12,0.36,0.34,0.3,SUIT,SPHERE);   // 몸통 · 배
-  if(L.o===0){P(0,1.4+by,0.215,0.18,0.3,0.02,[0.97,0.97,0.96]);P(0,1.35+by,0.23,0.07,0.3,0.02,TIE)}else if(L.o===2){P(0,1.3+by,0.23,0.5,0.06,0.02,[0.95,0.95,0.7])}else if(L.o===3){P(0,1.5+by,0.215,0.2,0.1,0.02,[1,1,1])}   // 셔츠 · 넥타이 (정장만) / 작업복 반사띠 / 골프 칼라
+  if(L.o===0){P(0,1.4+by,0.215,0.18,0.3,0.02,[0.97,0.97,0.96]);P(0,1.35+by,0.23,0.07,0.3,0.02,TIE)}else if(L.o===2){P(0,1.3+by,0.23,0.5,0.06,0.02,[0.95,0.95,0.7])}else if(L.o===3){P(0,1.5+by,0.215,0.2,0.1,0.02,[1,1,1])}else if(L.o===4){P(0.09,1.2+by,0.275,0.15,0.15,0.02,[0.80,0.66,0.34]);P(-0.1,1.03+by,0.262,0.13,0.12,0.02,[0.30,0.40,0.58]);P(0.2,1.44+by,0.215,0.15,0.14,0.02,[0.70,0.30,0.26]);P(-0.2,1.4+by,0.215,0.12,0.12,0.02,[0.36,0.50,0.34]);P(0,0.83+by,0,0.7,0.06,0.46,[0.82,0.72,0.44]);P(0.22,0.72+by,0.2,0.05,0.2,0.05,[0.82,0.72,0.44])}   // 셔츠 · 넥타이 (정장만) / 작업복 반사띠 / 골프 칼라
   // 팔: 말할 때는 손가락질, 맞으면 만세, 점프하면 위로
   const up=jump||BOSS.flinch>0||BOSS.stun>0;const wave=talk&&!up?Math.sin(now*9)*0.12:0;
   if(up){P(0.42,1.75+by,0,0.14,0.55,0.14,SUIT);P(-0.42,1.75+by,0,0.14,0.55,0.14,SUIT);P(0.42,2.05+by,0,0.12,0.12,0.12,SKIN);P(-0.42,2.05+by,0,0.12,0.12,0.12,SKIN)}
@@ -3699,7 +3847,7 @@ function BT(){const n=bossName();return n?n+' '+bossTitle():bossTitle()}
 function clientNamesUser(){const v=lsGet('smasharch_clients');return Array.isArray(v)?v:[]}
 // 회사 고르기 창 맨 위 한 줄: 지금 정해 둔 사장님·발주처 이름을 보여줌 (누르면 펼쳐서 바꾸기)
 function castSum(){const el=$('#castSum');if(!el)return;const b=bossName(),c=clientNamesUser();
-  el.innerHTML=b||c.length?`🎭 사장님 <b>${esc(b||'사장님')}</b> · 발주처 <b>${c.length?esc(c[0])+(c.length>1?` 외 ${c.length-1}`:''):'가상 이름'}</b><em>바꾸기</em>`:'🎭 사장님·발주처 이름 정하기<em>우리 회사 버전으로!</em>'}
+  el.textContent='🎭 이름 바꾸기';el.title=b||c.length?'지금: 사장님 '+(b||'사장님')+' · 발주처 '+(c.length?c.join(', '):'가상 이름'):'사장님·발주처 이름을 우리 회사 버전으로 바꿀 수 있어요'}
 function clientName(){const u=clientNamesUser();return pickL(u.length?u:CLIENT_NAMES)}
 (function(){const ins=[$('#clientNames'),$('#clientNames2')].filter(Boolean);
   const fill=()=>{const t=clientNamesUser().join(', ');ins.forEach(el=>{if(document.activeElement!==el)el.value=t})};
@@ -4134,6 +4282,111 @@ async function doInstall(){if(isStandalone()){toast('이미 앱으로 실행 중
 if('serviceWorker' in navigator&&location.protocol==='https:'){try{navigator.serviceWorker.register('sw.js').catch(()=>{})}catch(e){}}
 
 WX.kind=wxSeason();
+
+// ---------- 연속 출석 (보상은 나중에: STREAK.n = 연속 일수, STREAK.best = 최고, STREAK.days = 누적) ----------
+const STREAK=(function(){const t=kstDay();let s=lsGet('smasharch_streak');
+  if(!s||typeof s!=='object'||Array.isArray(s))s={last:'',n:0,best:0,days:0};
+  let isNew=false;
+  if(s.last!==t){const y=new Date(Date.now()+9*3600e3-86400e3).toISOString().slice(0,10);
+    s.n=s.last===y?(+s.n||0)+1:1;s.last=t;s.days=(+s.days||0)+1;s.best=Math.max(+s.best||0,s.n);isNew=true;lsSet('smasharch_streak',s)}
+  return{n:s.n,best:s.best,days:s.days,last:s.last,isNew}})();
+function streakUI(){const el=$('#streakBox');if(!el)return;
+  el.innerHTML='🔥 연속 <b>'+STREAK.n+'일</b>';el.title='연속 출석 '+STREAK.n+'일 · 최고 '+STREAK.best+'일 · 누적 '+STREAK.days+'일';el.style.display=''}
+streakUI();
+
+// =====================================================================
+//  연속 출석 보상 — 3일: 거지 옷 · 5일: 황금 불도저/쇠공 중 하나 · 7일: 스프레이 낙서
+//  최고 연속 일수(STREAK.best) 기준이라 한 번 받으면 연속이 끊겨도 계속 쓸 수 있음. 고른 값은 smasharch_reward 에 저장
+//  시험용: 주소 끝에 ?dev=cjw7 을 붙이면 그 접속 동안만 7일차로 취급 (저장되지 않음)
+// =====================================================================
+const RW_DEV=(()=>{try{const m=/^cjw(\d{1,2})$/.exec(new URL(location.href).searchParams.get('dev')||'');return m?+m[1]:0}catch(e){return 0}})();
+let RW=Object.assign({gold:'',beggar:false},lsGet('smasharch_reward')||{});
+const GOLD_C=[1.0,0.82,0.30],GOLD_D=[0.86,0.64,0.14],GOLD_L=[1.0,0.93,0.62],GOLD_K=[0.56,0.40,0.07];
+function rwBest(){return Math.max(+STREAK.best||0,RW_DEV)}
+function rwOK(n){return rwBest()>=n}
+function goldOn(k){return RW.gold===k&&rwOK(5)}
+function rwUI(){const box=$('#rwList');if(!box)return;
+  {const hd=$('#rwHead');if(hd){const gift={3:'🧥',5:'✨',7:'🎨'};let s='';for(let i=1;i<=7;i++)s+='<i class="'+(i<=Math.min(7,STREAK.n)?'done':'')+(gift[i]?' gift':'')+'"><b>'+(gift[i]||(i<=STREAK.n?'✔':'·'))+'</b>'+i+'일</i>';
+    hd.innerHTML='<div class="rw-n">지금 연속 <b>'+STREAK.n+'</b>일 · 최고 '+rwBest()+'일 · 누적 '+STREAK.days+'일</div><div class="rw-days">'+s+'</div>'}
+   const rb=$('#btnReward');if(rb)rb.innerHTML='🔥 출석 <b>'+STREAK.n+'</b>일'}
+  const lock=n=>'<small>🔒 연속 '+n+'일이 되면 열려요</small>';
+  box.innerHTML=
+    '<div class="rw'+(rwOK(3)?'':' lock')+'"><span class="rw-d">3일</span><span class="rw-t">🧥 사장님 거지 옷'+(rwOK(3)?'':lock(3))+'</span>'+(rwOK(3)?'<button data-rw="beggar" class="'+(RW.beggar?'on':'')+'">'+(RW.beggar?'입는 중':'입히기')+'</button>':'')+'</div>'+
+    '<div class="rw'+(rwOK(5)?'':' lock')+'"><span class="rw-d">5일</span><span class="rw-t">✨ 황금 스킨 <small>'+(rwOK(5)?'둘 중 하나를 골라요 (겉모습만 바뀌어요)':'🔒 연속 5일이 되면 열려요')+'</small></span>'+(rwOK(5)?'<button data-rw="dozer" class="'+(RW.gold==='dozer'?'on':'')+'">불도저</button><button data-rw="ball" class="'+(RW.gold==='ball'?'on':'')+'">쇠공</button>':'')+'</div>'+
+    '<div class="rw'+(rwOK(7)?'':' lock')+'"><span class="rw-d">7일</span><span class="rw-t">🎨 스프레이 낙서'+(rwOK(7)?'<small>건물 외벽에 문구를 써요 (나만 보여요)</small>':lock(7))+'</span>'+(rwOK(7)?'<button data-rw="spray">쓰러 가기</button>':'')+'</div>';
+  box.querySelectorAll('button').forEach(b=>b.onclick=()=>{const k=b.dataset.rw;
+    if(k==='beggar'){RW.beggar=!RW.beggar;if(BOSS)BOSS.look=null;toast(RW.beggar?'🧥 '+bossTitle()+'이 거지 옷으로 갈아입었어요':'원래 옷으로 돌아왔어요',2000)}
+    else if(k==='spray'){RW_BACK=false;closeModals();sprayArm();return}
+    else{RW.gold=RW.gold===k?'':k;toast(RW.gold?'✨ 황금 '+(k==='dozer'?'불도저':'쇠공')+' 적용!':'황금 스킨을 껐어요',1800)}
+    lsSet('smasharch_reward',RW);rwUI()});
+  const sb=$('#btnSpray');if(sb)sb.classList.toggle('locked',!rwOK(7))}
+rwUI();
+let RW_BACK=false;
+function rwOpen(){RW_BACK=!!($('#mFirm')&&$('#mFirm').classList.contains('open'))||!CUR;closeModals();rwUI();$('#mReward').classList.add('open')}
+{const back=()=>{if(RW_BACK){RW_BACK=false;setTimeout(()=>{if(!document.querySelector('.modal.open'))$('#btnFirm').click()},0)}};
+  const m=$('#mReward');if(m){m.addEventListener('pointerdown',e=>{if(e.target===m)back()});const c=m.querySelector('.close');if(c)c.addEventListener('click',back)}
+  const sb=$('#streakBox');if(sb)sb.onclick=rwOpen;const rb=$('#btnReward');if(rb)rb.onclick=rwOpen}
+// 회사 고르기 창: 분류 펼침 목록 (예전 분류 버튼과 같은 동작)
+{const s=$('#fCatSel');if(s)s.onchange=()=>{FCAT=s.value;document.querySelectorAll('#fCats button').forEach(x=>x.classList.toggle('on',x.dataset.k===FCAT));runSearch()}}
+if(STREAK.isNew&&STREAK.best===STREAK.n&&[3,5,7].includes(STREAK.n))setTimeout(()=>toast('🎁 연속 출석 '+STREAK.n+'일 보상이 열렸어요: '+({3:'사장님 거지 옷',5:'황금 스킨',7:'스프레이 낙서'})[STREAK.n]+' — 오른쪽 위 [🔥 출석]에서 써보세요',5200),6200);
+
+// ---------- 스프레이 낙서 — [스프레이] → 건물 누르기 → 문구 입력 → 누른 쪽 외벽에 글씨. 나만 보이고(저장 안 함), 그 벽이 부서지면 사라짐 ----------
+const SPRAY={arm:false,list:[],b:null,hit:null,col:0};
+const SPRAY_COLS=[['빨강',[0.93,0.16,0.14]],['검정',[0.07,0.07,0.08]],['노랑',[1,0.84,0.1]],['파랑',[0.15,0.45,0.95]],['분홍',[1,0.35,0.65]],['흰색',[0.97,0.97,0.95]]];
+function sprayOff(){SPRAY.arm=false;const sb=$('#btnSpray');if(sb)sb.classList.remove('on');document.body.classList.remove('spraying')}
+function sprayArm(){if(!rwOK(7)){toast('🔒 스프레이는 연속 출석 7일 보상이에요 (지금 최고 '+rwBest()+'일)',3200);return}
+  if(MODE!=='city'||!CUR){toast('스프레이는 동네 화면에서만 쓸 수 있어요');return}
+  if(SPRAY.arm){sprayOff();return}
+  SPRAY.arm=true;const sb=$('#btnSpray');if(sb)sb.classList.add('on');document.body.classList.add('spraying');toast('🎨 글씨를 쓸 건물 외벽을 누르세요',3000)}
+function sprayPick(h){sprayOff();if(!h||!h.b||!h.b.alive){toast('건물을 눌러주세요');return}
+  SPRAY.b=h.b;SPRAY.hit={x:h.x,y:h.y,z:h.z,ex:eye[0],ez:eye[2]};
+  const b=h.b,nm=b.hq&&CUR?shortName(CUR.name):(b.firms&&b.firms[0]&&b.firms[0].short)||'이 건물';$('#spWho').textContent=nm;
+  closeModals();$('#mSpray').classList.add('open');const t=$('#spText');t.value='';setTimeout(()=>{try{t.focus()}catch(e){}},60)}
+function sprayRaster(text){const HH=28,cv=document.createElement('canvas'),c=cv.getContext('2d'),F='400 20px "Black Han Sans","Noto Sans KR","Malgun Gothic",sans-serif';
+  c.font=F;const w=Math.min(420,Math.ceil(c.measureText(text).width)+6);cv.width=w;cv.height=HH;c.font=F;c.textBaseline='middle';c.fillStyle='#fff';c.fillText(text,3,HH/2+1);
+  const d=c.getImageData(0,0,w,HH).data,on=(x,y)=>d[(y*w+x)*4+3]>110;let x0=w,x1=-1,y0=HH,y1=-1;
+  for(let y=0;y<HH;y++)for(let x=0;x<w;x++)if(on(x,y)){if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y}
+  if(x1<x0)return null;const runs=[];
+  for(let y=y0;y<=y1;y++){let st=-1;for(let x=x0;x<=x1+1;x++){const o=x<=x1&&on(x,y);if(o&&st<0)st=x;else if(!o&&st>=0){runs.push([st-x0,y-y0,x-st]);st=-1}}}
+  const R={w:x1-x0+1,h:y1-y0+1,runs},nd=Math.min(5,Math.floor(R.w/16));   // 흘러내린 물감 자국
+  for(let k=0;k<nd;k++){const x=Math.floor(Math.random()*R.w);let bot=-1;for(const r of runs)if(r[0]<=x&&x<r[0]+r[2]&&r[1]>bot)bot=r[1];if(bot<R.h*0.6)continue;const len=2+Math.floor(Math.random()*5);for(let q=1;q<=len;q++)runs.push([x,bot+q,1])}
+  return R}
+function sprayMake(b,h,text,col){const pts=b.pts,n=pts.length,s=polyArea(pts)>=0?1:-1;let best=null;
+  for(let i=0;i<n;i++){const a=pts[i],c=pts[(i+1)%n],ex=c[0]-a[0],ez=c[1]-a[1],L=Math.hypot(ex,ez);if(L<4)continue;
+    const nx=s*ez/L,nz=-s*ex/L,mx=(a[0]+c[0])/2,mz=(a[1]+c[1])/2;if(nx*(h.ex-mx)+nz*(h.ez-mz)<=0)continue;   // 카메라 쪽을 보는 벽만
+    const t=clamp(((h.x-a[0])*ex+(h.z-a[1])*ez)/(L*L),0,1),dd=Math.hypot(h.x-(a[0]+ex*t),h.z-(a[1]+ez*t)),sc=dd-Math.min(L,30)*0.2;   // 누른 곳에서 가깝고 넓은 벽
+    if(!best||sc<best.sc)best={i,a,L,ex:ex/L,ez:ez/L,nx,nz,t,sc}}
+  if(!best)return null;const R=sprayRaster(text);if(!R)return null;
+  const wallH=Math.max(b.h,3),cell=Math.min(wallH*0.42/R.h,best.L*0.9/R.w,0.6);if(cell*R.h<1.1)return null;
+  const W=R.w*cell,H=R.h*cell,al=clamp(best.t*best.L,W/2+best.L*0.04,best.L-W/2-best.L*0.04);
+  const lo=b.base+H/2+1.2,hi=b.base+wallH-H/2-0.6,cy=hi>lo?clamp(h.y,lo,hi):b.base+wallH/2;
+  return{b,ei:best.i,text,col,cx:best.a[0]+best.ex*al,cy,cz:best.a[1]+best.ez*al,ux:best.nz,uz:-best.nx,nx:best.nx,nz:best.nz,cell,W,H,R,top:cy+H/2-b.base}}
+function sprayBuild(){mSpray.reset();
+  for(const g of SPRAY.list){const rot=Math.atan2(g.uz,g.ux),off=0.55;
+    for(const r of g.R.runs){const lx=(r[0]+r[2]/2-g.R.w/2)*g.cell,ly=(g.R.h/2-r[1]-0.5)*g.cell;
+      pushShape(mSpray,CUBE,g.cx+g.ux*lx+g.nx*off,g.cy+ly,g.cz+g.uz*lx+g.nz*off,r[2]*g.cell+0.02,g.cell*1.06,0.3,rot,g.col,1)}}
+  mSpray.upload()}
+function sprayWrite(){const t=$('#spText').value.replace(/\s+/g,' ').trim().slice(0,14);if(!t){toast('문구를 입력해주세요');return}
+  const b=SPRAY.b;if(!b||!b.alive||MODE!=='city'){closeModals();return}
+  const g=sprayMake(b,SPRAY.hit,t,SPRAY_COLS[SPRAY.col][1]);if(!g){toast('이 벽은 너무 좁아요 — 더 넓은 벽을 눌러주세요',2600);closeModals();return}
+  SPRAY.list=SPRAY.list.filter(o=>!(o.b===b&&o.ei===g.ei));SPRAY.list.push(g);if(SPRAY.list.length>12)SPRAY.list.shift();   // 같은 벽은 덮어쓰기 · 최대 12개
+  sprayBuild();closeModals();sfx(3,0.5);toast('🎨 칙칙— 낙서 완료! (부수면 사라져요)',2000)}
+function sprayCheck(){if(!SPRAY.list.length)return;const n0=SPRAY.list.length;
+  SPRAY.list=SPRAY.list.filter(g=>{const b=g.b;if(!b.alive||b.lifted||B.indexOf(b)<0||b.h<g.top-0.3)return false;
+    const d=b.det;if(!d)return true;
+    for(let f=0;f<d.F;f++){const y0=d.fy[f],y1=y0+d.fh;if(y1<g.top-g.H||y0>g.top)continue;if(!d.fl[f])return false;
+      for(let j=0;j<d.M;j++){if(d.panel[f*d.M+j])continue;const a=d.nodes[j],c=d.nodes[(j+1)%d.M],px=(a[0]+c[0])/2-g.cx,pz=(a[1]+c[1])/2-g.cz;
+        if(Math.abs(px*g.ux+pz*g.uz)<g.W/2+1&&Math.abs(px*g.nx+pz*g.nz)<2.5)return false}}   // 글씨가 있는 자리의 외벽이 떨어져 나가면 지움
+    return true});
+  if(SPRAY.list.length!==n0)sprayBuild()}
+setInterval(sprayCheck,300);
+{const sb=$('#btnSpray');if(sb)sb.onclick=sprayArm;
+  const box=$('#spCols');if(box){const rgb=c=>'rgb('+c.map(v=>Math.round(v*255)).join(',')+')';
+    SPRAY_COLS.forEach((c,i)=>{const b=document.createElement('button');b.type='button';b.title=c[0];b.style.background=rgb(c[1]);if(!i)b.className='on';
+      b.onclick=()=>{SPRAY.col=i;box.querySelectorAll('button').forEach((x,k)=>x.classList.toggle('on',k===i))};box.appendChild(b)})}
+  if($('#spGo'))$('#spGo').onclick=sprayWrite;
+  if($('#mSpray'))$('#mSpray').addEventListener('keydown',e=>{e.stopPropagation();if(e.key==='Enter'&&!e.isComposing)sprayWrite()})}
+if(STREAK.isNew)setTimeout(()=>toast(STREAK.n>1?'🔥 '+STREAK.n+'일 연속 출석!':'📅 오늘 출석 완료! 내일도 오면 연속 출석이 쌓여요',3200),2500);
 // =====================================================================
 // 회사 추가 요청 · 문의함 → Apps Script '요청함' 시트로
 // =====================================================================
@@ -4212,7 +4465,9 @@ function shareText(){const vs=$('#shVs')&&$('#shVs').checked,url=shareUrl(vs);
   if((!CUR||score<1)&&EARTH())return `🌍 SMASH ARCH 재난 모드 — 지구가 화났다!\n건축을 너무 많이 해서 흰개미·코끼리·화산·쓰나미·태양 조각이 우리 회사 사옥을 부숴요 👇\n${url}`;
   if(!CUR||score<1)return `💥 SMASH ARCH — 우리 회사·우리 학교 부수기 게임\n건축사사무소·건설사·대학교 1만 1천여 곳 중 우리 사옥 찾아서 같이 부숴요 🌙 밤엔 야근 모드, 사장님은 비행선 타고 컴백 👇\n${url}`;
   const tot=B.length,dead=B.filter(b=>!b.alive).length,pct=tot?Math.round(dead/tot*100):0;
-  return `${EARTH()?'🌍':'💥'} ${shortName(CUR.name)} ${CUR.kind==='u'?'캠퍼스':'사옥'}을 ${EARTH()?'재난 모드로 ':''}${fmt(score)}점어치 부쉈어요! (직급: ${curRank()[2]} · 파괴율 ${pct}%)\n${vs?'이 점수 넘을 수 있어? 👇':'같이 부수러 가기 👇'}\n${url}`}
+  const hr=hotRank();
+  return `${EARTH()?'🌍':'💥'} ${shortName(CUR.name)} ${CUR.kind==='u'?'캠퍼스':'사옥'}을 ${EARTH()?'재난 모드로 ':''}${fmt(score)}점어치 부쉈어요! (직급: ${curRank()[2]} · 파괴율 ${pct}%)\n${hr?`🔥 최근 7일 가장 많이 무너진 사옥 ${hr}위!\n`:''}${vs?'이 점수 넘을 수 있어? 👇':'같이 부수러 가기 👇'}\n${url}`}
+function hotRank(){try{if(!CUR||!CUR.dkey||!HOT.d)return 0;const i=HOT.d.findIndex(h=>h.key===CUR.dkey);return i>=0?i+1:0}catch(e){return 0}}
 function rr(c,x,y,w,h,r){c.beginPath();c.moveTo(x+r,y);c.arcTo(x+w,y,x+w,y+h,r);c.arcTo(x+w,y+h,x,y+h,r);c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath()}
 function fitText(c,t,maxW){if(c.measureText(t).width<=maxW)return t;while(t.length>1&&c.measureText(t+'…').width>maxW)t=t.slice(0,-1);return t+'…'}
 function makeCard(shot){const W=1200,H=630,cv=document.createElement('canvas');cv.width=W;cv.height=H;const c=cv.getContext('2d');
@@ -4239,7 +4494,38 @@ function makeCard(shot){const W=1200,H=630,cv=document.createElement('canvas');c
   else{c.fillStyle='#fff';c.font=`800 48px ${F}`;c.fillText('우리 회사·우리 학교, 같이 부숴요',40,H-110);c.font=`600 26px ${F}`;c.fillStyle='rgba(255,255,255,.8)';c.fillText('건축사사무소·건설사·대학교 1만 1천여 곳 · 무료 · 설치 없음',40,H-66)}
   c.font=`600 19px ${F}`;c.fillStyle='rgba(255,255,255,.65)';c.textAlign='right';c.fillText(shareBase().host+shareBase().pathname.replace(/\/$/,''),W-36,H-24);c.textAlign='left';
   return cv}
-function shareRefresh(){const cv=makeCard(SHARE_SHOT);SHARE_IMG=cv;$('#shImg').src=cv.toDataURL('image/jpeg',0.88);$('#shText').value=shareText();
+function makeCardTall(shot){const W=1080,H=1920,cv=document.createElement('canvas');cv.width=W;cv.height=H;const c=cv.getContext('2d');
+  const F='"Pretendard","Apple SD Gothic Neo","Malgun Gothic",sans-serif';
+  let g=c.createLinearGradient(0,0,0,H);g.addColorStop(0,'#14171b');g.addColorStop(1,'#262b33');c.fillStyle=g;c.fillRect(0,0,W,H);
+  c.textBaseline='alphabetic';c.textAlign='center';
+  c.font=`900 96px ${F}`;const sw=c.measureText('SMASH ').width,aw=c.measureText('ARCH').width,x0=(W-sw-aw)/2;c.textAlign='left';c.fillStyle='#fff';c.fillText('SMASH',x0,190);c.fillStyle='#f2b134';c.fillText('ARCH',x0+sw,190);c.textAlign='center';
+  c.font=`600 36px ${F}`;c.fillStyle='rgba(255,255,255,.75)';c.fillText('우리 회사·우리 학교 부수기 게임',W/2,250);
+  const top=320;let ph=620;
+  if(SHARE_MODE==='result'&&shot){ph=Math.min(860,Math.round(W*shot.height/shot.width));const s=Math.max(W/shot.width,ph/shot.height),w=shot.width*s,h=shot.height*s;
+    c.save();c.beginPath();c.rect(0,top,W,ph);c.clip();c.drawImage(shot,(W-w)/2,top+(ph-h)/2,w,h);c.restore()}
+  else{c.fillStyle='#2a2f36';c.fillRect(0,top,W,ph);c.fillStyle='#353b44';for(let i=0;i<12;i++){const x=i*95-20,h=140+((i*73)%5)*70;c.fillRect(x,top+ph-h,70,h)}}
+  c.fillStyle='#f2b134';c.fillRect(0,top-6,W,6);c.fillRect(0,top+ph,W,6);
+  let y=top+ph+120;
+  if(SHARE_MODE==='rank'){const d=RANK_LAST||{};const fr=(d.firms||[]).slice(0,5);
+    c.fillStyle='#f2b134';c.font=`800 52px ${F}`;c.fillText('🏆 이번 주 가장 많이 부서진 사옥',W/2,y);y+=40;c.textAlign='left';
+    fr.forEach((r,i)=>{y+=92;c.font=`800 50px ${F}`;c.fillStyle=i<3?'#f2b134':'#fff';c.fillText(String(i+1),80,y);c.fillStyle='#fff';c.fillText(fitText(c,shortName(r.name),600),150,y);c.textAlign='right';c.font=`600 38px ${F}`;c.fillStyle='rgba(255,255,255,.7)';c.fillText(fmt(r.total)+'점',W-80,y);c.textAlign='left'});
+    c.textAlign='center';if(!fr.length){c.fillStyle='#fff';c.font=`600 42px ${F}`;c.fillText('아직 기록이 없어요 — 첫 번째가 되어보세요',W/2,y+110)}}
+  else if(CUR&&score>=1){const rk=curRank(),tot=B.length,dead=B.filter(b=>!b.alive).length,pct=tot?Math.round(dead/tot*100):0,hr=hotRank();
+    c.fillStyle='#fff';c.font=`800 68px ${F}`;c.fillText(fitText(c,shortName(CUR.name)+(CUR.kind==='u'?' 캠퍼스':' 사옥'),W-120),W/2,y);
+    c.fillStyle='#f2b134';c.font=`900 150px ${F}`;c.fillText(fitText(c,fmt(score)+'점',W-100),W/2,y+185);
+    c.fillStyle='#fff';c.font=`700 46px ${F}`;c.fillText(`어치 부숨 · 파괴율 ${pct}%`,W/2,y+265);
+    const by=y+330;rr(c,W/2-250,by,500,130,22);c.fillStyle='rgba(242,177,52,.96)';c.fill();c.fillStyle='#1d2126';c.font=`900 92px ${F}`;c.textAlign='left';c.fillText(rk[1],W/2-205,by+98);c.font=`800 46px ${F}`;c.fillText(fitText(c,'직급 · '+rk[2],340),W/2-110,by+84);c.textAlign='center';
+    let ty=by+215;c.font=`800 40px ${F}`;
+    if(hr){c.fillStyle='#ff8a3d';c.fillText(`🔥 최근 7일 가장 많이 무너진 사옥 ${hr}위`,W/2,ty);ty+=64}
+    if(BOSS&&BOSS.state==='caught'){c.fillStyle='#ff6b5e';c.fillText('🚨 '+bossTitle()+' 검거 완료',W/2,ty)}}
+  else{c.fillStyle='#fff';c.font=`800 62px ${F}`;c.fillText('우리 회사·우리 학교,',W/2,y+40);c.fillText('같이 부숴요',W/2,y+125);c.font=`600 38px ${F}`;c.fillStyle='rgba(255,255,255,.8)';c.fillText('1만 1천여 곳 · 무료 · 설치 없음',W/2,y+215)}
+  c.font=`800 44px ${F}`;c.fillStyle='#fff';c.fillText('👇 같이 부수러 가기',W/2,H-150);
+  c.font=`700 40px ${F}`;c.fillStyle='#f2b134';c.fillText(shareBase().host+shareBase().pathname.replace(/\/$/,''),W/2,H-86);c.textAlign='left';
+  return cv}
+let SHARE_FMT='wide';
+function shareRefresh(){const tall=SHARE_FMT==='tall',cv=tall?makeCardTall(SHARE_SHOT):makeCard(SHARE_SHOT);SHARE_IMG=cv;$('#shImg').src=cv.toDataURL('image/jpeg',0.88);$('#shImg').classList.toggle('tall',tall);$('#shText').value=shareText();
+  document.querySelectorAll('#shFmt button').forEach(b=>b.classList.toggle('on',b.dataset.f===SHARE_FMT));
+  {const rb=$('#shRec');if(rb)rb.style.display=recCan()?'':'none'}
   $('#shVsRow').style.display=SHARE_MODE==='result'&&CUR&&score>=1?'':'none';
   document.querySelectorAll('#shTabs button').forEach(b=>b.classList.toggle('on',b.dataset.m===SHARE_MODE));
   $('#shNative').style.display=navigator.share?'':'none';$('#shCopyImg').style.display=window.ClipboardItem&&navigator.clipboard&&navigator.clipboard.write?'':'none'}
@@ -4248,9 +4534,41 @@ async function openShare(mode){SHARE_MODE=mode||'result';closeModals();
   SHARE_SHOT=null;SHOT_CB=c=>{SHARE_SHOT=c;shareRefresh();$('#mShare').classList.add('open')};
   setTimeout(()=>{if(SHOT_CB){SHOT_CB=null;shareRefresh();$('#mShare').classList.add('open')}},600)}
 function shareBlob(){return new Promise(r=>{if(!SHARE_IMG)return r(null);SHARE_IMG.toBlob(b=>r(b),'image/png')})}
-function shareFileName(){return `smash-arch_${SHARE_MODE==='rank'?'ranking':(CUR?shortName(CUR.name).replace(/[\\/:*?"<>|\s]+/g,''):'play')}.png`}
+function shareFileName(){return `smash-arch_${SHARE_MODE==='rank'?'ranking':(CUR?shortName(CUR.name).replace(/[\\/:*?"<>|\s]+/g,''):'play')}${SHARE_FMT==='tall'?'_story':''}.png`}
 async function copyText(t){try{await navigator.clipboard.writeText(t);return true}catch(e){try{const ta=document.createElement('textarea');ta.value=t;document.body.appendChild(ta);ta.select();const ok=document.execCommand('copy');ta.remove();return ok}catch(_){return false}}}
 const isPhone=()=>matchMedia('(pointer:coarse)').matches;
+// ---------- 5초 영상 — 게임 화면을 5초 녹화해서 저장·공유 (브라우저가 지원할 때만 버튼이 보임) ----------
+let REC=null,REC_BLOB=null,REC_URL='';const REC_SEC=5;
+function recMime(){if(!window.MediaRecorder||!MediaRecorder.isTypeSupported)return '';for(const m of ['video/mp4;codecs=avc1.42E01E','video/mp4','video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'])if(MediaRecorder.isTypeSupported(m))return m;return ''}
+function recCan(){return !!(window.MediaRecorder&&HTMLCanvasElement.prototype.captureStream&&recMime())}
+function recStart(){if(REC)return;if(!recCan()){toast('이 브라우저는 영상 녹화를 지원하지 않아요');return}
+  try{closeModals();const k=Math.min(1,1280/Math.max(canvas.width,canvas.height)),cv=document.createElement('canvas');cv.width=Math.floor(canvas.width*k/2)*2;cv.height=Math.floor(canvas.height*k/2)*2;
+    const ctx=cv.getContext('2d'),mime=recMime(),chunks=[];
+    let st=cv.captureStream(0),push=null;{const tr=st.getVideoTracks()[0];   // 그린 장면을 직접 한 장씩 넘김 (지원 안 하면 초당 30장 자동)
+      if(tr&&tr.requestFrame)push=()=>tr.requestFrame();else if(st.requestFrame)push=()=>st.requestFrame();else st=cv.captureStream(30)}
+    const rec=new MediaRecorder(st,{mimeType:mime,videoBitsPerSecond:5e6});
+    rec.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data)};
+    rec.onstop=()=>{const chip=$('#recChip');if(chip)chip.remove();REC=null;const b=new Blob(chunks,{type:mime.split(';')[0]});if(!b.size){toast('영상을 만들지 못했어요');return}recShow(b)};
+    rec.onerror=()=>{const chip=$('#recChip');if(chip)chip.remove();REC=null;toast('영상 녹화 중 오류가 났어요')};
+    let chip=$('#recChip');if(!chip){chip=document.createElement('div');chip.id='recChip';document.body.appendChild(chip)}
+    REC={cv,ctx,rec,push,t0:performance.now(),chip};rec.start(250);recFrame();setTimeout(()=>{try{if(REC&&REC.rec.state!=='inactive')REC.rec.stop()}catch(e){}},REC_SEC*1000+150)}
+  catch(e){REC=null;const chip=$('#recChip');if(chip)chip.remove();toast('영상 녹화를 시작하지 못했어요')}}
+function recFrame(){const r=REC;if(!r)return;const W=r.cv.width,H=r.cv.height,c=r.ctx,F='"Pretendard","Apple SD Gothic Neo","Malgun Gothic",sans-serif',u=Math.max(12,Math.round(H/26));
+  try{c.drawImage(canvas,0,0,W,H);
+    let g=c.createLinearGradient(0,H-u*4,0,H);g.addColorStop(0,'rgba(10,12,14,0)');g.addColorStop(1,'rgba(10,12,14,.8)');c.fillStyle=g;c.fillRect(0,H-u*4,W,u*4);
+    c.textBaseline='alphabetic';c.textAlign='left';c.font=`900 ${Math.round(u*1.25)}px ${F}`;c.fillStyle='#fff';c.fillText('SMASH',u,H-u*0.9);const sw=c.measureText('SMASH ').width;c.fillStyle='#f2b134';c.fillText('ARCH',u+sw,H-u*0.9);
+    c.font=`700 ${u}px ${F}`;c.fillStyle='rgba(255,255,255,.9)';if(CUR)c.fillText(fitText(c,shortName(CUR.name)+' · '+fmt(score)+'점',W*0.5),u,H-u*2.5);
+    c.textAlign='right';c.fillStyle='rgba(255,255,255,.85)';c.fillText(shareBase().host,W-u,H-u*0.9);c.textAlign='left';if(r.push)r.push()}catch(e){}
+  const left=Math.max(0,REC_SEC-(performance.now()-r.t0)/1000);r.chip.textContent='● 녹화 중 '+Math.ceil(left)+'초 — 지금 부수세요!'}
+function recExt(){return REC_BLOB&&/mp4/.test(REC_BLOB.type)?'mp4':'webm'}
+function recName(){return 'smash-arch_'+(CUR?shortName(CUR.name).replace(/[\\/:*?"<>|\s]+/g,''):'play')+'.'+recExt()}
+function recShow(b){REC_BLOB=b;if(REC_URL)try{URL.revokeObjectURL(REC_URL)}catch(e){}REC_URL=URL.createObjectURL(b);closeModals();
+  const v=$('#recVideo');if(v){v.src=REC_URL;try{v.play()}catch(e){}}
+  const f=new File([b],recName(),{type:b.type});$('#recShare').style.display=navigator.canShare&&navigator.canShare({files:[f]})?'':'none';
+  $('#recInfo').textContent=(b.size/1048576).toFixed(1)+'MB · '+recExt().toUpperCase()+(recExt()==='webm'?' — 인스타는 WEBM을 못 올릴 수 있어요. 그럴 땐 휴대폰 화면 녹화를 써주세요.':'');
+  $('#mRec').classList.add('open')}
+async function recShare(){if(!REC_BLOB)return;try{const f=new File([REC_BLOB],recName(),{type:REC_BLOB.type});await navigator.share({files:[f],title:'SMASH ARCH',text:shareText()})}catch(e){}}
+function recSave(){if(!REC_BLOB)return;const a=document.createElement('a');a.href=REC_URL;a.download=recName();document.body.appendChild(a);a.click();a.remove();toast('영상을 저장했어요')}
 // 카카오톡: config.js 에 KAKAO_JS_KEY 가 있으면 카카오 공유(이미지 카드+버튼). 없으면 폰은 공유 시트, PC는 문구 복사 → 카톡에 붙여넣기
 function kakaoKey(){return (window.SMASH_CONFIG&&window.SMASH_CONFIG.KAKAO_JS_KEY)||''}
 function kakaoLoad(){return new Promise(res=>{if(KAKAO_OK)return res(true);const k=kakaoKey();if(!k)return res(false);
@@ -4280,6 +4598,9 @@ function shareSns(kind){const url=shareUrl($('#shVs').checked),t=$('#shText').va
   document.querySelectorAll('#shSns button').forEach(b=>b.onclick=()=>shareSns(b.dataset.s));
   document.querySelectorAll('#shTabs button').forEach(b=>b.onclick=()=>{SHARE_MODE=b.dataset.m;if(SHARE_MODE==='rank'&&!RANK_LAST)openShare('rank');else shareRefresh()});
   $('#shVs').onchange=()=>{$('#shText').value=shareText()};
+  document.querySelectorAll('#shFmt button').forEach(b=>b.onclick=()=>{SHARE_FMT=b.dataset.f;shareRefresh()});
+  if($('#shRec'))$('#shRec').onclick=recStart;
+  if($('#mRec')){$('#recShare').onclick=recShare;$('#recSave').onclick=recSave;$('#recAgain').onclick=()=>{closeModals();recStart()}}
   $('#shText').addEventListener('keydown',e=>e.stopPropagation());
   if($('#rankShare'))$('#rankShare').onclick=()=>openShare('rank');
   if(kakaoKey())setTimeout(kakaoLoad,3000)})();
@@ -4317,12 +4638,13 @@ function drawScene(shadowPass){
   const vis=[];for(const c of CHUNKS.values()){if(Math.hypot(c.ox+TILE/2-cam.tx,c.oz+TILE/2-cam.tz)<CULL_R+Math.max(0,cam.dist-800))vis.push(c)}
   for(const c of vis)c.mg.draw();
   if(!shadowPass){gl.enable(gl.POLYGON_OFFSET_FILL);gl.polygonOffset(-2,-2);for(const c of vis)c.mr.draw();gl.disable(gl.POLYGON_OFFSET_FILL)}
-  for(const c of vis){c.mb.draw();c.mt.draw()}drawDets();mRub.draw();mDyn.draw();
+  for(const c of vis){c.mb.draw();c.mt.draw()}drawDets();mRub.draw();mDyn.draw();if(!shadowPass&&mSpray.n)mSpray.draw();
   if(!shadowPass)mGlow.draw();
 }
 function frameBody(now){
   let dt=Math.min(0.05,(now-last)/1000);last=now;const rdt=dt;
   if(HSTOP>0){HSTOP=Math.max(0,HSTOP-rdt);dt*=0.05}   // 히트스톱: 순간 멈춤
+  else if(SLOMO>0){SLOMO=Math.max(0,SLOMO-rdt);dt*=0.35}   // 슬로모션: 사옥 붕괴 순간
   updateLater(dt);updateRings(dt);dayUpdate(rdt);
   if(MODE==='section'){secUpdate(dt);updateFloats(dt)}
   else{
@@ -4365,6 +4687,10 @@ function frameBody(now){
   }
   gl.viewport(0,0,canvas.width,canvas.height);
   gl.clearColor(FOG[0],FOG[1],FOG[2],1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+  if(skyProg){const k=DAY.k,top=[0.46+(0.02-0.46)*k,0.66+(0.03-0.66)*k,0.93+(0.10-0.93)*k];   // 낮: 파란 하늘 · 밤: 짙은 남색
+    gl.useProgram(skyProg);gl.disable(gl.DEPTH_TEST);gl.depthMask(false);
+    gl.uniform3fv(SKYU.uA,FOG);gl.uniform3f(SKYU.uB,FOG[0]*0.3+top[0]*0.7,FOG[1]*0.3+top[1]*0.7,FOG[2]*0.3+top[2]*0.7);
+    gl.uniform1f(SKYU.uH,Math.tan(Math.PI/2-cam.phi)/Math.tan(FOV/2));mSky.draw();gl.depthMask(true);gl.enable(gl.DEPTH_TEST)}
   gl.useProgram(prog);
   gl.uniformMatrix4fv(U.uVP,false,VP);gl.uniformMatrix4fv(U.uLVP,false,LVPcur);gl.uniform3fv(U.uCam,eye);gl.uniform3fv(U.uTgt,[cam.tx,cam.ty,cam.tz]);gl.uniform2fv(U.uFogR,MODE==='city'?[Math.max(420,cam.dist*0.6),Math.max(320,cam.dist*0.45)]:[9000,1000]);gl.uniform3fv(U.uFog,FOG);gl.uniform3fv(U.uSun,SUN);gl.uniform1f(U.uNight,DAY.k*(MODE==='section'?0.6:1));   // 단면은 속이 보여야 해서 덜 어둡게
   gl.uniform1f(U.uShOn,useSh?1:0);gl.uniform1f(U.uTexel,1/SHSIZE);
@@ -4375,7 +4701,7 @@ function frameBody(now){
 }
 // 한 프레임에서 오류가 나도 게임이 멈추지 않게 (예전에는 오류 한 번이면 화면이 그대로 굳음)
 let FRAME_ERR=0,lastFrameT=0,SHOT_CB=null;
-function frame(now){try{frameBody(now);if(SHOT_CB){const cb=SHOT_CB;SHOT_CB=null;let c=null;try{c=document.createElement('canvas');c.width=canvas.width;c.height=canvas.height;c.getContext('2d').drawImage(canvas,0,0)}catch(_){c=null}cb(c)}}catch(e){FRAME_ERR++;if(FRAME_ERR<6)console.error('[frame]',e);try{gl.bindFramebuffer(gl.FRAMEBUFFER,null)}catch(_){}}
+function frame(now){try{frameBody(now);if(REC)recFrame();if(SHOT_CB){const cb=SHOT_CB;SHOT_CB=null;let c=null;try{c=document.createElement('canvas');c.width=canvas.width;c.height=canvas.height;c.getContext('2d').drawImage(canvas,0,0)}catch(_){c=null}cb(c)}}catch(e){FRAME_ERR++;if(FRAME_ERR<6)console.error('[frame]',e);try{gl.bindFramebuffer(gl.FRAMEBUFFER,null)}catch(_){}}
   perfTick(lastFrameT?now-lastFrameT:16);lastFrameT=now;requestAnimationFrame(frame)}
 // 그래픽 메모리가 부족해 WebGL 이 끊기면(휴대폰에서 흔함) 안내 후 다시 불러오기
 canvas.addEventListener('webglcontextlost',e=>{e.preventDefault();const d=document.createElement('div');d.id='glLost';
@@ -4393,7 +4719,7 @@ canvas.addEventListener('webglcontextrestored',()=>location.reload());
   if(f){loadFirm(f);if(vs>0&&vs<1e10)challengeStart(vs)}else{resetWorld();$('#firmName').textContent='회사를 골라주세요';$('#mFirm').classList.add('open');loadHot()}
   if(lsGet('smasharch_ver')!==GAME_VER&&$('#mPatch')){if(opts.patch===false&&!NOTICE_MAJOR)lsSet('smasharch_ver',GAME_VER);else $('#mPatch').classList.add('open')}   // 공지는 처음 온 사람에게도 (닫으면 환영 창)   // 설정에서 끌 수 있음   // 다시 온 사람은 업데이트 내역
 })();
-if($('#patchOk'))$('#patchOk').onclick=()=>{$('#mPatch').classList.remove('open');lsSet('smasharch_ver',GAME_VER);if(!lsGet('smasharch_tut_v2'))setTimeout(showWelcome,300);
+if($('#patchOk'))$('#patchOk').onclick=()=>{$('#mPatch').classList.remove('open');lsSet('smasharch_ver',GAME_VER);if(!lsGet('smasharch_tut_v2')&&CUR)setTimeout(showWelcome,300);
   const no=$('#patchNo');if(no){opts.patch=!no.checked;lsSet('smasharch_opts',opts);const o=$('#optPatch');if(o)o.checked=opts.patch}};
 if($('#patchNo'))$('#patchNo').checked=opts.patch===false;
 if($('#patchEarth'))$('#patchEarth').onclick=()=>{$('#patchOk').click();setGM('earth')};
@@ -4401,14 +4727,14 @@ if($('#patchDaily'))$('#patchDaily').onclick=()=>{$('#patchOk').click();closeMod
 function openPatch(){closeModals();const no=$('#patchNo');if(no)no.checked=opts.patch===false;$('#mPatch').classList.add('open')}
 if($('#setPatch'))$('#setPatch').onclick=openPatch;
 
-$('#btnSection').onclick=()=>enterSection();
+$('#btnSection').onclick=()=>enterSection();if($('#mobSec'))$('#mobSec').onclick=()=>enterSection();
 
 // ---- 화면 틀: PC / 모바일 따로 (게임 로직은 공용) ----
 function applyLayout(){let mob=TOUCH;try{const q=new URL(location.href).searchParams.get('ui');if(q==='mob')mob=true;else if(q==='pc')mob=false}catch(e){}
   if(document.documentElement.classList.contains('rec'))mob=false;   // 촬영용 세로 화면: 아래 도구막대(PC 배치)를 손가락으로
   document.body.classList.toggle('ui-mob',mob);document.body.classList.toggle('ui-pc',!mob);
   if(!mob)return;const menu=$('#sysMenu');if(!menu||menu.children.length)return;
-  ['btnGM','btnSection','btnUndo','btnReset','btnRank','btnConq','btnShare','btnSet','btnDonate'].forEach(id=>{const b=$('#'+id);if(b)menu.appendChild(b)});
+  ['btnUndo','btnReset','btnRank','btnConq','btnShare','btnSet','btnDonate','btnHub','btnInsta'].forEach(id=>{const b=$('#'+id);if(b)menu.appendChild(b)});
   const bm=$('#btnMenu');if(bm)bm.onclick=e=>{e.stopPropagation();menu.classList.toggle('open')};
   menu.addEventListener('click',()=>setTimeout(()=>menu.classList.remove('open'),50));
   document.addEventListener('pointerdown',e=>{if(menu.classList.contains('open')&&!menu.contains(e.target)&&e.target!==bm)menu.classList.remove('open')},true)}
@@ -4489,6 +4815,7 @@ const E_GUIDE=[
   {w:9,emo:'🛰️',name:'인공위성',team:'자연의 분노',one:'붉은 경고 고리가 뜬 뒤 불타는 인공위성이 떨어져, 일대(반경 약 130m)에 거대한 구덩이와 충격파를 만들어요.',
     steps:[`<b>0 인공위성</b>을 골라요`,`떨어뜨릴 곳을 <b>${K}</b>`,'붉은 고리가 커지다가 잠시 뒤 쾅! — 파편이 주변에 또 떨어져요'],tip:'가운데는 전부 사라지고, 가장자리는 충격파로 무너져요.'}
 ];
+E_GUIDE.forEach(t=>{if(t.emo&&!t.img&&WEAPONS_E[t.w])t.img='e-'+WEAPONS_E[t.w].id});   // 재난 도구 가이드 그림 (img/guide/e-*.jpg)
 const GUIDE_TABS=[['start','처음 시작'],['tools','도구 사용법'],['section','단면 모드'],['events','이벤트'],['score','점수·공유'],['patch','업데이트']];
 function gStart(){const pc=!TOUCH;
   return `<div class="g-steps">
@@ -4503,7 +4830,7 @@ function gStart(){const pc=!TOUCH;
   </div>
   <div class="g-cta"><button class="btn-p" id="gMission">🎯 따라하기로 하나씩 배우기</button><button class="btn-s" data-gtab="tools">도구 사용법 보기 →</button></div>`}
 function gTools(){const e=EARTH();return `<div class="g-mode"><span>${e?'🌍 지금은 <b>재난 모드</b> 도구예요':'🏗 지금은 <b>건축 모드</b> 도구예요'}</span><button class="btn-s" id="gSwapMode">${e?'🏗 건축 모드로 바꾸기':'🌍 재난 모드로 바꾸기'}</button></div><div class="g-tools">`+(e?E_GUIDE:GUIDE_TOOLS).map(t=>`<div class="g-tool">
-  <div class="g-img">${t.emo?`<div class="g-emo">${t.emo}</div>`:`<img loading="lazy" src="img/guide/${t.img}.jpg" alt="${t.name} 예시">${t.img2?`<img loading="lazy" src="img/guide/${t.img2}.jpg" alt="${t.name} 결과">`:''}`}</div>
+  <div class="g-img">${t.emo&&!t.img?`<div class="g-emo">${t.emo}</div>`:`<img loading="lazy" src="img/guide/${t.img}.jpg" alt="${t.name} 예시">${t.img2?`<img loading="lazy" src="img/guide/${t.img2}.jpg" alt="${t.name} 결과">`:''}`}</div>
   <div class="g-txt"><div class="g-name"><kbd>${t.w===9?0:t.w+1}</kbd> ${t.name} <small>${t.emo?t.team:t.team+'팀'}</small></div><p class="g-one">${t.one}</p>
   <ol>${t.steps.map(s=>`<li>${s}</li>`).join('')}</ol><p class="g-tip">💡 ${t.tip}</p>
   <button class="btn-s g-try" data-w="${t.w}">이 도구로 해보기</button></div></div>`).join('')+`
@@ -4515,17 +4842,17 @@ function gSection(){return `<div class="g-tool"><div class="g-img"><img loading=
   <li>${TOUCH?'위쪽 [확대해서 보기]':'F 키'}로 우리 층을 확대하고, <kbd>동네로</kbd> 버튼으로 돌아가요</li></ol>
   <p class="g-tip">💡 한 층의 기둥이 절반 넘게 부러지면 그 층이 주저앉고, 위층이 연달아 무너져요. 적은 타격으로 완전 붕괴시키면 '구조 등급' 보너스!</p></div></div>`}
 function gEvents(){return `<div class="g-ev">
-  <div><b>🏆 오늘의 사옥</b><p>매일 하나, 모두 같은 사옥에서 3분 대결 (건축 모드에서만 참여). 위쪽 <b>🏆</b> 버튼이나 회사 고르기 창 맨 위 [도전하기]. 사옥은 크게 키워지고 무너지면 다시 솟아요. 같은 도구를 3번 넘게 연달아 쓰면 점수가 줄고, 5종 이상 쓰면 ×1.1 · 8종 이상 ×1.2. 필살기는 한 번만. 하루 1위는 다음 날 하늘 광고 타워에 👑 명예의 전당으로 걸려요.</p></div>
+  <div><img class="ev-img" loading="lazy" src="img/events/event-daily.jpg" alt=""><b>🏆 오늘의 사옥</b><p>매일 하나, 모두 같은 사옥에서 3분 대결 (건축 모드에서만 참여). 위쪽 <b>🏆</b> 버튼이나 회사 고르기 창 맨 위 [도전하기]. 사옥은 크게 키워지고 무너지면 다시 솟아요. 같은 도구를 3번 넘게 연달아 쓰면 점수가 줄고, 5종 이상 쓰면 ×1.1 · 8종 이상 ×1.2. 필살기는 한 번만. 하루 1위는 다음 날 하늘 광고 타워에 👑 명예의 전당으로 걸려요.</p></div>
   <div><b>🌨 날씨</b><p>계절 따라 눈·비·벚꽃·단풍이 내려요. 설정에서 끌 수 있어요.</p></div>
-  <div><b>🌍 재난 모드</b><p>회사 고르기 창 맨 위나 ${TOUCH?'☰ 메뉴':'도구막대'}의 [🌍 재난 모드]로 바꿔요. 같은 동네에서 도구가 동물의 분노·자연의 분노로 바뀌어요. 랭킹은 모드별로 따로예요.</p></div>
-  <div><b>👔 사장님</b><p>옥상에서 잔소리해요. 사장님을 ${K}하면 기절 + 보너스. 사옥이 무너지면 근처 건축사무소로 도망가요 — 화면 가장자리 화살표를 누르면 따라가요. 더 도망칠 곳이 없으면 검거! (대학교는 총장님)</p></div>
-  <div><b>😤 발주처 난입</b><p>사옥이 꽤 부서지면 검은 차를 타고 와서 빨간 임시 철골·빨간펜 테이프·매스·타워를 갖다 놓아요. 전부 부수면 점수! 건물이 무너지면 한 번은 새로 지어요.</p></div>
-  <div><b>📢 부동산 호황</b><p>사장님을 검거한 뒤 점수를 더 모으면 사장님이 비행선을 타고 돌아와 사옥을 새로 지어요. 비행선 현수막엔 최근 7일 가장 많이 무너진 사옥 1위! (재난 모드는 필요한 점수가 10배예요)</p></div>
-  <div><b>🌙 야근 모드</b><p>낮 90초 · 밤 60초. 밤에는 <b>불 켜진 건물 점수 ×2</b>, 꺼진 건물 ×0.25. 오른쪽 위에 남은 시간이 보여요.</p></div>
-  <div><b>🚧 구청 공사중지 · 🛡 지구 방어군</b><p>건축 모드: 몇 초 만에 건물을 10동 넘게 몰아서 부수면 3초 동안 도구를 못 써요. 재난 모드: 20동 넘게 몰아서 부수면 방어 헬기가 와서 3초간 불길 번짐을 막아요(도구는 계속 써요).</p></div>
+  <div><img class="ev-img" loading="lazy" src="og-earth.jpg" alt=""><b>🌍 재난 모드</b><p>회사 고르기 창 맨 위나 ${TOUCH?'☰ 메뉴':'도구막대'}의 [🌍 재난 모드]로 바꿔요. 같은 동네에서 도구가 동물의 분노·자연의 분노로 바뀌어요. 랭킹은 모드별로 따로예요.</p></div>
+  <div><img class="ev-ch" loading="lazy" src="img/chars/${CUR&&CUR.kind==='u'?'char-president':'char-boss'}.jpg" alt=""><b>👔 사장님</b><p>옥상에서 잔소리해요. 사장님을 ${K}하면 기절 + 보너스. 사옥이 무너지면 근처 건축사무소로 도망가요 — 화면 가장자리 화살표를 누르면 따라가요. 더 도망칠 곳이 없으면 검거! (대학교는 총장님)</p></div>
+  <div><img class="ev-img" loading="lazy" src="img/events/event-client.jpg" alt=""><b>😤 발주처 난입</b><p>사옥이 꽤 부서지면 검은 차를 타고 와서 빨간 임시 철골·빨간펜 테이프·매스·타워를 갖다 놓아요. 전부 부수면 점수! 건물이 무너지면 한 번은 새로 지어요.</p></div>
+  <div><img class="ev-img" loading="lazy" src="img/events/event-boom.jpg" alt=""><b>📢 부동산 호황</b><p>사장님을 검거한 뒤 점수를 더 모으면 사장님이 비행선을 타고 돌아와 사옥을 새로 지어요. 비행선 현수막엔 최근 7일 가장 많이 무너진 사옥 1위! (재난 모드는 필요한 점수가 10배예요)</p></div>
+  <div><img class="ev-img" loading="lazy" src="img/events/event-night.jpg" alt=""><b>🌙 야근 모드</b><p>낮 90초 · 밤 60초. 밤에는 <b>불 켜진 건물 점수 ×2</b>, 꺼진 건물 ×0.25. 오른쪽 위에 남은 시간이 보여요.</p></div>
+  <div><img class="ev-img" loading="lazy" src="img/events/${EARTH()?'event-defense':'event-stop'}.jpg" alt=""><b>🚧 구청 공사중지 · 🛡 지구 방어군</b><p>건축 모드: 몇 초 만에 건물을 10동 넘게 몰아서 부수면 3초 동안 도구를 못 써요. 재난 모드: 20동 넘게 몰아서 부수면 방어 헬기가 와서 3초간 불길 번짐을 막아요(도구는 계속 써요).</p></div>
   <div><b>🔥 콤보</b><p>쉬지 않고 계속 부수면 n COMBO — 점수가 최대 ×2.</p></div></div>`}
 function gScore(){return `<div class="g-ev">
-  <div><b>📋 철거 공사 일보</b><p>오른쪽 위 <kbd>철거 일보</kbd>: 파괴율·철거 동수·점수·직급(인턴 → ANNIHILATOR). 여기서 랭킹 등록과 공유를 해요.</p></div>
+  <div><img class="ev-ch" loading="lazy" src="img/chars/char-worker.jpg" alt=""><b>📋 철거 공사 일보</b><p>오른쪽 위 <kbd>철거 일보</kbd>: 파괴율·철거 동수·점수·직급(인턴 → ANNIHILATOR). 여기서 랭킹 등록과 공유를 해요.</p></div>
   <div><b>🏆 랭킹</b><p>이번 주 점수 순위. 한 판(회사를 고른 뒤 다른 회사를 고르거나 전부 복구하기 전까지)에 닉네임 하나로 점수만 올라가요.</p></div>
   <div><b>🔥 가장 많이 무너진 사옥</b><p>회사 고르기 창 위쪽. 최근 7일 동안 그 사옥을 무너뜨린 <b>사람 수</b> 기준이에요. 동료들과 같이 부숴 1위를 만들어 보세요.</p></div>
   <div><b>🗺 정복</b><p>구별로 몇 곳을 무너뜨렸는지 지도로 보여줘요.</p></div>
@@ -4584,6 +4911,38 @@ function missionUI(){let el=$('#mission');if(!MS){if(el)el.remove();return}
   const g=el.querySelector('#mGuideBtn');if(g)g.onclick=()=>openGuide('tools');
   if(all){flashScreen(0.2,'#fff3c4');sfx(20,0.6);setTimeout(()=>{if(MS&&MS.done.every(Boolean)){MS=null;missionUI()}},12000)}}
 setInterval(missionTick,300);
+
+// ---------- 돌발 미션 (30초) — 플레이 중 가끔 나오는 깜짝 목표. 성공하면 보너스 점수. 성공 횟수는 smasharch_quest 에 저장(나중에 보상용) ----------
+const QUEST={cur:null,next:0,gid:'',done:+((lsGet('smasharch_quest')||{}).done)||0,SEC:30};
+const QUEST_DEFS=[
+  ()=>{const n=TOUCH?6:8,b=STATS.kills;return{t:'건물 '+n+'동 부수기',goal:n,val:()=>STATS.kills-b,show:v=>v+'/'+n}},
+  ()=>({t:'10 COMBO 만들기',goal:10,val:()=>COMBO.n,show:v=>v+'/10'}),
+  ()=>{const g=Math.max(20000,Math.round(score*0.25/1000)*1000),b=score;return{t:fmt(g)+'점 더 벌기',goal:g,val:()=>score-b,show:v=>fmt(Math.max(0,v))+'/'+fmt(g)}}];
+function questOK(){return opts.quest!==false&&!!CUR&&MODE==='city'&&!MS&&!(CH&&(CH.on||CH.pending))&&!document.hidden&&!document.querySelector('.modal.open')}
+function questEnd(win){const q=QUEST.cur;QUEST.cur=null;QUEST.next=performance.now()+75000;const el=$('#questBox');if(el)el.style.display='none';
+  if(!q||win==null)return;
+  if(win){const bonus=Math.max(5000,Math.round(score*0.1/100)*100);score+=bonus;QUEST.done++;lsSet('smasharch_quest',{done:QUEST.done});
+    flashScreen(0.18,'#fff3c4');sfx(20,0.5);toast('⚡ 미션 성공! +'+fmt(bonus)+'점 (누적 '+QUEST.done+'회)',3000);updateHUD()}
+  else toast('⚡ 미션 실패 — 다음 기회에!',1800)}
+function questTick(){const now=performance.now();
+  if(GAME_ID!==QUEST.gid){QUEST.gid=GAME_ID;QUEST.cur=null;QUEST.next=now+25000;const el=$('#questBox');if(el)el.style.display='none';return}
+  const q=QUEST.cur;
+  if(!q){if(now>QUEST.next&&questOK()&&(STATS.kills>0||score>0)){const d=QUEST_DEFS[Math.floor(Math.random()*QUEST_DEFS.length)]();
+      QUEST.cur={...d,left:QUEST.SEC,last:now};toast('⚡ 돌발 미션! '+QUEST.SEC+'초 안에 '+d.t,2600);sfx(6,0.2)}return}
+  if(opts.quest===false||!CUR||CH&&(CH.on||CH.pending)){questEnd(null);return}
+  const dt=(now-q.last)/1000;q.last=now;if(questOK())q.left-=Math.min(dt,1);   // 단면·창이 열려 있는 동안은 시간이 멈춤
+  const v=q.val();if(v>=q.goal){questEnd(true);return}if(q.left<=0){questEnd(false);return}
+  const el=$('#questBox');if(el){el.style.display='';el.classList.toggle('hurry',q.left<=10);el.innerHTML='<b>⚡ '+Math.ceil(q.left)+'초</b>'+q.t+' · '+q.show(v)}}
+setInterval(questTick,250);
+
+// ---------- 5분 알림 — 화면을 막지 않고 [철거 일보] 버튼만 깜빡이며 한 줄로 알려줌 (5분마다 · 오늘의 사옥 중에는 안 함) ----------
+const NUDGE={gid:'',n:0};
+function nudgeTick(){if(GAME_ID!==NUDGE.gid){NUDGE.gid=GAME_ID;NUDGE.n=0}
+  if(!CUR||!STATS.t0||CH&&(CH.on||CH.pending)||document.hidden||document.querySelector('.modal.open'))return;
+  const min=Math.floor((performance.now()-STATS.t0)/60000),k=Math.floor(min/5);if(k<=NUDGE.n)return;NUDGE.n=k;
+  toast('⏱ '+(k*5)+'분째 철거 중 · '+fmt(score)+'점 — [철거 일보]에서 결과 확인·공유·랭킹 등록',4200);
+  const b=$('#btnReport');if(b){b.classList.remove('nudge');void b.offsetWidth;b.classList.add('nudge');setTimeout(()=>b.classList.remove('nudge'),9000)}}
+setInterval(nudgeTick,2000);
 
 
 function updateWorld(dt){
