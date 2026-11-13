@@ -27,7 +27,9 @@ jobs:
       - name: 사이트 파일 모으기
         run: |
           mkdir -p _site
-             rsync -a --exclude '/.git' --exclude '/.github' --exclude '/_site' --exclude '/tools' --exclude '/apps-script' --exclude '/backup_*' --exclude '/tiles' ./ _site/.nojekyll
+          # 앞에 / 를 붙여야 맨 위 폴더만 빠져요 (/ 없이 'tools' 라고 쓰면 img/tools 같은 하위 폴더까지 빠짐)
+          rsync -a --exclude '/.git' --exclude '/.github' --exclude '/_site' --exclude '/tools' --exclude '/apps-script' --exclude '/backup_*' --exclude '/tiles' ./ _site/
+          touch _site/.nojekyll
       - name: 지도 타일 붙이기 (있으면)
         env:
           GH_TOKEN: ${{ github.token }}
