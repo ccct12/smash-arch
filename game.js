@@ -5174,7 +5174,7 @@ function gEvents(){return `<div class="g-ev">
   <div><img class="ev-img" loading="lazy" src="img/events/event-daily.jpg" alt=""><b>🏆 오늘의 사옥</b><p>매일 하나, 모두 같은 사옥에서 3분 대결 (건축 모드에서만 참여). 위쪽 <b>🏆</b> 버튼이나 회사 고르기 창 맨 위 [도전하기]. 사옥은 크게 키워지고 무너지면 다시 솟아요. 같은 도구를 3번 넘게 연달아 쓰면 점수가 줄고, 5종 이상 쓰면 ×1.1 · 8종 이상 ×1.2. 필살기는 한 번만. 하루 1위는 다음 날 하늘 광고 타워에 👑 명예의 전당으로 걸려요.</p></div>
   <div><b>🌨 날씨</b><p>계절 따라 눈·비·벚꽃·단풍이 내려요. 설정에서 끌 수 있어요.</p></div>
   <div><img class="ev-img" loading="lazy" src="og-earth.jpg" alt=""><b>🌍 재난 모드</b><p>회사 고르기 창 맨 위나 ${TOUCH?'☰ 메뉴':'도구막대'}의 [🌍 재난 모드]로 바꿔요. 같은 동네에서 도구가 동물의 분노·자연의 분노로 바뀌어요. 랭킹은 모드별로 따로예요.</p></div>
-  <div><img class="ev-img" loading="lazy" src="img/events/event-boss.jpg" style="object-position:center 18%" alt=""><b>👔 사장님 모드</b><p>${TOUCH?'도구 레일 옆 모드 탭':'도구막대 왼쪽 위 모드 탭'}에서 [👔 사장님]을 누르면 내가 사장님이 돼요. 기술 10가지로 동네를 부수고, 분노 게이지가 가득 차면 ${TOUCH?'오른쪽 아래 원':'Q'}으로 ${KAI_BIG_SEC}초 동안 변신 — 기술이 3배로 세져요. 랭킹은 없어요.</p></div>
+  <div><img class="ev-img" loading="lazy" src="img/events/event-boss.jpg" style="object-position:center 18%" alt=""><b>👔 사장님 모드</b><p>${TOUCH?'도구 레일 옆 모드 탭':'도구막대 왼쪽 위 모드 탭'}에서 [👔 사장님]을 누르면 내가 사장님이 돼요. 기술 10가지로 동네를 부수고, 분노 게이지가 가득 차면 ${TOUCH?'오른쪽 아래 원':'Q'}으로 ${KAI_BIG_SEC}초 동안 변신 — 기술이 3배로 세져요. 랭킹은 없지만 🗺 정복 지도는 사장님 모드 것이 따로 쌓여요.</p></div>
   <div><img class="ev-ch" loading="lazy" src="img/chars/${CUR&&CUR.kind==='u'?'char-president':'char-boss'}.jpg" alt=""><b>👔 사장님</b><p>옥상에서 잔소리해요. 사장님을 ${K}하면 기절 + 보너스. 사옥이 무너지면 근처 건축사무소로 도망가요 — 화면 가장자리 화살표를 누르면 따라가요. 더 도망칠 곳이 없으면 검거! (대학교는 총장님)</p></div>
   <div><img class="ev-img" loading="lazy" src="img/events/event-client.jpg" alt=""><b>😤 발주처 난입</b><p>사옥이 꽤 부서지면 검은 차를 타고 와서 빨간 임시 철골·빨간펜 테이프·매스·타워를 갖다 놓아요. 전부 부수면 점수! 건물이 무너지면 한 번은 새로 지어요.</p></div>
   <div><img class="ev-img" loading="lazy" src="img/events/event-boom.jpg" alt=""><b>📢 부동산 호황</b><p>사장님을 검거한 뒤 점수를 더 모으면 사장님이 비행선을 타고 돌아와 사옥을 새로 지어요. 비행선 현수막엔 최근 7일 가장 많이 무너진 사옥 1위! (재난 모드는 필요한 점수가 10배예요)</p></div>
@@ -5291,9 +5291,10 @@ function updateWorld(dt){
 //  구별 정복 진행도 — 부순 건축사무소를 시도·시군구별로 집계
 //  '나': 이 브라우저에 저장 / '모두 함께': Apps Script 웹앱 '철거' 탭
 // =====================================================================
-// 정복 기록은 모드별로 따로 (건축: smasharch_conq / 재난: smasharch_conq_earth)
-const CONQ_B=new Set(lsGet('smasharch_conq')||[]),CONQ_E=new Set(lsGet('smasharch_conq_earth')||[]);
-function CQ(){return EARTH()?CONQ_E:CONQ_B}
+// 정복 기록은 모드별로 따로 (건축: smasharch_conq / 재난: smasharch_conq_earth / 사장님: smasharch_conq_boss)
+const CONQ_B=new Set(lsGet('smasharch_conq')||[]),CONQ_E=new Set(lsGet('smasharch_conq_earth')||[]),CONQ_K=new Set(lsGet('smasharch_conq_boss')||[]);
+function CQ(){return EARTH()?CONQ_E:KAI()?CONQ_K:CONQ_B}
+function conqLsKey(){return EARTH()?'smasharch_conq_earth':KAI()?'smasharch_conq_boss':'smasharch_conq'}
 let CONQ_Q=new Set(), HOT_Q=new Set(), conqTimer=0, CONQ_ALL=null, conqView={who:'all',scope:'seoul',open:null};
 const FKI=new Map(FIRMDATA.map((r,i)=>[r[5],i]));
 function keyIdx(k){return /^d\d+$/.test(k||'')?FKI.get(+k.slice(1)):undefined}
@@ -5305,11 +5306,11 @@ function conqKeysOf(b){const ks=[];if(b&&b.firms)for(const f of b.firms)if(f.i!=
   if(b&&b.hq&&CUR&&CUR.dkey)ks.push(CUR.dkey);return [...new Set(ks)]}
 function myDone(reg){let n=0;const C=CQ();for(const i of reg.idx)if(C.has('d'+FIRMDATA[i][5]))n++;return n}
 function allDone(reg){return CONQ_ALL&&CONQ_ALL.done?(CONQ_ALL.done[reg.key]||0):0}
-function conqRecord(b){if(KAI())return;
+function conqRecord(b){
   const ks=conqKeysOf(b);if(!ks.length)return;let fresh=[];
-  if(b&&b.hq&&CUR&&CUR.dkey)HOT_Q.add(CUR.dkey);   // '가장 많이 무너진 사옥'은 고른 사옥만 (같은 건물에 든 다른 회사는 정복에만 반영)
+  if(!KAI()&&b&&b.hq&&CUR&&CUR.dkey)HOT_Q.add(CUR.dkey);   // (사장님 모드는 랭킹이 없어서 빼요) '가장 많이 무너진 사옥'은 고른 사옥만 (같은 건물에 든 다른 회사는 정복에만 반영)
   const C=CQ();for(const k of ks){CONQ_Q.add(k);if(!C.has(k)){C.add(k);fresh.push(k)}}
-  if(fresh.length){lsSet(EARTH()?'smasharch_conq_earth':'smasharch_conq',[...C]);
+  if(fresh.length){lsSet(conqLsKey(),[...C]);
     const i=keyIdx(fresh[0]);const reg=i!=null?REG.get(regionOfRow(FIRMDATA[i])):null;
     if(reg){const d=myDone(reg),t=reg.idx.length;setTimeout(()=>toast(`${reg.sgg} 정복 ${d} / ${t}곳 (${Math.floor(d/t*100)}%)${d===t?' · 완전 정복!':''}`,2600),2400)}}
   clearTimeout(conqTimer);conqTimer=setTimeout(flushConq,6000);
@@ -5364,7 +5365,7 @@ function sidoGroups(){const g=new Map();for(const reg of REG.values()){if(!g.has
 function allDoneSido(s){return s.subs.reduce((n,r)=>n+allDone(r),0)}
 function renderConq(){
   const box=$('#conqBody');const who=conqView.who;
-  {const h=$('#mConq h2'),t=EARTH()?'🌍 구별 정복 현황 · 재난 모드':'🏗 구별 정복 현황 · 건축 모드';if(h&&h.textContent!==t)h.textContent=t}
+  {const h=$('#mConq h2'),t=EARTH()?'🌍 구별 정복 현황 · 재난 모드':KAI()?'👔 구별 정복 현황 · 사장님 모드':'🏗 구별 정복 현황 · 건축 모드';if(h&&h.textContent!==t)h.textContent=t}
   document.querySelectorAll('#mConq [data-who]').forEach(b=>b.classList.toggle('on',b.dataset.who===who));
   document.querySelectorAll('#mConq [data-scope]').forEach(b=>b.classList.toggle('on',b.dataset.scope===conqView.scope));
   let tot=0,dn=0;for(const reg of REG.values()){tot+=reg.idx.length;dn+=who==='me'?myDone(reg):allDone(reg)}
@@ -5396,7 +5397,7 @@ function conqPick(reg){if(!reg)return;const left=reg.idx.filter(i=>!CQ().has('d'
   const go=$('#cqGo');if(go)go.onclick=()=>{const i=left[Math.floor(Math.random()*left.length)];closeModals();loadFirm(firmFromData(i))};
 }
 async function loadConqAll(){const u=rankUrl();if(!u)return;
-  try{const r=await fetchT(u+(u.includes('?')?'&':'?')+'action=progress&mode='+rankMode(),{},15000);if(r&&r.ok){CONQ_ALL=r;if($('#mConq').classList.contains('open'))renderConq()}}catch(e){}}
+  try{const r=await fetchT(u+(u.includes('?')?'&':'?')+'action=progress&mode='+GM,{},15000);if(r&&r.ok){CONQ_ALL=r;if($('#mConq').classList.contains('open'))renderConq()}}catch(e){}}
 function openConq(){$('#mConq').classList.add('open');renderConq();if(CONQ_Q.size)flushConq().then(loadConqAll);else loadConqAll()}
 $('#btnConq').onclick=openConq;
 document.querySelectorAll('#mConq [data-who]').forEach(b=>b.onclick=()=>{conqView.who=b.dataset.who;renderConq()});

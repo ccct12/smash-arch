@@ -1220,6 +1220,7 @@ body.kai #toolbar .tool[data-w].on{background:#3a1512;border-color:#d8261b;box-s
     <li><b>사장님 기술 10가지</b> — 돌진 주먹 · 점프 찍기 · 결재판 · 골프 스윙 · 호통 · 법카 긁기 · 회전의자 · 전 직원 집합 · 리무진 호출 · 해고 통보</li>
     <li><b>💢 변신</b> — 부술수록 분노 게이지가 차요. 가득 차면 Q(휴대폰은 오른쪽 아래 원)로 20초 동안 거대해지고, 기술이 3배로 세져요 (결재판 3개 · 골프공 3개 · 리무진 3대…)</li>
     <li><b>랭킹 없는 자유 모드</b> — 점수 걱정 없이 마음껏! 랭킹·오늘의 사옥은 건축·재난 모드에서 도전해요</li>
+    <li><b>🗺 사장님 정복 지도</b> — 사장님 모드로 부순 사옥은 사장님 모드 정복 지도에 따로 쌓여요 (건축·재난과 별개)</li>
     <li><b>그 밖에</b> — 도구막대 왼쪽 모드 탭(건축·재난·사장님) · 설정 창을 켜고 끄는 스위치로 정리 · 사장님 기술 아이콘 11종 새 그림</li>
   </ul>
   <details class="fold"><summary>11.13 업데이트 보기 <small>(🎨 새 그래픽 · 🔥 출석 보상)</small></summary>
@@ -1325,7 +1326,7 @@ body.kai #toolbar .tool[data-w].on{background:#3a1512;border-color:#d8261b;box-s
   function getT(url,ms){var c=new AbortController(),t=setTimeout(function(){c.abort()},ms);return fetch(url,{signal:c.signal}).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}).finally(function(){clearTimeout(t)})}
   function ok(d){return d&&Array.isArray(d.rows)&&d.rows.length>0}
   function save(d){try{localStorage.setItem(CK,JSON.stringify({t:Date.now(),d:d}))}catch(e){}}
-  function start(d,src){window.FIRMDATA_BOOT=ok(d)?d.rows:[];window.FIRMDATA_SRC=src;var s=document.createElement('script');s.src='game.js?v=20261116c';s.onload=function(){var b=document.getElementById('boot');if(b)b.remove()};
+  function start(d,src){window.FIRMDATA_BOOT=ok(d)?d.rows:[];window.FIRMDATA_SRC=src;var s=document.createElement('script');s.src='game.js?v=20261116d';s.onload=function(){var b=document.getElementById('boot');if(b)b.remove()};
     s.onerror=function(){document.getElementById('bootMsg').textContent='game.js 를 불러오지 못했어요'};document.body.appendChild(s)}
   var u=api(),cached=null;try{cached=JSON.parse(localStorage.getItem(CK)||'null')}catch(e){}
   var fromSheet=u?getT(u+(u.indexOf('?')>=0?'&':'?')+'action=firms',30000).then(function(d){if(!ok(d))throw new Error('empty');save(d);return d}):Promise.reject(new Error('no api'));
