@@ -596,6 +596,118 @@ body.ui-mob #hudTop{left:calc(50% + 90px)!important;top:6px!important;transform:
   #mWelcome .w-row{flex-direction:column}
 }
 
+/* ===== 9차 — 모드 탭: PC는 도구막대 위에 가로로, 모바일은 도구 레일 오른쪽에 세로로 ===== */
+#pcMode,#pcModeSep,#mobMode{display:none!important}   /* 8차까지 쓰던 모드 칸은 숨김 */
+#modeTabs{position:fixed;z-index:5;display:flex;gap:3px}
+#modeTabs button{display:flex;align-items:center;justify-content:center;gap:4px;padding:0 13px;height:25px;border-radius:9px 9px 0 0;border:1px solid #000;border-bottom:0;background:rgba(24,26,29,.82);color:#aab0b6;font-size:12px;font-weight:700;white-space:nowrap;cursor:pointer}
+#modeTabs button i{font-style:normal;font-size:12px}
+#modeTabs button:hover{color:#fff}
+#modeTabs button.on{height:28px;color:#fff;background:var(--accent);border-color:#ff8a5a}
+#modeTabs{align-items:flex-end}
+#modeTabs button[data-gm="earth"].on{background:#1f8a57;border-color:#2fb58a}
+#modeTabs button[data-gm="boss"].on{background:#8f1d16;border-color:#d8261b}
+body.ui-pc #hint{margin-bottom:28px}   /* 조작 안내가 탭과 겹치지 않게 */
+body.mini.ui-pc #modeTabs button{height:19px;padding:0 9px;font-size:10.5px}body.mini.ui-pc #modeTabs button.on{height:21px}
+/* 모바일: 도구 레일 오른쪽에 세로 탭 */
+body.ui-mob #modeTabs{left:calc(113px + env(safe-area-inset-left));top:52px;bottom:auto!important;flex-direction:column;align-items:flex-start;gap:4px;z-index:6}
+body.ui-mob #modeTabs button{writing-mode:vertical-rl;height:auto;width:24px;padding:8px 0;gap:3px;border-radius:0 9px 9px 0;border:1px solid #000;border-left:0;font-size:11px;letter-spacing:1px}
+body.ui-mob #modeTabs button.on{height:auto;width:28px}
+body.ui-mob #modeTabs button i{font-size:11px}
+body.ui-mob #sysMenu{left:calc(146px + env(safe-area-inset-left))}
+body.ui-mob #secPanel{left:calc(146px + env(safe-area-inset-left))!important;max-width:calc(100vw - 310px)!important}
+body.ui-mob #mission,body.ui-mob #combo{left:calc(146px + env(safe-area-inset-left))!important}
+/* PC ☰ 메뉴: 랭킹·정복·공유가 도구막대로 돌아가서 6칸 */
+/* ===== 10차 — 탭 작게·같은 크기 · 도구막대 폭 고정 · 모바일 단면 버튼은 탭 줄로 ===== */
+#modeTabs button{width:62px;padding:0;height:20px;font-size:11px;gap:3px;border-radius:7px 7px 0 0}
+#modeTabs button i{font-size:10.5px}
+#modeTabs button.on{height:23px}
+#modeTabs #mobSec{display:none}
+body.ui-pc #hint{margin-bottom:24px}
+body.mini.ui-pc #modeTabs button{width:54px;height:17px;padding:0;font-size:10px}body.mini.ui-pc #modeTabs button.on{height:19px}
+/* 그 모드에서 못 쓰는 버튼: PC는 자리를 그대로 두고 흐리게 (모드마다 도구막대 폭이 달라지지 않게) · 모바일은 숨김 */
+#btnSection.gm-off,#btnUndo.gm-off{display:none}
+body.ui-pc #btnSection.gm-off,body.ui-pc #btnUndo.gm-off{display:flex;opacity:.3;pointer-events:none}
+/* 모바일: 세로 탭도 같은 크기로 작게, 그 아래에 [단면] */
+body.ui-mob #modeTabs{gap:3px}
+body.ui-mob #modeTabs button{width:21px;height:46px;padding:0;font-size:10.5px;letter-spacing:0;border-radius:0 7px 7px 0}
+body.ui-mob #modeTabs button.on{width:24px;height:46px}
+body.ui-mob #modeTabs button i{display:none}
+body.ui-mob #modeTabs #mobSec{display:flex;margin-top:9px;width:24px;height:46px;background:var(--panel2);border:1px solid #5b8cf0;border-left:0;color:#cfe0ff}
+body.ui-mob.sec #modeTabs #mobSec{background:#2d6cdf;border-color:#6ea0ff;color:#fff;height:58px}
+body.ui-mob.earth #modeTabs #mobSec,body.ui-mob.kai #modeTabs #mobSec{display:none}
+body.ui-mob #sysMenu{left:calc(142px + env(safe-area-inset-left))}
+body.ui-mob #secPanel{left:calc(142px + env(safe-area-inset-left))!important;max-width:calc(100vw - 306px)!important}
+body.ui-mob #mission,body.ui-mob #combo{left:calc(142px + env(safe-area-inset-left))!important}
+/* ===== 11차 ===== */
+body.mini.kai #bossBox{display:block!important}
+/* ===== 13차 — PC 위쪽 줄: ☰ 없애고 UI·전체 화면 복귀 + 인스타·다른 게임·후원 아이콘 / 설정 창 정리 ===== */
+.br-i,.br-sep{display:none}
+body.ui-pc #btnMenu{display:none}
+body.ui-pc #btnMini{display:inline-block!important}
+body.ui-pc.canfs #btnFS,body.ui-pc.canfs-pc #btnFS{display:inline-block!important}
+body.ui-pc .br-i{display:inline-block;text-decoration:none;color:inherit;padding:3px 7px}
+body.ui-pc .br-sep{display:inline-block;width:1px;height:18px;background:var(--line);margin:0 2px}
+body.ui-pc #toolbar #btnDonate,body.ui-pc #toolbar #mnMini,body.ui-pc #toolbar #mnFS{display:none!important}
+body.mini .br-i,body.mini .br-sep{display:none!important}
+body.br-tight .br-i,body.br-tight .br-sep{display:none!important}   /* 좁은 화면: 가운데 회사 이름 칸과 겹치면 아이콘 3개를 접음 (설정 창에 같은 링크가 있음) */
+@media (min-width:1400px){body.ui-pc #btnDaily .bd-t{display:inline}body.ui-pc #btnDaily{padding:3px 10px}}
+/* 설정 창 */
+#mSet .card{width:min(580px,100%)}
+.set-h{margin:14px 0 6px;font-size:12px;font-weight:800;color:#c9cdd1;display:flex;align-items:baseline;gap:8px}
+.set-h small{font-weight:400;color:var(--muted);font-size:11px}
+#mSet h2+.set-h{margin-top:8px}
+.set-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+#mSet label.opt{padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);font-size:13px;gap:8px;cursor:pointer;min-height:42px}
+#mSet label.opt span{display:flex;flex-direction:column;line-height:1.25;min-width:0}
+#mSet label.opt small{font-size:10.5px;color:var(--muted);font-weight:400}
+#mSet label.opt input{appearance:none;-webkit-appearance:none;flex:0 0 auto;width:36px;height:20px;border-radius:10px;background:#3a3d42;position:relative;cursor:pointer;transition:background .15s;margin:0;border:0}
+#mSet label.opt input::after{content:"";position:absolute;left:2px;top:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .15s}
+#mSet label.opt input:checked{background:var(--accent)}
+#mSet label.opt input:checked::after{transform:translateX(16px)}
+.set-f{display:flex;align-items:center;gap:10px;margin-top:6px}
+.set-f>span{flex:0 0 46px;font-size:12px;color:var(--muted)}
+.set-f .suit-row{margin-top:0}
+.set-links{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.set-links .btn-s{padding:8px 4px;font-size:12px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-decoration:none;color:inherit}
+.set-adv{margin-top:14px;border-top:1px solid var(--line);padding-top:8px}
+.set-adv summary{cursor:pointer;font-size:12px;color:var(--muted)}
+@media (max-width:460px){.set-grid{grid-template-columns:1fr}.set-links{grid-template-columns:1fr 1fr}}
+/* ===== 8차 — 모드 고르기 · 메뉴 통합 (화면 정돈) ===== */
+/* 모드: PC는 도구막대 맨 왼쪽 세로 3칸, 모바일은 도구 레일 맨 위 가로 3칸. 예전 순환 버튼(#btnGM)은 숨김 */
+#btnGM{display:none!important}
+#pcMode{display:flex;flex-direction:column;gap:2px;justify-content:flex-end;position:relative;padding-top:13px}
+#pcMode .pm-l{position:absolute;left:2px;top:-1px;font-size:10px;color:var(--muted);letter-spacing:.5px}
+body.mini #pcMode .pm-l{display:none}
+#pcMode button{width:78px;height:17px;padding:0;border-radius:5px;background:var(--panel2);border:1px solid var(--line);font-size:11px;font-weight:700;color:#c9cdd1;white-space:nowrap;line-height:1}
+#pcMode button.on{background:var(--accent);border-color:#ff8a5a;color:#fff}
+#pcMode button[data-gm="earth"].on{background:#1f8a57;border-color:#2fb58a}
+#pcMode button[data-gm="boss"].on{background:#8f1d16;border-color:#d8261b}
+body.ui-mob #pcMode,body.ui-mob #pcModeSep{display:none!important}
+body.mini #pcMode{padding-top:0}body.mini #pcMode button{width:58px;height:12px;font-size:9px}
+body.ui-mob #mobMode button[data-gm="earth"].on{background:#1f8a57;border-color:#2fb58a}
+/* ☰ 메뉴: PC·모바일 모두 사용. 랭킹·정복·공유·설정·후원·다른 게임·인스타·간단 화면·전체 화면을 한곳에 */
+body #btnMenu{display:inline-block}
+#btnMenu .bm-t{font-size:12px}
+body.ui-mob #btnMenu .bm-t{display:none}
+@media (max-width:1500px){#btnMenu .bm-t{display:none}}   /* 좁은 PC: 위쪽 줄이 가운데 회사 이름 칸과 겹치지 않게 */
+body #sysMenu.open{display:grid}
+body.ui-pc #sysMenu{position:fixed;left:12px;top:64px;z-index:8;grid-template-columns:repeat(3,62px);grid-auto-rows:56px;gap:5px;padding:8px;border-radius:10px}
+body.ui-pc #sysMenu .tool,body.ui-pc #sysMenu .tool.sm{width:62px;min-width:62px;height:56px}
+#sysMenu #btnHub,#sysMenu #btnInsta{display:flex!important}
+#btnMini,#btnFS{display:none!important}
+#mnFS{display:none!important}
+body.canfs #mnFS,body.canfs-pc #mnFS{display:flex!important}
+#mnMini.on{background:var(--accent);border-color:#ff8a5a}
+body.mini #sysMenu .tool{font-size:0!important}
+/* 사장님 기술 이름이 길어서 살짝 좁힘 */
+body.kai .tool[data-w]{letter-spacing:-.4px}
+/* ===== 7차 — 👔 사장님 모드 ===== */
+#gmSeg button[data-gm="boss"].on{background:#8f1d16;border-color:#d8261b}
+.fleft #gmSeg button{padding:6px 2px;font-size:12.5px;white-space:nowrap}
+body.ui-mob #mobMode button{font-size:10px;letter-spacing:-.5px}
+body.ui-mob #mobMode button[data-gm="boss"].on{background:#8f1d16;border-color:#d8261b}
+body.ui-mob.kai #mobSec{display:none}
+body.kai #ult{--ult:#ff3b2f}
 /* ===== 2026.11.13 5차 — 출석 보상 창 · 오른쪽 위 버튼 줄 · 분류 펼침 목록 ===== */
 #quickRow{display:flex;gap:4px;justify-content:flex-end}
 #scoreBox{pointer-events:none}#scoreBox>*{pointer-events:auto}   /* 버튼 줄 때문에 넓어진 빈 자리가 화면 터치를 막지 않게 */
@@ -736,6 +848,9 @@ body.mini .tool .ti{width:28px;height:28px}
 /* 휴대폰 도구 레일: 그림은 크게, 글자는 작게 */
 body.ui-mob .tool[data-w] .ti{width:26px;height:26px}
 body.ui-mob .tool[data-w]{font-size:8px!important;gap:0!important;letter-spacing:-.4px}
+body.kai #toolbar .tool[data-w].on{background:#3a1512;border-color:#d8261b;box-shadow:inset 0 0 0 1px #d8261b,0 0 8px rgba(216,38,27,.45)}
+.g-img .g-emo img.g-ico{width:auto!important;height:68%!important;aspect-ratio:1;object-fit:contain!important;background:none!important;border:0!important;box-shadow:none!important;border-radius:0!important;position:static!important}
+.g-ult-ico{width:22px;height:22px;vertical-align:-5px;object-fit:contain}
 </style>
 </head>
 <body>
@@ -764,7 +879,7 @@ body.ui-mob .tool[data-w]{font-size:8px!important;gap:0!important;letter-spacing
 <button id="bossArrow" style="display:none"><i></i>사장님</button>
 <button id="btnDet" style="display:none">기폭! (Space)<b>0</b></button>
 
-<div id="brand" class="panel"><b>SMASH <span>ARCH</span></b><button class="btn-s" id="btnFirm">⌂ 다른 회사</button><button class="btn-s" id="btnMenu" title="메뉴">☰</button><button class="btn-s" id="btnDaily" title="오늘의 사옥 3분 챌린지 (건축 모드)"><img class="bi" src="img/ui/ui-daily.png" alt="🏆"><span class="bd-t"> 오늘의 사옥</span></button><button class="btn-s" id="btnHelp" title="게임 가이드 · 조작법">?</button><button class="btn-s" id="btnMini" title="간단 화면 (H)">UI</button><button class="btn-s" id="btnFS" title="전체 화면">⛶</button></div>
+<div id="brand" class="panel"><b>SMASH <span>ARCH</span></b><button class="btn-s" id="btnFirm">⌂ 다른 회사</button><button class="btn-s" id="btnMenu" title="메뉴 — 랭킹·정복·공유·설정">☰<span class="bm-t"> 메뉴</span></button><button class="btn-s" id="btnDaily" title="오늘의 사옥 3분 챌린지 (건축 모드)"><img class="bi" src="img/ui/ui-daily.png" alt="🏆"><span class="bd-t"> 오늘의 사옥</span></button><button class="btn-s" id="btnHelp" title="게임 가이드 · 조작법">?</button><button class="btn-s" id="btnMini" title="간단 화면 (H)">UI</button><button class="btn-s" id="btnFS" title="전체 화면">⛶</button><i class="br-sep"></i><a class="btn-s br-i" id="brInsta" href="https://www.instagram.com/cjw.games/" target="_blank" rel="noopener" title="인스타그램 @cjw.games">📷</a><a class="btn-s br-i" id="brHub" href="https://ccct12.github.io/CJW_Games/?src=smash" target="_blank" rel="noopener" title="CJW GAMES — 다른 게임 모음">🎮</a><button class="btn-s br-i" id="brDonate" title="만든 사람에게 커피 한 잔 (후원)">☕</button></div>
 
 <div id="hudTop" class="panel">
   <div style="min-width:0">
@@ -795,12 +910,14 @@ body.ui-mob .tool[data-w]{font-size:8px!important;gap:0!important;letter-spacing
 <div id="hint">클릭: 사용 · 드래그: 회전 · 우클릭 드래그: 이동 · 휠: 확대</div>
 
 <div id="toolbar" class="panel">
-  <div id="mobMode"><button data-gm="build" class="on">🏗 건축</button><button data-gm="earth">🌍 재난</button></div>
-  <button id="mobSec"><span class="ms-in">▦ 단면 보기</span><span class="ms-out">✕ 동네로</span></button>
+  <div id="mobMode"><button data-gm="build" class="on">건축</button><button data-gm="earth">재난</button><button data-gm="boss">사장님</button></div>
+  <div id="pcMode"><span class="pm-l">모드</span><button data-gm="build" class="on">🏗 건축</button><button data-gm="earth">🌍 재난</button><button data-gm="boss">👔 사장님</button></div>
+  <div class="sep" id="pcModeSep"></div>
   <div class="grp"><span class="glbl">시공팀</span><button class="tool on" data-w="0"><span class="num">1</span><img class="ti" src="img/tools/tool-crew.png" alt="">철거반</button><button class="tool" data-w="1"><span class="num">2</span><img class="ti" src="img/tools/tool-dozer.png" alt="">불도저</button><button class="tool" data-w="2"><span class="num">3</span><img class="ti" src="img/tools/tool-crane.png" alt="">쇠공</button><button class="tool" data-w="3"><span class="num">4</span><img class="ti" src="img/tools/tool-pour.png" alt="">레미콘</button><button class="tool" data-w="4"><span class="num">5</span><img class="ti" src="img/tools/tool-blast.png" alt="">다이너마이트</button><button class="tool" data-w="5"><span class="num">6</span><img class="ti" src="img/tools/tool-rebar.png" alt="">철근 빼기</button></div>
   <div class="sep"></div>
   <div class="grp"><span class="glbl">설계팀</span><button class="tool" data-w="6"><span class="num">7</span><img class="ti" src="img/tools/tool-move.png" alt="">MOVE</button><button class="tool" data-w="7"><span class="num">8</span><img class="ti" src="img/tools/tool-extrude.png" alt="">EXTRUDE</button><button class="tool" data-w="8"><span class="num">9</span><img class="ti" src="img/tools/tool-trim.png" alt="">TRIM</button><button class="tool" data-w="9"><span class="num">0</span><img class="ti" src="img/tools/tool-sink.png" alt="">싱크홀</button></div>
   <div class="sep"></div>
+  <button id="mobSec"><span class="ms-in">▦ 단면 보기</span><span class="ms-out">✕ 동네로</span></button>
   <button class="tool sm" id="btnGM" title="모드 바꾸기 (지금: 건축 모드)"><i class="emo">🌍</i>재난으로</button>
   <button class="tool sm" id="btnSection"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 21V8l8-5 8 5v13"/><path d="M4 12h16M4 16h16M9 21v-5"/><path d="M14 3v18" stroke-dasharray="2 2"/></svg>단면</button>
   <div class="sep"></div>
@@ -813,7 +930,10 @@ body.ui-mob .tool[data-w]{font-size:8px!important;gap:0!important;letter-spacing
   <button class="tool sm" id="btnDonate" title="개발자 커피 후원"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9h12v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5z"/><path d="M16 10h2a2.5 2.5 0 0 1 0 5h-2"/><path d="M8 3c0 1.5 1 1.5 1 3M12 3c0 1.5 1 1.5 1 3"/></svg>후원</button>
   <a class="tool sm" id="btnHub" href="https://ccct12.github.io/CJW_Games/?src=smash" target="_blank" rel="noopener" title="CJW GAMES — 다른 게임 모음"><i class="emo">🎮</i>다른 게임</a>
   <a class="tool sm" id="btnInsta" href="https://www.instagram.com/cjw.games/" target="_blank" rel="noopener" title="인스타그램 @cjw.games"><i class="emo">📷</i>인스타</a>
+  <button class="tool sm" id="mnMini" title="간단 화면 — 필요한 버튼만 작게 (H)"><i class="emo">🧹</i>간단 화면</button>
+  <button class="tool sm" id="mnFS" title="전체 화면"><i class="emo">⛶</i>전체 화면</button>
 </div>
+<div id="modeTabs"><button data-gm="build" class="on"><i>🏗</i><span>건축</span></button><button data-gm="earth"><i>🌍</i><span>재난</span></button><button data-gm="boss"><i>👔</i><span>사장님</span></button></div>
 <div id="sysMenu" class="panel"></div>
 <div id="credit">건물·도로 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap 기여자</a> · 건물 모양은 단순화된 일반 재질 · 사무소 목록 © 공공데이터포털 · 회사와 관계없는 비공식 팬 게임 · 원작 아이디어 SMASH HYU (@Hong_Iron_DEV)</div>
 
@@ -944,7 +1064,7 @@ body.ui-mob .tool[data-w]{font-size:8px!important;gap:0!important;letter-spacing
     <div class="fhead">
       <button class="close" data-close>×</button>
       <h2>어디를 부술까요?<span id="streakBox" style="display:none"></span></h2>
-      <div id="gmSeg" class="seg gm"><button data-gm="build" class="on">🏗 건축</button><button data-gm="earth">🌍 재난 <small>NEW</small></button></div>
+      <div id="gmSeg" class="seg gm"><button data-gm="build" class="on">🏗 건축</button><button data-gm="earth">🌍 재난</button><button data-gm="boss">👔 사장님 <small>NEW</small></button></div>
       <div class="row" style="margin:0 0 6px"><select id="fCatSel" aria-label="분류 고르기"><option value="all">전체</option><option value="">📐 건축사사무소</option><option value="c">🏗 건설사</option><option value="u">🎓 대학교</option><option value="g">🏢 일반 회사</option></select><input id="customQ" placeholder="검색 — 이름, 주소, 좌표" autocomplete="off"></div>
       <div id="fCats"><button data-k="all" class="on">전체</button><button data-k="">📐 건축사사무소</button><button data-k="c">🏗 건설사</button><button data-k="u">🎓 대학교</button><button data-k="g">🏢 일반 회사</button></div>
     </div>
@@ -982,30 +1102,43 @@ body.ui-mob .tool[data-w]{font-size:8px!important;gap:0!important;letter-spacing
 <div class="modal" id="mSet"><div class="card">
   <button class="close" data-close>×</button>
   <h2>설정</h2>
-  <label class="opt">효과음 <input type="checkbox" id="optSound" checked></label>
-  <label class="opt">건물 이름표 <input type="checkbox" id="optLabels" checked></label>
-  <label class="opt">동네 건축사무소 표시 <input type="checkbox" id="optPins" checked></label>
-  <label class="opt">잔해 많이 (느리면 끄기) <input type="checkbox" id="optDebris" checked></label>
-  <label class="opt">그림자 (느리면 끄기) <input type="checkbox" id="optShadows" checked></label>
-  <label class="opt">간단 화면 — 필요한 버튼만 작게 (H) <input type="checkbox" id="optMini"></label>
-  <label class="opt">화면 흔들림 (멀미 나면 끄기) <input type="checkbox" id="optShake"></label>
-  <label class="opt">낮·밤 바뀜 (밤 = 야근 모드) <input type="checkbox" id="optNight" checked></label>
-  <label class="opt">날씨 효과 (눈·비·벚꽃·단풍) <input type="checkbox" id="optWeather" checked></label>
-  <label class="opt">돌발 미션 (30초 깜짝 목표) <input type="checkbox" id="optQuest" checked></label>
-  <label class="opt">배경음 — 사무실 소음·야근 분위기 (시험 중) <input type="checkbox" id="optBgm"></label>
-  <label class="opt">업데이트 소식 자동으로 띄우기 <input type="checkbox" id="optPatch" checked></label>
-  <button class="btn-s btn-install" style="width:100%;margin-top:8px">📲 앱으로 설치 (홈 화면·바탕화면에 추가)</button>
-  <div class="small" style="margin-top:10px">사장님 이름 · 발주처 이름 (이 브라우저에만 저장)</div>
-  <div class="row"><input id="bossName2" class="cn-input" maxlength="12" placeholder="사장님 — 비우면 '사장님'" style="flex:0 0 38%"><input id="clientNames2" class="cn-input" maxlength="80" placeholder="발주처 — 쉼표로 최대 5개"></div>
-  <div class="small" style="margin-top:10px">사장님 정장 색 (이 브라우저에만 저장)</div>
-  <div class="suit-row" id="suitRow"></div>
-  <div class="row" id="setLinks" style="margin-top:10px"><button class="btn-s" data-go="btnRank">랭킹</button><button class="btn-s" data-go="btnConq">정복</button><button class="btn-s" data-go="btnShare">공유</button><button class="btn-s" data-go="btnReport">철거 일보</button><button class="btn-s" data-go="btnReward">🔥 출석 보상</button><button class="btn-s" data-req="문의·버그">📮 문의함</button><button class="btn-s" data-req="사옥 모양">🏢 사옥 모양 고치기</button><button class="btn-s" id="setGuide">📘 가이드</button><button class="btn-s" id="setPatch">📰 업데이트 내역</button></div>
-  <div class="row hub-row"><a class="btn-s hub-a" href="https://ccct12.github.io/CJW_Games/?src=smash" target="_blank" rel="noopener">🎮 CJW GAMES · 다른 게임</a><a class="btn-s hub-a" href="https://www.instagram.com/cjw.games/" target="_blank" rel="noopener">📷 인스타 @cjw.games</a></div>
-  <a class="donate" href="https://fairy.hada.io/@smash-arch#support" target="_blank" rel="noopener">☕ 만든 사람에게 커피 한 잔 <small>(선택 · 게임은 계속 무료)</small></a>
-  <button class="btn-p" id="btnPickHQ" style="width:100%;margin-top:12px">사옥 건물 직접 지정</button>
-  <div class="small" style="margin-top:14px">게임 서버 주소 (Apps Script 웹앱 …/exec) · 비워두면 config.js 값 사용</div>
+  <div class="set-h">🔊 소리</div>
+  <div class="set-grid">
+    <label class="opt"><span>효과음</span><input type="checkbox" id="optSound" checked></label>
+    <label class="opt"><span>배경음<small>사무실 소음 · 시험 중</small></span><input type="checkbox" id="optBgm"></label>
+  </div>
+  <div class="set-h">🖥 화면</div>
+  <div class="set-grid">
+    <label class="opt"><span>건물 이름표</span><input type="checkbox" id="optLabels" checked></label>
+    <label class="opt"><span>동네 건축사무소 표시</span><input type="checkbox" id="optPins" checked></label>
+    <label class="opt"><span>간단 화면<small>필요한 버튼만 작게 · H</small></span><input type="checkbox" id="optMini"></label>
+    <label class="opt"><span>화면 흔들림<small>멀미 나면 끄기</small></span><input type="checkbox" id="optShake"></label>
+  </div>
+  <div class="set-h">⚡ 성능 <small>게임이 느리면 꺼 보세요</small></div>
+  <div class="set-grid">
+    <label class="opt"><span>잔해 많이</span><input type="checkbox" id="optDebris" checked></label>
+    <label class="opt"><span>그림자</span><input type="checkbox" id="optShadows" checked></label>
+  </div>
+  <div class="set-h">🌤 분위기</div>
+  <div class="set-grid">
+    <label class="opt"><span>낮·밤 바뀜<small>밤 = 야근 모드</small></span><input type="checkbox" id="optNight" checked></label>
+    <label class="opt"><span>날씨 효과<small>눈·비·벚꽃·단풍</small></span><input type="checkbox" id="optWeather" checked></label>
+    <label class="opt"><span>돌발 미션<small>30초 깜짝 목표</small></span><input type="checkbox" id="optQuest" checked></label>
+    <label class="opt"><span>업데이트 소식<small>새 소식을 자동으로 띄움</small></span><input type="checkbox" id="optPatch" checked></label>
+  </div>
+  <div class="set-h">👔 사장님 <small>이 브라우저에만 저장</small></div>
+  <div class="set-f"><span>이름</span><input id="bossName2" class="cn-input" maxlength="12" placeholder="비우면 '사장님'"></div>
+  <div class="set-f"><span>발주처</span><input id="clientNames2" class="cn-input" maxlength="80" placeholder="쉼표로 최대 5개"></div>
+  <div class="set-f"><span>정장 색</span><div class="suit-row" id="suitRow"></div></div>
+  <div class="set-h">📂 바로가기</div>
+  <div class="set-links" id="setLinks"><button class="btn-s" data-go="btnRank">🏆 랭킹</button><button class="btn-s" data-go="btnConq">🗺 정복</button><button class="btn-s" data-go="btnShare">📤 공유</button><button class="btn-s" data-go="btnReport">📋 철거 일보</button><button class="btn-s" data-go="btnReward">🔥 출석 보상</button><button class="btn-s" id="setGuide">📘 가이드</button><button class="btn-s" id="setPatch">📰 업데이트 내역</button><button class="btn-s" data-req="문의·버그">📮 문의함</button><button class="btn-s" data-req="사옥 모양">🏢 사옥 모양 고치기</button><button class="btn-s" id="btnPickHQ">📍 사옥 직접 지정</button><button class="btn-s btn-install">📲 앱으로 설치</button></div>
+  <div class="set-h">🔗 CJW GAMES</div>
+  <div class="set-links"><a class="btn-s" href="https://ccct12.github.io/CJW_Games/?src=smash" target="_blank" rel="noopener">🎮 다른 게임</a><a class="btn-s" href="https://www.instagram.com/cjw.games/" target="_blank" rel="noopener">📷 인스타</a><a class="btn-s" href="https://fairy.hada.io/@smash-arch#support" target="_blank" rel="noopener" title="선택 · 게임은 계속 무료">☕ 커피 한 잔 후원</a></div>
+  <details class="set-adv"><summary>고급 설정 · 단축키</summary>
+  <div class="small" style="margin-top:8px">게임 서버 주소 (Apps Script 웹앱 …/exec) · 비워두면 config.js 값 사용</div>
   <div class="row"><input id="optRankUrl" placeholder="https://script.google.com/macros/s/…/exec"><button class="btn-p" id="btnRankUrl">저장</button></div>
-  <div class="small">단축키: WASD·방향키 이동(Shift 빠르게) · 1~9·0 도구 · Q 필살기 · C 단면 · F 우리 층 확대 · H 간단 화면 · Ctrl+Z 되돌리기<br>원작: SMASH HYU (hong-iron.github.io/SMASH-HYU) — 코드는 새로 작성했습니다.</div>
+  <div class="small" style="margin-top:8px">단축키: WASD·방향키 이동(Shift 빠르게) · 1~9·0 도구 · Q 필살기 · C 단면 · F 우리 층 확대 · H 간단 화면 · Ctrl+Z 되돌리기<br>원작: SMASH HYU (hong-iron.github.io/SMASH-HYU) — 코드는 새로 작성했습니다.</div>
+  </details>
 </div></div>
 
 <div id="rot">
@@ -1079,9 +1212,17 @@ body.ui-mob .tool[data-w]{font-size:8px!important;gap:0!important;letter-spacing
 })();
 </script>
 <div class="modal" id="mPatch"><div class="card patch">
-  <div class="small" style="margin:0 0 2px">업데이트 · 2026.11.13</div>
-  <img class="dy-ban" src="og-earth.jpg" alt="">
-  <h2>🎨 그래픽 전면 교체 · 🔥 출석 보상</h2>
+  <div class="small" style="margin:0 0 2px">업데이트 · 2026.11.16</div>
+  <img class="dy-ban" src="img/events/event-boss.jpg" alt="" style="object-position:center 18%">
+  <h2>👔 사장님 모드 오픈!</h2>
+  <ul>
+    <li><b>내가 사장님</b> — 모드 고르기에서 [👔 사장님]을 누르면 사장님을 직접 조종해서 동네를 부숴요</li>
+    <li><b>사장님 기술 10가지</b> — 돌진 주먹 · 점프 찍기 · 결재판 · 골프 스윙 · 호통 · 법카 긁기 · 회전의자 · 전 직원 집합 · 리무진 호출 · 해고 통보</li>
+    <li><b>💢 변신</b> — 부술수록 분노 게이지가 차요. 가득 차면 Q(휴대폰은 오른쪽 아래 원)로 20초 동안 거대해지고, 기술이 3배로 세져요 (결재판 3개 · 골프공 3개 · 리무진 3대…)</li>
+    <li><b>랭킹 없는 자유 모드</b> — 점수 걱정 없이 마음껏! 랭킹·오늘의 사옥은 건축·재난 모드에서 도전해요</li>
+    <li><b>그 밖에</b> — 도구막대 왼쪽 모드 탭(건축·재난·사장님) · 설정 창을 켜고 끄는 스위치로 정리 · 사장님 기술 아이콘 11종 새 그림</li>
+  </ul>
+  <details class="fold"><summary>11.13 업데이트 보기 <small>(🎨 새 그래픽 · 🔥 출석 보상)</small></summary>
   <ul>
     <li><b>🎨 새 그래픽</b> — 도구 아이콘 22종·필살기 버튼, 직급 배지(인턴 → ANNIHILATOR), 앱 아이콘·공유 이미지를 새 그림으로 바꿨어요. 가이드에 재난 도구 장면 그림과 이벤트 그림도 들어갔어요</li>
     <li><b>🔥 연속 출석 보상</b> — 하루 한 번 들어오면 연속 일수가 쌓여요. <b>3일</b> 🧥 사장님 거지 옷 · <b>5일</b> ✨ 황금 불도저/쇠공 · <b>7일</b> 🎨 스프레이 낙서. 오른쪽 위 [🔥 출석]에서 확인 · 한 번 받으면 연속이 끊겨도 계속 써요</li>
@@ -1089,6 +1230,8 @@ body.ui-mob .tool[data-w]{font-size:8px!important;gap:0!important;letter-spacing
     <li><b>🛡 지구 방어군</b> — 재난 모드는 구청 대신 방어 헬기가 와서 불길 번짐을 막아요 · 🏘 부동산 호황 필요 점수 10배</li>
     <li><b>그 밖에</b> — ⚡ 돌발 미션(30초 깜짝 목표) · 📤 세로 공유 카드(스토리·릴스)와 🎬 5초 영상 · 📱 휴대폰 건축/재난 바로 바꾸기 · 🏆 오늘의 사옥은 건축 모드에서만</li>
   </ul>
+  </details>
+  
   <details class="fold"><summary>11.05 업데이트 보기 <small>(🌍 재난 도구 개편)</small></summary>
   <ul>
     <li><b>재난 도구 10종</b>(숫자 1~0) — 🐜 흰개미 · 🐘 동물 대군 · 🐦 새 떼 운석 · ⚡ 하늘 레이저 · 🔥 산성 화재 · 🌀 태풍 · 🌊 쓰나미 · 🫨 지진 · 🌋 화산 · 🛰️ 인공위성</li>
@@ -1161,7 +1304,7 @@ body.ui-mob .tool[data-w]{font-size:8px!important;gap:0!important;letter-spacing
   function getT(url,ms){var c=new AbortController(),t=setTimeout(function(){c.abort()},ms);return fetch(url,{signal:c.signal}).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}).finally(function(){clearTimeout(t)})}
   function ok(d){return d&&Array.isArray(d.rows)&&d.rows.length>0}
   function save(d){try{localStorage.setItem(CK,JSON.stringify({t:Date.now(),d:d}))}catch(e){}}
-  function start(d,src){window.FIRMDATA_BOOT=ok(d)?d.rows:[];window.FIRMDATA_SRC=src;var s=document.createElement('script');s.src='game.js?v=20261113h';s.onload=function(){var b=document.getElementById('boot');if(b)b.remove()};
+  function start(d,src){window.FIRMDATA_BOOT=ok(d)?d.rows:[];window.FIRMDATA_SRC=src;var s=document.createElement('script');s.src='game.js?v=20261116b';s.onload=function(){var b=document.getElementById('boot');if(b)b.remove()};
     s.onerror=function(){document.getElementById('bootMsg').textContent='game.js 를 불러오지 못했어요'};document.body.appendChild(s)}
   var u=api(),cached=null;try{cached=JSON.parse(localStorage.getItem(CK)||'null')}catch(e){}
   var fromSheet=u?getT(u+(u.indexOf('?')>=0?'&':'?')+'action=firms',30000).then(function(d){if(!ok(d))throw new Error('empty');save(d);return d}):Promise.reject(new Error('no api'));

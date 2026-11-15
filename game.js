@@ -41,7 +41,7 @@ function addrQueries(addr){
 
 // ---------- 설정 ----------
 const FLOOR_Y = -60, BOTTOM_Y = -75;
-const GAME_VER='2026.11.13';
+const GAME_VER='2026.11.16';
 const NOTICE_MAJOR=true;   // true = 큰 업데이트: '업데이트 소식 끄기'와 상관없이, 처음 온 사람에게도 한 번 띄움   // 패치 노트 버전 — 바꾸면 재방문자에게 업데이트 창이 한 번 뜸 (index.html #mPatch 내용도 같이 수정)
 const opts = {sound:true, labels:true, debris:true, shadows:true, pins:true, mini:false, shake:false, night:true, patch:true, weather:true, quest:true, bgm:false, suit:'navy'};
 try{ const s = JSON.parse(localStorage.getItem('smasharch_opts')||'null'); if(s) Object.assign(opts,s);}catch(e){}
@@ -1525,13 +1525,13 @@ function drawDesign(m,mg){
 function clearDesign(){if(HELD)HELD.b.lifted=false;HELD=null;for(const t of THROWN)t.b.lifted=false;for(const e of EXTR)e.b.lifted=false;THROWN=[];EXTR=[];SLICES=[];CUTFX=[]}
 
 // ---------- 필살기 게이지 ----------
-function chargeUlt(v){if(v>0&&!ultArmed){ULT=Math.min(1,ULT+v/150000);}}
+function chargeUlt(v){if(KAI()){if(v>0&&BOSS&&BOSS.kai&&BOSS.big<=0)ULT=Math.min(1,ULT+v/KAI_RAGE);return}if(v>0&&!ultArmed){ULT=Math.min(1,ULT+v/150000);}}
 // 재난 모드 태양 조각: 게이지 대신 30초 재사용 대기 (범위는 3배)
 const SUN_CD=30;let SUN_UNTIL=0;
 function sunLeft(){return Math.max(0,(SUN_UNTIL-performance.now())/1000)}
-function updateUltUI(){const el=$('#ult');if(!el)return;const e=EARTH(),p=e?1-sunLeft()/SUN_CD:ULT;el.style.setProperty('--p',(p*100).toFixed(1)+'%');el.classList.toggle('ready',p>=1);
-  {const sp=el.querySelector('span'),t=e?(sunLeft()>0?`${Math.ceil(sunLeft())}초`:'태양 조각'):'필살기';if(sp&&sp.textContent!==t)sp.textContent=t}el.classList.toggle('armed',ultArmed)}
-function armUlt(){if(stopOn()){stopNag();return}if(CH&&CH.on&&CH.ultUsed){toast('🏆 챌린지에서 필살기는 한 번만 쓸 수 있어요',1800);return}if(EARTH()){if(sunLeft()>0){toast(`태양 조각 재충전 중 — ${Math.ceil(sunLeft())}초 남았어요`,1600);return}ultArmed=!ultArmed;$('#hint').textContent=ultArmed?'클릭: 태양 조각이 떨어질 곳 (범위 3배)':'';if(ultArmed)toast('태양 조각 준비! 떨어뜨릴 곳을 클릭하세요',1800);return}if(ULT<1){toast(`필살기 게이지 ${Math.floor(ULT*100)}% — 더 부수면 차올라요`);return}ultArmed=!ultArmed;
+function updateUltUI(){const el=$('#ult');if(!el)return;const e=EARTH(),kb=KAI()&&BOSS&&BOSS.kai&&BOSS.big>0,p=e?1-sunLeft()/SUN_CD:kb?BOSS.big/KAI_BIG_SEC:ULT;el.style.setProperty('--p',(p*100).toFixed(1)+'%');el.classList.toggle('ready',p>=1&&!kb);
+  {const sp=el.querySelector('span'),t=e?(sunLeft()>0?`${Math.ceil(sunLeft())}초`:'태양 조각'):KAI()?(kb?`${Math.ceil(BOSS.big)}초`:'변신'):'필살기';if(sp&&sp.textContent!==t)sp.textContent=t}el.classList.toggle('armed',ultArmed)}
+function armUlt(){if(KAI()){kaiTransform();return}if(stopOn()){stopNag();return}if(CH&&CH.on&&CH.ultUsed){toast('🏆 챌린지에서 필살기는 한 번만 쓸 수 있어요',1800);return}if(EARTH()){if(sunLeft()>0){toast(`태양 조각 재충전 중 — ${Math.ceil(sunLeft())}초 남았어요`,1600);return}ultArmed=!ultArmed;$('#hint').textContent=ultArmed?'클릭: 태양 조각이 떨어질 곳 (범위 3배)':'';if(ultArmed)toast('태양 조각 준비! 떨어뜨릴 곳을 클릭하세요',1800);return}if(ULT<1){toast(`필살기 게이지 ${Math.floor(ULT*100)}% — 더 부수면 차올라요`);return}ultArmed=!ultArmed;
   $('#hint').textContent=ultArmed?(EARTH()?'클릭: 태양 조각이 떨어질 곳':'클릭: 클라이언트 전화 — "그냥 전부 다시 해와요"'):'';if(ultArmed)toast('필살기 준비! 부술 곳을 클릭하세요',1800)}
 
 // =====================================================================
@@ -1691,11 +1691,11 @@ const HINTS=['클릭: 철거반 인부떼 — 수십 명이 외벽을 타고 올
 const SHINTS=['클릭: 철거반 인부떼 — 외벽을 타고 각 층으로 올라가 기둥을 오함마로','클릭 → 클릭으로 좌우 선 긋기: 불도저 — 시작한 층 바닥을 따라 밀고 가며 터널','클릭 → 클릭으로 선 긋기: 쇠공 — 그은 선을 따라 휘둘러 지나간 자리를 쓸어버림','클릭: 레미콘 — 옥상에 타설, 위층부터 내려앉음','클릭: 다이너마이트 붙이기(최대 12개) → Space 또는 [기폭]으로 연쇄 폭파','클릭: 철근 빼기 (기둥이 서서히 약해짐)','층을 잡고 끌어서 던지기: MOVE — 빼낸 층은 위층이 내려앉고, 던진 층은 떨어진 곳을 부숴요','누른 채 위로 끌기: EXTRUDE — 끈 만큼 증축, 놓으면 하중 초과로 아래층부터 무너짐','클릭 → 클릭으로 선 긋기: TRIM — 선 위쪽이 잘려 미끄러져 떨어짐','클릭: 싱크홀 — 누른 곳 주변 지하·1층이 무작위로 여러 번 꺼지며 위층이 내려앉아요'];
 function selectWeapon(i){if(i<0||i>=WL().length)return;if(gesture&&i!==weapon){gesture=null;drawGesture()}weapon=i;pickHQ=false;document.querySelectorAll('.tool[data-w]').forEach(b=>b.classList.toggle('on',+b.dataset.w===i));
   flashHint();
-  if(TOUCH){const hd=holdOf();let t=(MODE==='section'?SHINTS:EARTH()?E_HINTS:HINTS)[i].replace(/클릭/g,'탭').replace(/Space 또는 /g,'');
+  if(TOUCH){const hd=holdOf();let t=(MODE==='section'?SHINTS:EARTH()?E_HINTS:KAI()?K_HINTS:HINTS)[i].replace(/클릭/g,'탭').replace(/Space 또는 /g,'');
     if(hd==='grab'||hd==='sgrab'||hd==='sext')t='꾹 눌렀다가 끌기 · '+t;
     $('#hint').textContent=t+' · 한 손가락: 회전 · 두 손가락: 이동·확대';return}
   if(MODE==='section'){$('#hint').textContent=SHINTS[i]+' · 빈 곳 드래그: 회전 · 휠: 확대';return}
-  $('#hint').textContent=(EARTH()?E_HINTS:HINTS)[i]+' · WASD 이동 · 빈 곳 드래그 회전 · 휠 확대'}
+  $('#hint').textContent=(EARTH()?E_HINTS:KAI()?K_HINTS:HINTS)[i]+' · WASD 이동 · 빈 곳 드래그 회전 · 휠 확대'}
 function flashHint(){const h=$('#hint');if(!h)return;h.classList.add('flash');clearTimeout(flashHint._t);flashHint._t=setTimeout(()=>h.classList.remove('flash'),4500)}
 // =====================================================================
 //  🌍 재난 모드 — "건축을 너무 많이 해서 지구가 화났다"
@@ -1703,8 +1703,10 @@ function flashHint(){const h=$('#hint');if(!h)return;h.classList.add('flash');cl
 //   자연의 분노(6~0): 산성비 · 토네이도 · 화산 · 쓰나미 · 지진   /  필살기: 태양 조각
 //   파괴 원리는 건축 모드 도구와 같고(쓰나미만 새로) 모습·이름·효과만 바뀜. 랭킹은 모드별로 따로
 // =====================================================================
-let GM=(()=>{try{const q=new URL(location.href).searchParams.get('mode');if(q==='earth'||q==='build')return q}catch(e){}return lsGet('smasharch_gmode')==='earth'?'earth':'build'})();
+let GM=(()=>{try{const q=new URL(location.href).searchParams.get('mode');if(q==='earth'||q==='build'||q==='boss')return q}catch(e){}const s=lsGet('smasharch_gmode');return s==='earth'||s==='boss'?s:'build'})();
 function EARTH(){return GM==='earth'}
+function KAI(){return GM==='boss'}   // 👔 사장님 모드
+function rankMode(){return KAI()?'build':GM}   // 사장님 모드는 랭킹이 없어서 서버에는 건축 모드로 물어봄
 // 재난 모드 연출 배율 — 보이는 효과만 키움 (충격파 고리 크기·화면 플래시·폭발 파편 수·화면 흔들림).
 //   실제 파괴 범위·점수는 그대로: 오늘의 사옥 순위는 건축·재난 모드가 한 표에서 겨뤄서 공정성 유지
 const E_FX={ring:1.6,flash:1.6,parts:2,shake:1.6};
@@ -1721,25 +1723,29 @@ const E_HINTS=['클릭: 흰개미 떼 — 고른 곳 둘레 건물로 사방에�
   '클릭: 화산 — 땅이 솟구치고 용암이 사방으로 흘러요',
   '클릭: 인공위성 — 붉은 경고 고리가 뜨고, 잠시 뒤 불타는 위성이 떨어져 일대를 날려요'];
 let TOOL_ORIG=null;
-function applyGM(silent){const e=EARTH();document.body.classList.toggle('earth',e);
+const TOOL_NOIMG=new Set([]);   // 아직 그림이 없는 도구는 이모지 (지금은 없음)
+function toolIco(f,emo){return TOOL_NOIMG.has(f)?`<i class="emo">${emo}</i>`:`<img class="ti" src="img/tools/tool-${f}.png" alt="${emo}">`}
+function applyGM(silent){const e=EARTH(),k=KAI(),TT=e?E_TOOLS:k?K_TOOLS:null;document.body.classList.toggle('earth',e);document.body.classList.toggle('kai',k);
   const btns=[...document.querySelectorAll('.tool[data-w]')];
   if(!TOOL_ORIG)TOOL_ORIG=btns.map(b=>b.innerHTML);
-  btns.forEach((b,i)=>{const et=E_TOOLS[i];b.style.display=e&&!et?'none':'';b.innerHTML=e&&et?`<span class="num">${(i+1)%10}</span><img class="ti" src="img/tools/tool-e-${WEAPONS_E[i].id}.png" alt="${et[0]}">${et[1]}`:TOOL_ORIG[i];b.title=e&&et?et[1]:b.textContent.trim()});
-  {const gs=document.querySelectorAll('#toolbar .grp'),cut=e?3:6;if(gs.length>=2)btns.forEach((b,i)=>gs[i<cut?0:1].appendChild(b));if(weapon>=WL().length)weapon=0}
-  const gl=document.querySelectorAll('#toolbar .glbl');if(gl[0])gl[0].textContent=e?'동물의 분노':'시공팀';if(gl[1])gl[1].textContent=e?'자연의 분노':'설계팀';
+  btns.forEach((b,i)=>{const et=TT&&TT[i];b.style.display=TT&&!et?'none':'';b.innerHTML=et?`<span class="num">${(i+1)%10}</span>${toolIco(e?'e-'+WEAPONS_E[i].id:'k-'+WEAPONS_K[i].id,et[0])}${et[1]}`:TOOL_ORIG[i];b.title=et?et[1]:b.textContent.trim()});
+  {const gs=document.querySelectorAll('#toolbar .grp'),cut=e?3:k?5:6;if(gs.length>=2)btns.forEach((b,i)=>gs[i<cut?0:1].appendChild(b));if(weapon>=WL().length)weapon=0}
+  const gl=document.querySelectorAll('#toolbar .glbl');if(gl[0])gl[0].textContent=e?'동물의 분노':k?'사장님 기술':'시공팀';if(gl[1])gl[1].textContent=e?'자연의 분노':k?'사장님 특기':'설계팀';
   const det=$('#btnDet');if(det&&det.firstChild)det.firstChild.textContent=e?'와르르! (Space)':'기폭! (Space)';
-  const ul=$('#ult span');if(ul)ul.textContent=e?'태양 조각':'필살기';{const ui=$('#ultImg');if(ui)ui.src='img/tools/'+(e?'tool-e-sun':'tool-nuke')+'.png'}
-  const sb=$('#btnSection');if(sb)sb.style.display=e?'none':'';
-  const gb=$('#btnGM');if(gb){gb.innerHTML=e?'<i class="emo">🏗</i>건축으로':'<i class="emo">🌍</i>재난으로';gb.title='모드 바꾸기 (지금: '+(e?'재난':'건축')+' 모드)'}
-  document.querySelectorAll('[data-gm]').forEach(b=>b.classList.toggle('on',b.dataset.gm===GM));
-  try{const u=new URL(location.href);if(e)u.searchParams.set('mode','earth');else u.searchParams.delete('mode');history.replaceState(null,'',u)}catch(err){}
+  const ul=$('#ult span');if(ul)ul.textContent=e?'태양 조각':k?'변신':'필살기';{const ui=$('#ultImg');if(ui)ui.src='img/tools/'+(e?'tool-e-sun':k?'tool-k-rage':'tool-nuke')+'.png'}
+  const sb=$('#btnSection');if(sb){sb.style.display='';sb.classList.toggle('gm-off',e||k)}const ub=$('#btnUndo');if(ub)ub.classList.toggle('gm-off',k);
+  const gb=$('#btnGM');if(gb){gb.innerHTML=e?'<i class="emo">👔</i>사장님으로':k?'<i class="emo">🏗</i>건축으로':'<i class="emo">🌍</i>재난으로';gb.title='모드 바꾸기 (지금: '+(e?'재난':k?'사장님':'건축')+' 모드)'}
+  document.querySelectorAll('[data-gm]').forEach(b=>b.classList.toggle('on',b.dataset.gm===GM));setTimeout(layoutHUD,0);setTimeout(layoutHUD,250);
+  try{const u=new URL(location.href);if(e)u.searchParams.set('mode','earth');else if(k)u.searchParams.set('mode','boss');else u.searchParams.delete('mode');history.replaceState(null,'',u)}catch(err){}
   if(!silent)selectWeapon(weapon)}
-function setGM(m,quiet){if(m!=='earth')m='build';if(m===GM){applyGM(true);return}
-  if(m==='earth'&&CH&&(CH.on||CH.pending)){toast('오늘의 사옥 도전 중에는 재난 모드로 바꿀 수 없어요',2400);return}
+function setGM(m,quiet){if(m!=='earth'&&m!=='boss')m='build';if(m===GM){applyGM(true);return}
+  if(m!=='build'&&CH&&(CH.on||CH.pending)){toast('오늘의 사옥 도전 중에는 다른 모드로 바꿀 수 없어요',2400);return}
+  const wasK=KAI();
   if(MODE==='section')exitSection();clearTools();HELD=null;try{if(CONQ_Q.size)flushConq()}catch(e){}GM=m;try{CONQ_ALL=null}catch(e){}lsSet('smasharch_gmode',m);ultArmed=false;applyGM();RANK_LAST=null;
+  if(wasK!==KAI()){KPROJ=[];ULT=0;if(CUR){bossReset();clientReset();bossSpawn()}}   // 사장님 모드로 들어가거나 나올 때: 옥상의 사장님 ↔ 내가 조종하는 사장님
   if(MS)missionStart();
   try{dailyCard()}catch(e){}
-  if(!quiet)toast(m==='earth'?'🌍 재난 모드 — 건축을 너무 많이 해서 지구가 화났어요! 동물의 분노 · 자연의 분노':'🏗 건축 모드 — 다시 철거 현장으로',3000)}
+  if(!quiet)toast(m==='earth'?'🌍 재난 모드 — 건축을 너무 많이 해서 지구가 화났어요! 동물의 분노 · 자연의 분노':m==='boss'?'👔 사장님 모드 — 내가 사장님! 부술수록 분노가 차고, 다 차면 [변신]으로 거대해져요 (랭킹 없음)':'🏗 건축 모드 — 다시 철거 현장으로',3600)}
 
 // ---- 1. 흰개미 (철거반 인부 대신 그림) ----
 function drawTermite(m,w,S){if(w.gone||w.t<0&&w.state==='run')return;
@@ -1811,6 +1817,318 @@ function moleBurst(c){const x=c.x,z=c.z,b=c.b;const v=carve(x,z,11,5);addScore(v
 //   조정값: E_R(도구별 반경 m) · 각 spawnXxx 함수 위쪽 숫자
 // =====================================================================
 const E_R={termite:75,meteor:100,bolt:110,acid:70,quake:120,volcano:105,sat:130};
+// =====================================================================
+//  👔 사장님 모드 — 내가 사장님이 되어 동네를 부숨 (랭킹 없음)
+//   · 기술 3가지: 돌진 주먹(누른 곳으로 달려가 주먹질) · 점프 찍기(뛰어올라 내리찍기) · 결재판 던지기(멀리 던지기)
+//   · 부술수록 분노 게이지(오른쪽 아래)가 차고, 다 차면 [변신] → KAI_BIG_SEC초 동안 거대해져 훨씬 세게 부숨
+//   · 사장님은 건축 모드의 사장님(BOSS)과 같은 몸을 씀 (옷·머리·거지 옷 보상 그대로). BOSS.kai=true 로 구분
+//   · 세기 조정: KAI_S(보통 크기) · KAI_BIG(변신 크기) · KAI_BIG_SEC(변신 시간) · KAI_RAGE(변신에 필요한 점수)
+// =====================================================================
+const KAI_S=12,KAI_BIG=34,KAI_BIG_SEC=20,KAI_RAGE=600000;
+const K_TOOLS=[['👊','돌진 주먹'],['🦶','점프 찍기'],['📋','결재판'],['🏌️','골프 스윙'],['📣','호통'],['💳','법카 긁기'],['🌀','회전의자'],['👥','전 직원 집합'],['🚘','리무진 호출'],['👉','해고 통보']];
+const K_HINTS=['클릭: 돌진 주먹 — 누른 곳으로 달려가 주먹으로 부숴요. 변신하면 가는 길의 건물도 밟고 지나가요',
+  '클릭: 점프 찍기 — 누른 곳으로 뛰어올라 내리찍어요. 둘레 건물이 한꺼번에 무너져요',
+  '클릭: 결재판 — 하늘에서 거대한 결재판이 떨어져 건물을 내리눌러요. 「반려」 도장이 찍혀요',
+  '클릭: 골프 스윙 — 누른 쪽으로 거대한 골프공을 날려요. 공이 튀면서 길에 있는 건물을 뚫고 지나가요. 변신 중엔 3개',
+  '클릭: 호통 — 누른 쪽으로 호통이 부채꼴로 퍼져 나가요. 닿는 건물은 외벽이 벗겨지고 아래층이 무너져요',
+  '클릭: 법카 긁기 — 거대한 법인카드가 누른 쪽으로 긁고 지나가요. 길에 있는 건물 밑동이 잘려요. 변신 중엔 3장',
+  '클릭: 회전의자 — 대표 의자에 앉아 빙글빙글 돌면서 누른 곳까지 가요. 닿는 건물을 전부 쳐내고, 멈출 때 한 번 더 터져요',
+  '클릭: 전 직원 집합 — 누른 곳으로 직원들이 사방에서 모여들어요. 오는 길의 건물을 들이받고, 다 모이면 「화이팅!」 하고 한가운데가 터져요',
+  '클릭: 리무진 호출 — 김 기사가 모는 리무진이 사장님 자리에서 누른 쪽으로 건물을 들이받으며 달려요. 변신 중엔 3대',
+  '클릭: 해고 통보 — 사장님이 손가락으로 가리킨 건물에 붉은 빛이 꽂혀요. 변신 중엔 옆 건물 2채도 같이 해고돼요'];
+const WEAPONS_K=[{id:'kgo',name:'돌진 주먹',nosnap:true,fire(h){return kaiGo(h)}},{id:'kjump',name:'점프 찍기',nosnap:true,fire(h){return kaiJump(h)}},{id:'kthrow',name:'결재판',nosnap:true,fire(h){return kaiThrow(h)}},
+  {id:'kgolf',name:'골프 스윙',nosnap:true,fire(h){return kaiGolf(h)}},{id:'kyell',name:'호통',nosnap:true,fire(h){return kaiYell(h)}},{id:'kcard',name:'법카 긁기',nosnap:true,fire(h){return kaiCards(h)}},
+  {id:'kspin',name:'회전의자',nosnap:true,fire(h){return kaiSpin(h)}},{id:'kcoffee',name:'전 직원 집합',nosnap:true,fire(h){return kaiStaff(h)}},{id:'kdozer',name:'리무진 호출',nosnap:true,fire(h){return kaiLimo(h)}},{id:'khurl',name:'해고 통보',nosnap:true,fire(h){return kaiFire(h)}}];
+const KL={idle:['오늘은 내가 직접 부순다!','설계비 깎은 놈 나와!','경쟁사? 전부 철거다!','야근은 이제 내가 시킨다!','이 동네는 내가 접수한다!','법인카드 한도는 무제한이다!','도면은 발로 그리는 거야!'],
+  hit:['결재!','반려!','다시 해와!','이게 대표의 주먹이다!','설계변경이다!'],
+  big:['으아아아아!!','이게 대표의 무게다!!','결재는 발로 한다!!','전부 다시 해와아아!!'],
+  end:['후… 혈압약 먹을 시간이군.','오늘은 여기까지. 다들 야근해.','잠깐 쉬고 다시 간다.'],
+  ready:['분노가 끓어오른다… 변신할 때다!','더는 못 참겠다!']};
+const K_GUIDE=[
+  {w:0,emo:'👊',name:'돌진 주먹',team:'사장님 기술',one:'누른 곳으로 달려가 주먹으로 부숴요.',steps:['<b>1 돌진 주먹</b>을 골라요',`부술 건물을 <b>${TOUCH?'탭':'클릭'}</b>해요`,'사장님이 달려가서 주먹을 세 번 날려요'],tip:'땅을 누르면 그 자리로 이동만 해요. 변신하면 가는 길의 건물도 밟고 지나가요.'},
+  {w:1,emo:'🦶',name:'점프 찍기',team:'사장님 기술',one:'누른 곳으로 뛰어올라 내리찍어요. 둘레 건물이 한꺼번에 무너져요.',steps:['<b>2 점프 찍기</b>를 골라요',`건물이 몰려 있는 곳을 <b>${TOUCH?'탭':'클릭'}</b>해요`,'떨어지는 순간 둘레가 크게 흔들려요'],tip:'작은 건물이 모인 곳에 쓰면 한 번에 여러 채가 무너져요.'},
+  {w:2,emo:'📋',name:'결재판',team:'사장님 기술',one:'하늘에서 거대한 결재판이 떨어져 건물을 내리눌러요. 「반려」 도장이 찍혀요.',steps:['<b>3 결재판</b>을 골라요',`반려할 건물을 <b>${TOUCH?'탭':'클릭'}</b>해요`,'연달아 눌러 계속 떨어뜨릴 수 있어요'],tip:'멀리 있는 건물도 바로 찍을 수 있어요. 웬만한 건물은 한 방이에요.'},
+  {w:3,emo:'🏌️',name:'골프 스윙',team:'사장님 특기',one:'거대한 골프공을 날려요. 공이 튀면서 길에 있는 건물을 뚫고 지나가요.',steps:['<b>4 골프 스윙</b>을 골라요',`공을 보낼 쪽을 <b>${TOUCH?'탭':'클릭'}</b>해요`,'누른 곳보다 더 멀리까지 굴러가요'],tip:'건물이 한 줄로 늘어선 길에 쓰면 좋아요.'},
+  {w:4,emo:'📣',name:'호통',team:'사장님 기술',one:'누른 쪽으로 호통이 부채꼴로 퍼져 나가요.',steps:['<b>5 호통</b>을 골라요',`호통칠 쪽을 <b>${TOUCH?'탭':'클릭'}</b>해요`,'사장님 앞에서 시작해 멀리 갈수록 넓게 퍼져요'],tip:'건물이 몰려 있는 쪽을 보고 쓰세요. 가까울수록 세게 맞아요.'},
+  {w:5,emo:'💳',name:'법카 긁기',team:'사장님 특기',one:'거대한 법인카드가 긁고 지나가며 건물 밑동을 잘라요.',steps:['<b>6 법카 긁기</b>를 골라요',`긁을 쪽을 <b>${TOUCH?'탭':'클릭'}</b>해요`,'지나간 자리에 영수증이 길게 남아요'],tip:'건물이 한 줄로 늘어선 길에 쓰면 줄줄이 넘어가요.'},
+  {w:6,emo:'🌀',name:'회전의자',team:'사장님 특기',one:'대표 의자에 앉아 빙글빙글 돌면서 이동해요. 닿는 건물을 전부 쳐내요.',steps:['<b>7 회전의자</b>를 골라요',`갈 곳을 <b>${TOUCH?'탭':'클릭'}</b>해요`,'도는 동안에는 방향을 다시 눌러 바꿀 수 있어요'],tip:'멈추는 순간 둘레가 한 번 더 터져요.'},
+  {w:7,emo:'👥',name:'전 직원 집합',team:'사장님 특기',one:'누른 곳으로 직원들이 사방에서 모여들고, 다 모이면 한가운데가 터져요.',steps:['<b>8 전 직원 집합</b>을 골라요',`집합 장소를 <b>${TOUCH?'탭':'클릭'}</b>해요`,'둥글게 좁혀 오면서 길에 있는 건물을 들이받아요'],tip:'건물이 빽빽한 동네 한가운데를 누르세요. 변신 중엔 훨씬 멀리서, 훨씬 많이 와요.'},
+  {w:8,emo:'🚘',name:'리무진 호출',team:'사장님 특기',one:'김 기사가 모는 리무진이 건물을 들이받으며 달려요.',steps:['<b>9 리무진 호출</b>을 골라요',`리무진이 갈 쪽을 <b>${TOUCH?'탭':'클릭'}</b>해요`,'사장님 자리에서 출발해 누른 곳보다 더 멀리 가요'],tip:'변신 중에 부르면 3대가 나란히 달려요.'},
+  {w:9,emo:'👉',name:'해고 통보',team:'사장님 특기',one:'손가락으로 가리킨 건물에 붉은 빛이 꽂혀요.',steps:['<b>0 해고 통보</b>를 골라요',`해고할 건물을 <b>${TOUCH?'탭':'클릭'}</b>해요`,'웬만한 건물은 한 방에 무너져요'],tip:'변신 중엔 옆 건물 2채도 같이 해고돼요.'}];
+const K_GUIDE_ULT=`<div class="g-tool g-ult"><div class="g-txt"><div class="g-name"><kbd>Q</kbd> <img class="g-ult-ico" src="img/tools/tool-k-rage.png" alt=""> 변신</div><p class="g-one">부술수록 오른쪽 아래 <b>분노 게이지</b>가 차요. 가득 차면 ${TOUCH?'원을 누르면':'Q 키를 누르면'} ${KAI_BIG_SEC}초 동안 사장님이 거대해져서, 웬만한 건물은 닿기만 해도 무너져요. 사장님 모드는 랭킹이 없어요.</p>`;
+let KPROJ=[];
+function kaiOK(){return !!(BOSS&&BOSS.kai&&MODE==='city')}
+function kaiBigOn(){return !!(BOSS&&BOSS.kai&&BOSS.big>0)}
+function kaiBoxText(){return BOSS.big>0?`👔 ${BT()} 변신 중 · ${Math.ceil(BOSS.big)}초`:`👔 ${BT()} 모드 · 분노 ${Math.floor(ULT*100)}%${ULT>=1?' · 변신 가능!':''}`}
+function kaiSpawn(){const hq=B.find(x=>x.hq&&x.alive);let x=cam.tx,z=cam.tz;
+  if(hq){const dx=eye[0]-hq.cx,dz=eye[2]-hq.cz,l=Math.hypot(dx,dz)||1,r=Math.sqrt(hq.area)*0.6+16;x=hq.cx+dx/l*r;z=hq.cz+dz/l*r}   // 사옥 앞(카메라 쪽)에 등장
+  BOSS={kai:true,b:null,home:null,flees:0,state:'idle',t:0,sayT:2.5,lastSay:0,lastTool:0,text:'',textT:0,stun:0,flinch:0,x,z,y:groundAt(x,z)+60,visited:new Set(),firm:CUR?CUR.name:'',
+    yaw:hq?Math.atan2(-(hq.cx-x),hq.cz-z):0,S:KAI_S,big:0,zoom:1.4,step:0,acc:0,pn:0,pt:0,tx:x,tz:z,tb:null,hits:new Map(),lastThrow:0,told:false};
+  KPROJ=[];KBALLS=[];KOBJ=[];ULT=0;
+  bossSay('오늘은 내가 직접 부순다!',3)}
+function kaiFace(x,z){const dx=x-BOSS.x,dz=z-BOSS.z;if(Math.hypot(dx,dz)>0.5)BOSS.yaw=Math.atan2(-dx,dz)}
+// ---- 기술 ----
+function kaiGo(h){if(!kaiOK())return false;if(BOSS.state==='jump')return false;
+  BOSS.tx=h.x;BOSS.tz=h.z;BOSS.tb=h.b&&h.b.alive?h.b:null;BOSS.state='run';kaiFace(h.x,h.z);return true}
+function kaiJump(h){if(!kaiOK())return false;if(BOSS.state==='jump')return false;const d=Math.hypot(h.x-BOSS.x,h.z-BOSS.z);
+  BOSS.state='jump';BOSS.jump={t:0,T:clamp(0.55+d/280,0.6,1.5),x0:BOSS.x,y0:BOSS.y,z0:BOSS.z,x1:h.x,z1:h.z,h:Math.max(28,d*0.32)+(BOSS.big>0?45:0)};kaiFace(h.x,h.z);sfx(6,0.3);return true}
+function kaiThrow(h){if(!kaiOK()||!kaiCool('cStamp',520))return false;const big=BOSS.big>0,[dx,dz]=kaiDir(h),n=big?3:1,s=big?22:11;kaiFace(h.x,h.z);BOSS.flinch=0.35;
+  for(let i=0;i<n;i++){const off=(i-(n-1)/2)*s*3.1,x=h.x-dz*off,z=h.z+dx*off,g=groundAt(x,z);let tb=null;if(i===(n-1)/2)tb=h.b&&h.b.alive?h.b:null;else forBuildingsNear(x,z,20,b=>{if(!tb&&b.alive&&!b.lifted&&distToBuilding(b,x,z)<2)tb=b});
+    const top=tb?tb.base+Math.max(2,tb.h):g,y0=top+(big?260:170);KOBJ.push({k:'stamp',x,z,y:y0,y0,top,t:-Math.abs(i-(n-1)/2)*0.14,T:0.42,s,big,b:tb,hit:false,rot:Math.atan2(dz,dx)})}
+  sfx(5,0.25);bossSay(pickL(['반려!','이걸 결재라고 올렸나!','다시 써와!','결재는 내가 한다!']),0);return true}
+function kaiTransform(){if(!kaiOK()){if(MODE!=='city')toast('변신은 동네 화면에서만 할 수 있어요');return}
+  if(BOSS.big>0){toast(`변신 중 — ${Math.ceil(BOSS.big)}초 남았어요`,1400);return}
+  if(ULT<1){toast(`분노 게이지 ${Math.floor(ULT*100)}% — 더 부수면 차올라요`,1800);return}
+  BOSS.big=KAI_BIG_SEC;BOSS.told=false;statTool('kbig');const g=groundAt(BOSS.x,BOSS.z);
+  flashScreen(0.6,'#ffd0c0');hitStop(0.15);SLOMO=0.5;cam.shake=Math.max(cam.shake,12);sfxBoom(1);sfx(30,1.6);
+  shock={x:BOSS.x,z:BOSS.z,r:10,max:170,id:Math.random()};ring(BOSS.x,g+1,BOSS.z,150,[1,0.35,0.2]);later(0.2,()=>{if(BOSS&&BOSS.kai)ring(BOSS.x,groundAt(BOSS.x,BOSS.z)+1,BOSS.z,100,[1,0.7,0.3])});
+  for(let k=0;k<fxN(50,18);k++){const a=Math.random()*6.283,v=eRnd(10,40);spawn(BOSS.x,g+2,BOSS.z,Math.cos(a)*v,eRnd(10,40),Math.sin(a)*v,eRnd(1.5,3.5),Math.random()<0.5?[1,0.5,0.2]:[0.6,0.56,0.5],1,2)}
+  cam.dist=Math.max(cam.dist,620);bossSay(pickL(KL.big),3);floatText(BOSS.x,g+40,BOSS.z,'변신!!','count',2.2);toast(`👔💢 ${BT()} 변신! ${KAI_BIG_SEC}초 동안 거대해져요`,2800)}
+// ---- 사장님 특기 7가지 ----
+let KBALLS=[];
+function kaiCool(key,ms){const now=performance.now();if(now-(BOSS[key]||0)<ms)return false;BOSS[key]=now;return true}
+// 4. 골프 스윙: 튀면서 굴러가는 거대한 공
+function kaiGolf(h){if(!kaiOK()||BOSS.state==='jump'||!kaiCool('cGolf',650))return false;let dx=h.x-BOSS.x,dz=h.z-BOSS.z;const l=Math.hypot(dx,dz)||1;dx/=l;dz/=l;
+  const big=BOSS.big>0,S=BOSS.S;kaiFace(h.x,h.z);BOSS.flinch=0.3;
+  for(const a of big?[-0.24,0,0.24]:[0]){const c=Math.cos(a),s=Math.sin(a),ex=dx*c-dz*s,ez=dx*s+dz*c;KBALLS.push({x:BOSS.x+ex*S,z:BOSS.z+ez*S,y:0,dx:ex,dz:ez,left:Math.max(l,110)+(big?300:170),v:big?155:125,r:big?10:6.5,acc:0,t:0,hits:new Set()})}
+  sfx(7,0.3);floatText(BOSS.x,BOSS.y+2.5*S,BOSS.z,'나이스 샷!','cad',1);bossSay(pickL(['나이스 샷!','홀인원이다!','굿 샷~']),0);return true}
+// 5. 호통: 누른 쪽으로 부채꼴로 퍼져 나감 (실제 판정은 kaiObjUpdate 의 yell)
+function kaiYell(h){if(!kaiOK()||!kaiCool('cYell',1300))return false;const big=BOSS.big>0,S=BOSS.S,[dx,dz]=kaiDir(h);kaiFace(h.x,h.z);BOSS.flinch=0.5;
+  KOBJ.push({k:'yell',x:BOSS.x+dx*S*0.5,z:BOSS.z+dz*S*0.5,a:Math.atan2(dz,dx),R:big?340:180,half:big?0.72:0.62,r:S,v:big?340:240,hits:new Set(),t:0,acc:0,big});
+  if(big)KOBJ.push({k:'yell',x:BOSS.x+dx*S*0.5,z:BOSS.z+dz*S*0.5,a:Math.atan2(dz,dx),R:340,half:0.72,r:S,v:340,hits:new Set(),t:-0.4,acc:0,big});
+  cam.shake=Math.max(cam.shake,big?9:5);hitStop(0.05);sfx(26,1.2);sfxBoom(0.5);const w=pickL(['야근해!!!','다시 해와!!!','이게 최선이야?!','오늘 안에 끝내!!','누가 퇴근하래!!']);floatText(BOSS.x+dx*S*2,BOSS.y+2.8*S,BOSS.z+dz*S*2,w,'boom',1.5);bossSay(w,3);return true}
+// 6. 법카 긁기: 거대한 법인카드가 누른 쪽으로 긁고 지나감 (지나간 자리에 영수증)
+function kaiCards(h){if(!kaiOK()||BOSS.state==='jump'||!kaiCool('cCard',900))return false;const big=BOSS.big>0,S=BOSS.S,[dx,dz,l]=kaiDir(h);kaiFace(h.x,h.z);BOSS.flinch=0.4;
+  for(const a of big?[-0.34,0,0.34]:[0]){const c=Math.cos(a),s=Math.sin(a),ex=dx*c-dz*s,ez=dx*s+dz*c,x=BOSS.x+ex*S,z=BOSS.z+ez*S;KOBJ.push({k:'card',x,z,x0:x,z0:z,dx:ex,dz:ez,left:Math.max(l,90)+(big?280:140),v:big?330:250,W:big?56:32,hits:new Set(),t:0,acc:0,n:0,end:0,big})}
+  sfx(8,0.5);floatText(BOSS.x,BOSS.y+2.6*S,BOSS.z,'💳 법카 긁는다!','cad',1.3);bossSay(pickL(['한도는 무제한이다!','법카로 긁어!','영수증은 챙겨라!','이건 접대비다!']),0);return true}
+// 7. 회전의자: 돌면서 이동
+function kaiSpin(h){if(!kaiOK()||BOSS.state==='jump')return false;BOSS.tx=h.x;BOSS.tz=h.z;BOSS.tb=null;if(BOSS.state!=='spin'){BOSS.spin=BOSS.big>0?3.8:3.4;sfx(10,0.8);bossSay(pickL(['빙글빙글~!','회전의자 맛 좀 봐라!','이게 대표 의자다!']),0)}BOSS.state='spin';return true}
+// 8. 전 직원 집합: 누른 곳으로 직원들이 사방에서 모여듦 → 다 모이면 「화이팅!」
+function kaiStaff(h){if(!kaiOK()||!kaiCool('cCoffee',1600))return false;const big=BOSS.big>0,S=BOSS.S,n=big?54:22,R=big?170:88,m=[];kaiFace(h.x,h.z);BOSS.flinch=0.4;
+  for(let i=0;i<n;i++)m.push({a:i/n*6.283+Math.random()*0.2,dr:Math.random()*R*0.22,ph:Math.random()*6.28,c:i%4});
+  KOBJ.push({k:'staff',x:h.x,z:h.z,R,r:R,v:big?120:78,s:big?3.3:2.3,m,hits:new Set(),t:0,acc:0,st:0,hold:0,big});
+  ring(h.x,groundAt(h.x,h.z)+1,h.z,R,[0.6,0.8,1]);sfx(12,1.2);floatText(h.x,groundAt(h.x,h.z)+(big?40:22),h.z,'📢 집합 장소','cad',1.2);floatText(BOSS.x,BOSS.y+2.6*S,BOSS.z,'👥 전 직원 집합!','cad',1.5);bossSay(pickL(['전 직원 집합!','5분 안에 다 모여!','주말 출근이다!','오늘 회식은 저기서 한다!']),0);return true}
+// 9. 리무진 호출: 검은 리무진이 들이받으며 달림 (변신 중엔 3대)
+function kaiLimo(h){if(!kaiOK()||!kaiCool('cDozer',1500))return false;const big=BOSS.big>0,S=BOSS.S,[dx,dz,l]=kaiDir(h),n=big?3:1,s=big?2.2:1.6;kaiFace(h.x,h.z);BOSS.flinch=0.4;
+  for(let i=0;i<n;i++){const off=(i-(n-1)/2)*15*s;KOBJ.push({k:'limo',x:BOSS.x+dx*S*1.3-dz*off,z:BOSS.z+dz*S*1.3+dx*off,dx,dz,left:Math.max(l,120)+(big?340:220),v:big?175:150,s,hits:new Set(),t:-Math.abs(i-(n-1)/2)*0.18,acc:0,big})}
+  sfx(14,0.9);floatText(BOSS.x,BOSS.y+2.6*S,BOSS.z,'🚘 김 기사~ 운전해!','cad',1.5);bossSay(pickL(['김 기사~ 운전해!','어서~ 밟아!','차 대기시켜!']),0);return true}
+// ---- 10차: 다시 만든 기술들이 쓰는 물체 (결재판 stamp · 호통 yell · 법카 card · 커피 cup · 리무진 limo) ----
+let KOBJ=[];
+function kaiDir(h){const dx=h.x-BOSS.x,dz=h.z-BOSS.z,l=Math.hypot(dx,dz)||1;return [dx/l,dz/l,l]}
+// 건물 아래층 nf개를 r 범위·p 세기로 침 (작은 건물은 바로 무너짐)
+function kaiLow(b,x,z,r,p,nf){if(!b.alive||b.lifted)return;if(eSmall(b)||b.area<260&&b.h0<16){killBuilding(b);return}eHitLow(b,x,z,r,p,nf)}
+function kaiPapers(x,y,z,n,sp){for(let k=0;k<fxN(n,3);k++)spawn(x,y,z,eRnd(-sp,sp),eRnd(sp*0.3,sp*1.4),eRnd(-sp,sp),eRnd(0.6,1.4),[0.97,0.96,0.9],eRnd(0.8,1.4),3)}
+function kaiStampHit(o){const big=o.big,R=o.s*1.5,x=o.x,z=o.z,g=groundAt(x,z);
+  forBuildingsNear(x,z,R+24,b=>{if(!b.alive||b.lifted)return;const d=distToBuilding(b,x,z);if(d>R)return;
+    if(b===o.b||d<R*0.45){if(eSmall(b)){killBuilding(b);return}if(b.h0<(big?95:36)){kaiLow(b,b.cx,b.cz,Math.sqrt(b.area)*0.8+8,30,99);if(b.alive)killBuilding(b);return}kaiLow(b,b.cx,b.cz,Math.sqrt(b.area)*0.75+8,big?17:10,big?8:5)}
+    else kaiLow(b,x,z,R,big?9:5,3)});
+  forTreesNear(x,z,R,t=>{if(t.alive&&Math.hypot(t.x-x,t.z-z)<R)killTree(t)});if(CLIENT)clientHitAt(x,g+2,z,R,6);
+  carve(x,z,R*0.45,big?5:2);boom3(x,g+3,z,o.s*2.2);ring(x,g+1,z,R*1.7,[1,0.22,0.16]);later(0.12,()=>ring(x,groundAt(x,z)+1,z,R*1.1,[1,0.5,0.4]));kaiPapers(x,g+3,z,big?26:14,big?26:16);kaiDust(x,z,big?30:14,big?40:22);
+  cam.shake=Math.max(cam.shake,big?10:5.5);hitStop(big?0.08:0.045);sfxBoom(big?1:0.65);sfx(big?22:11,0.6);floatText(x,g+(big?46:20),z,'반 려 !','boom',1.3)}
+function kaiObjUpdate(dt,now){for(let i=KOBJ.length-1;i>=0;i--){const o=KOBJ[i];o.t+=dt;if(o.t<0)continue;let rm=false;
+  if(o.k==='stamp'){const u=Math.min(1,o.t/o.T),g=groundAt(o.x,o.z);                                                    // 결재판: 떨어짐 → 내리누름 → 잠깐 남음
+    if(!o.hit){o.y=o.y0+(o.top-o.y0)*u*u;if(u>=1){o.hit=true;o.ht=0;kaiStampHit(o)}}
+    else{o.ht+=dt;o.y+=((g+o.s*0.18)-o.y)*Math.min(1,dt*14);if(o.ht>0.95)rm=true}}
+  else if(o.k==='yell'){o.r=Math.min(o.R,o.r+o.v*dt);o.acc+=dt;                                                          // 호통: 부채꼴로 퍼지는 물결
+    if(o.acc>0.05){o.acc=0;const big=o.big;
+      forBuildingsNear(o.x,o.z,o.r+30,b=>{if(!b.alive||b.lifted||o.hits.has(b))return;const dx=b.cx-o.x,dz=b.cz-o.z,d=Math.hypot(dx,dz)||1,hw=Math.sqrt(b.area)*0.5;if(d-hw>o.r)return;
+        let da=Math.atan2(dz,dx)-o.a;da=Math.atan2(Math.sin(da),Math.cos(da));if(Math.abs(da)>o.half+Math.min(0.6,hw/d))return;o.hits.add(b);
+        if(eSmall(b)){killBuilding(b);return}const k=1-0.6*Math.min(1,d/o.R);facadeStrip(b,o.x,o.z,k*(big?1.6:1.2));kaiLow(b,b.cx,b.cz,hw*1.15+6,(big?11:5.5)*k,big?5:3);
+        if(fxOK(4))for(let q=0;q<fxN(4,2);q++)spawn(b.cx,b.base+Math.min(b.h,12),b.cz,dx/d*eRnd(8,26),eRnd(4,16),dz/d*eRnd(8,26),eRnd(1,2.4),[0.72,0.66,0.56],eRnd(0.7,1.2),3)});
+      forTreesNear(o.x,o.z,o.r,t=>{if(!t.alive)return;const dx=t.x-o.x,dz=t.z-o.z;if(Math.hypot(dx,dz)>o.r)return;let da=Math.atan2(dz,dx)-o.a;da=Math.atan2(Math.sin(da),Math.cos(da));if(Math.abs(da)<=o.half)killTree(t)});
+      if(CLIENT)clientHitAt(o.x+Math.cos(o.a)*o.r,groundAt(o.x,o.z)+2,o.z+Math.sin(o.a)*o.r,o.r*0.5,3)}
+    if(o.r>=o.R){o.fade=(o.fade||0)+dt;if(o.fade>0.25)rm=true}}
+  else if(o.k==='card'){if(o.end>0){o.end+=dt;if(o.end>1.3)rm=true}                                                       // 법카: 긁고 지나감
+    else{const sp=o.v*dt;o.x+=o.dx*sp;o.z+=o.dz*sp;o.left-=sp;o.acc+=dt;
+      if(o.acc>0.035){o.acc=0;const big=o.big,g=groundAt(o.x,o.z);
+        forBuildingsNear(o.x,o.z,o.W*0.5+16,b=>{if(!b.alive||b.lifted||o.hits.has(b)||distToBuilding(b,o.x,o.z)>o.W*0.5)return;o.hits.add(b);o.n++;
+          kaiLow(b,o.x,o.z,o.W*0.6+Math.sqrt(b.area)*0.6,big?16:11.5,big?7:5);boom3(o.x,g+3,o.z,big?14:7);sfxBoom(0.25);cam.shake=Math.max(cam.shake,big?4:2);
+          for(let q=0;q<fxN(6,2);q++)spawn(o.x,g+2,o.z,eRnd(-16,16),eRnd(6,24),eRnd(-16,16),eRnd(0.4,0.9),[1,0.85,0.3],eRnd(0.4,0.8),1);
+          if(o.n%2===1)floatText(b.cx,b.base+Math.min(b.h0,30)+8,b.cz,pickL(['₩ 승인','₩₩ 승인','일시불!','접대비 처리']),'cad',0.9)});
+        forTreesNear(o.x,o.z,o.W*0.5,t=>{if(t.alive&&Math.hypot(t.x-o.x,t.z-o.z)<o.W*0.5)killTree(t)});if(CLIENT)clientHitAt(o.x,g+2,o.z,o.W*0.5,4)}
+      if(o.left<=0){o.end=0.001;const g=groundAt(o.x,o.z);floatText(o.x,g+16,o.z,o.n?'💳 결제 완료 — '+o.n+'건':'💳 결제 완료','boom',1.4);kaiPapers(o.x,g+3,o.z,10,14);sfx(6,0.3)}}}
+  else if(o.k==='staff'){const big=o.big,g=groundAt(o.x,o.z);                                                              // 전 직원 집합: 둥글게 좁혀 옴 → 화이팅
+    if(o.st===0){o.r=Math.max(0,o.r-o.v*dt);o.acc+=dt;
+      if(o.acc>0.06){o.acc=0;
+        forBuildingsNear(o.x,o.z,o.R+20,b=>{if(!b.alive||b.lifted||o.hits.has(b))return;const d=Math.hypot(b.cx-o.x,b.cz-o.z),hw=Math.sqrt(b.area)*0.5;if(d>o.R||d+hw<o.r)return;o.hits.add(b);
+          facadeStrip(b,o.x+(b.cx-o.x)*2,o.z+(b.cz-o.z)*2,big?1.4:1);kaiLow(b,b.cx,b.cz,hw*1.4+6,big?11:7,big?5:3);boom3(b.cx,b.base+3,b.cz,big?12:7);sfxBoom(0.22);cam.shake=Math.max(cam.shake,big?3.5:2);
+          if(o.hits.size%2===1)floatText(b.cx,b.base+Math.min(b.h0,30)+8,b.cz,pickL(['넵!','충성!','갑니다!','지금 갑니다!','넵넵!']),'cad',0.9)});
+        forTreesNear(o.x,o.z,o.R,t=>{if(t.alive){const d=Math.hypot(t.x-o.x,t.z-o.z);if(d<=o.R&&d>=o.r-4)killTree(t)}});
+        if(fxOK(3))for(let q=0;q<3;q++){const a=Math.random()*6.283;kaiDust(o.x+Math.cos(a)*(o.r+o.R*0.1),o.z+Math.sin(a)*(o.r+o.R*0.1),1,10)}}
+      if(o.r<=0){o.st=1;const R=big?60:32;                                                                                 // 다 모임: 한가운데가 터짐
+        forBuildingsNear(o.x,o.z,R+24,b=>{if(!b.alive||b.lifted)return;const d=distToBuilding(b,o.x,o.z);if(d>R)return;if(eSmall(b)){killBuilding(b);return}
+          if(d<R*0.5&&b.h0<(big?110:44)){kaiLow(b,b.cx,b.cz,Math.sqrt(b.area)*0.8+8,30,99);if(b.alive)killBuilding(b);return}kaiLow(b,b.cx,b.cz,Math.sqrt(b.area)*0.75+8,big?16:10,big?7:5)});
+        if(CLIENT)clientHitAt(o.x,g+2,o.z,R,6);carve(o.x,o.z,R*0.4,big?4:1.6);boom3(o.x,g+4,o.z,big?40:20);ring(o.x,g+1,o.z,R*1.6,[1,0.85,0.4]);later(0.12,()=>ring(o.x,groundAt(o.x,o.z)+1,o.z,R,[1,0.6,0.3]));
+        kaiDust(o.x,o.z,big?40:20,big?44:26);kaiPapers(o.x,g+4,o.z,big?20:10,big?24:14);cam.shake=Math.max(cam.shake,big?10:6);hitStop(big?0.08:0.05);sfxBoom(big?1:0.7);sfx(big?24:12,0.8);floatText(o.x,g+(big?46:24),o.z,'화 이 팅 !!','boom',1.5)}}
+    else{o.hold+=dt;if(o.hold>0.9){rm=true;floatText(o.x,g+14,o.z,'칼퇴!','cad',1);kaiDust(o.x,o.z,big?16:8,18)}}}
+  else if(o.k==='fire'){if(!o.hit&&o.t>=0.22){o.hit=true;kaiFireHit(o)}if(o.t>0.8)rm=true}                                 // 해고 통보: 가리킴 → 꽂힘
+  else if(o.k==='limo'){const sp=o.v*dt;o.x+=o.dx*sp;o.z+=o.dz*sp;o.left-=sp;o.acc+=dt;                                    // 리무진: 들이받으며 달림
+    if(o.acc>0.035){o.acc=0;const s=o.s,big=o.big,fx=o.x+o.dx*17*s,fz=o.z+o.dz*17*s,g=groundAt(fx,fz),w=7*s;
+      forBuildingsNear(fx,fz,w+16,b=>{if(!b.alive||b.lifted||o.hits.has(b)||distToBuilding(b,fx,fz)>w)return;o.hits.add(b);
+        if(eSmall(b)||b.area<900&&b.h0<(big?60:34)){killBuilding(b)}else kaiLow(b,fx,fz,w*1.5+Math.sqrt(b.area)*0.55,big?16:12.5,big?7:5);
+        boom3(fx,g+3*s,fz,big?20:11);sfxBoom(big?0.5:0.35);cam.shake=Math.max(cam.shake,big?5:3);hitStop(0.02);o.v*=0.97;
+        if(o.hits.size%3===1)floatText(fx,g+12*s,fz,pickL(['빵빵!','비켜!','끼익—']),'boom',0.7)});
+      forTreesNear(fx,fz,w,t=>{if(t.alive&&Math.hypot(t.x-fx,t.z-fz)<w)killTree(t)});if(CLIENT)clientHitAt(fx,g+2,fz,w,4);
+      kaiDust(o.x-o.dx*18*s,o.z-o.dz*18*s,2,10)}
+    if(o.left<=0){rm=true;kaiDust(o.x,o.z,10,18)}}
+  if(rm)KOBJ.splice(i,1)}}
+function drawKaiObj(m,mg){const now=performance.now()/1000;
+  for(const o of KOBJ){if(o.t<0)continue;if(!fxOK(10))break;
+    if(o.k==='stamp'){const s=o.s,r=o.rot,y=o.y+s*0.14,BR=[0.42,0.27,0.15];                                             // 결재판: 갈색 판 + 서류 + 집게 + 빨간 도장
+      pushShape(m,CUBE,o.x,y,o.z,s*2.9,s*0.26,s*2.1,r,BR,0);pushShape(m,CUBE,o.x,y+s*0.17,o.z,s*2.55,s*0.1,s*1.8,r,[0.97,0.96,0.9],0);
+      const c=Math.cos(r),sn=Math.sin(r),L=(f,p)=>[o.x+c*f*s-sn*p*s,o.z+sn*f*s+c*p*s];
+      {const q=L(-1.25,0);pushShape(m,CUBE,q[0],y+s*0.26,q[1],s*0.28,s*0.2,s*0.9,r,[0.68,0.7,0.74],0)}
+      for(let k=0;k<4;k++){const q=L(-0.7+k*0.36,-0.2);pushShape(m,CUBE,q[0],y+s*0.23,q[1],s*0.07,s*0.03,s*1.1,r,[0.4,0.42,0.46],0)}      // 글 줄
+      {const q=L(0.75,0.35);pushShape(mg,SPHERE,q[0],y+s*0.24,q[1],s*0.5,s*0.05,s*0.5,r,[1,0.16,0.12],1);pushShape(m,SPHERE,q[0],y+s*0.26,q[1],s*0.36,s*0.05,s*0.36,r,[0.97,0.96,0.9],0);
+        pushShape(mg,CUBE,q[0],y+s*0.3,q[1],s*0.5,s*0.04,s*0.13,r+0.5,[1,0.16,0.12],1)}                                                    // 「반려」 도장 자국
+      if(!o.hit)for(let k=0;k<4;k++){const q=L(k<2?-1.2:1.2,k%2?-0.8:0.8);pushShape(mg,CUBE,q[0],y+s*(1.4+0.5*k),q[1],s*0.07,s*(2+k*0.6),s*0.07,0,[1,0.95,0.85],1)}   // 떨어지는 속도 줄
+      continue}
+    if(o.k==='yell'){const N=11,k0=o.fade?Math.max(0,1-o.fade/0.25):1;                                                  // 호통: 부채꼴 물결 3겹
+      for(let w=0;w<3;w++){const rr=o.r-w*o.R*0.16;if(rr<8)continue;const hh=(3+rr*0.055)*(1-w*0.25)*k0,seg=rr*2*o.half/N;
+        for(let i=0;i<N;i++){const a=o.a-o.half+(i+0.5)/N*2*o.half,x=o.x+Math.cos(a)*rr,z=o.z+Math.sin(a)*rr,wob=1+0.35*Math.sin(now*30+i*1.7+w);
+          pushShape(mg,CUBE,x,groundAt(x,z)+1.5+hh*wob*0.5,z,seg*0.82,hh*wob,1.4+rr*0.012,a+1.5708,w===0?[1,0.92,0.5]:w===1?[1,0.66,0.3]:[1,0.42,0.24],1)}}
+      continue}
+    if(o.k==='card'){const W=o.W,r=Math.atan2(o.dz,o.dx),px=-o.dz,pz=o.dx,gy=groundAt(o.x,o.z);
+      const d=Math.hypot(o.x-o.x0,o.z-o.z0),n=Math.min(26,Math.floor(d/(W*0.42))),k1=o.end>0?Math.max(0,1-o.end/1.3):1;      // 영수증 띠 (땅을 따라)
+      for(let i=0;i<n;i++){const f=d-(i+0.5)*W*0.42;if(f<0)break;const x=o.x0+o.dx*f,z=o.z0+o.dz*f,yy=groundAt(x,z)+0.5;
+        pushShape(m,CUBE,x,yy,z,W*0.43,0.25,W*0.34*k1,r,[0.97,0.96,0.92],0);if(i%2===0&&k1>0.3)pushShape(m,CUBE,x,yy+0.16,z,W*0.05,0.1,W*0.22*k1,r,[0.3,0.3,0.34],0)}
+      if(o.end>0)continue;const y=gy+W*0.2+Math.sin(now*22)*W*0.012,GOLD=[0.98,0.78,0.22];                                 // 법인카드 (낮게 떠서 긁고 감)
+      pushShape(m,CUBE,o.x,y,o.z,W*0.63,W*0.035,W,r,GOLD,0);pushShape(m,CUBE,o.x-o.dx*W*0.17,y+W*0.02,o.z-o.dz*W*0.17,W*0.11,W*0.02,W*1.002,r,[0.12,0.1,0.08],0);
+      pushShape(m,CUBE,o.x+o.dx*W*0.08+px*W*0.27,y+W*0.022,o.z+o.dz*W*0.08+pz*W*0.27,W*0.15,W*0.02,W*0.2,r,[0.86,0.86,0.82],0);                         // IC 칩
+      for(let k=0;k<3;k++)pushShape(m,CUBE,o.x+o.dx*W*0.12-px*W*(0.05+k*0.13),y+W*0.022,o.z+o.dz*W*0.12-pz*W*(0.05+k*0.13),W*0.07,W*0.02,W*0.09,r,[0.5,0.36,0.08],0)   // 카드 번호
+      pushShape(mg,CUBE,o.x+o.dx*W*0.33,y,o.z+o.dz*W*0.33,W*0.04,W*0.05,W*1.02,r,[1,0.95,0.6],1);                                                        // 빛나는 앞날
+      for(let k=0;k<3;k++)pushShape(mg,CUBE,o.x-o.dx*W*(0.5+k*0.3)+px*W*(k-1)*0.3,y,o.z-o.dz*W*(0.5+k*0.3)+pz*W*(k-1)*0.3,W*0.34,W*0.012,W*0.03,r,[1,0.88,0.45],1)   // 속도 줄
+      continue}
+    if(o.k==='staff'){const s=o.s,SH=[[0.95,0.95,0.97],[0.62,0.78,0.95],[0.14,0.17,0.3],[0.9,0.9,0.86]],N=o.m.length;                                             // 직원들: 다리·셔츠·넥타이·머리
+      if(o.st===0&&fxOK(6))for(let i=0;i<12;i++){const a=i*0.5236+now*2,rr=(o.big?9:5)*(1+0.15*Math.sin(now*8));pushShape(mg,CUBE,o.x+Math.cos(a)*rr,groundAt(o.x,o.z)+0.8,o.z+Math.sin(a)*rr,rr*0.36,0.5,0.9,a+1.5708,[0.5,0.8,1],1)}   // 집합 장소 표시
+      o.m.forEach((q,i)=>{const rr=o.st===0?o.r+q.dr+s*1.5:s*(1.2+(i%3)*1.5+q.dr*0.02),dx=-Math.cos(q.a),dz=-Math.sin(q.a),x=o.x-dx*rr,z=o.z-dz*rr,r=q.a+3.1416,
+          y=groundAt(x,z)+Math.abs(Math.sin((o.st?now*11:o.t*13)+q.ph))*(o.st?2.2:0.7)*s;
+        pushShape(m,CUBE,x,y+0.6*s,z,0.6*s,1.2*s,1*s,r,[0.12,0.13,0.18],0);pushShape(m,CUBE,x,y+1.95*s,z,0.7*s,1.5*s,1.25*s,r,SH[q.c],0);
+        pushShape(m,CUBE,x+dx*0.37*s,y+2*s,z+dz*0.37*s,0.06*s,1*s,0.24*s,r,[0.8,0.15,0.15],0);pushShape(m,CUBE,x,y+3.15*s,z,0.85*s,0.9*s,0.9*s,r,[0.95,0.78,0.62],0);pushShape(m,CUBE,x-dx*0.05*s,y+3.7*s,z-dz*0.05*s,0.9*s,0.3*s,0.94*s,r,[0.1,0.08,0.07],0);
+        if(o.st)pushShape(m,CUBE,x,y+4.3*s,z,0.25*s,0.9*s,0.25*s,r,SH[q.c],0)});                                                                                // 화이팅: 번쩍 든 팔
+      continue}
+    if(o.k==='fire'){const S=BOSS.S,x0=BOSS.x-Math.sin(BOSS.yaw)*S*0.7,z0=BOSS.z+Math.cos(BOSS.yaw)*S*0.7,y0=BOSS.y+1.7*S,N=18,on=o.t>=0.22,k=on?Math.max(0,1-(o.t-0.22)/0.58):0.25,w=(o.big?4.2:2.4)*k;     // 해고 통보: 붉은 빛줄기
+      for(let i=1;i<=N;i++){const u=i/N,j=on?Math.sin(now*50+i*2.1)*w*0.25:0;pushShape(mg,i%2?SPHERE:ICO,x0+(o.tx-x0)*u+j,y0+(o.ty-y0)*u,z0+(o.tz-z0)*u-j,w,w,w,i,i%3===0?[1,0.8,0.6]:[1,0.14,0.1],1)}
+      if(on){const r2=(o.big?13:7.5)*k*(1+0.2*Math.sin(now*40));pushShape(mg,ICO,o.tx,o.ty,o.tz,r2,r2,r2,now*6,[1,0.2,0.12],1);pushShape(mg,CUBE,o.tx,o.ty+r2*3,o.tz,w*0.5,r2*6,w*0.5,0,[1,0.5,0.35],1)}
+      continue}
+    if(o.k==='limo'){const s=o.s,r=Math.atan2(o.dz,o.dx),px=-o.dz,pz=o.dx,gy=groundAt(o.x,o.z)+Math.abs(Math.sin(o.t*26))*0.25*s,BK=[0.05,0.05,0.07],CH=[0.78,0.8,0.84];
+      const Q=(sh,f,p,y,sx,sy,sz,c,gl)=>pushShape(gl?mg:m,sh,o.x+o.dx*f*s+px*p*s,gy+y*s,o.z+o.dz*f*s+pz*p*s,sx*s,sy*s,sz*s,r,c,gl?1:0);
+      Q(CUBE,0,0,2.3,38,2.6,9,BK);Q(CUBE,-1,0,4.5,25,1.9,9.15,[0.3,0.44,0.62]);Q(CUBE,-1,0,5.7,26,0.7,8.6,BK);                        // 긴 몸통 · 창문 띠 · 지붕
+      for(const f of [-9,-1,7])Q(CUBE,f,0,4.5,0.9,2,9.2,BK);                                                                    // 창문 기둥
+      Q(CUBE,0,0,1.5,38.2,0.35,9.2,CH);Q(CUBE,19.2,0,2.2,0.5,1.6,5.5,CH);Q(CUBE,19.3,0,1.1,0.9,0.7,9.4,CH);Q(CUBE,-19.3,0,1.1,0.9,0.7,9.4,CH);   // 크롬 띠 · 그릴 · 범퍼
+      for(const p of [-3.3,3.3]){Q(CUBE,19.25,p,2.5,0.5,0.9,1.6,[1,0.96,0.75],1);Q(CUBE,-19.25,p,2.6,0.4,0.8,1.8,[1,0.15,0.1],1)}                      // 전조등 · 후미등
+      for(const f of [-13,13])for(const p of [-4.4,4.4]){Q(SPHERE,f,p,1.6,1.7,1.7,0.8,[0.08,0.08,0.09]);Q(SPHERE,f,p*1.06,1.6,0.9,0.9,0.5,CH)}        // 바퀴
+      Q(CUBE,18,3.6,4.6,0.15,2.2,0.15,CH);Q(CUBE,17.2,3.6,5.3,1.5,0.9,0.12,[0.9,0.2,0.15]);                                                             // 깃발
+      continue}}}
+// 10. 해고 통보: 손가락으로 가리킨 건물에 붉은 빛이 꽂힘 (변신 중엔 옆 건물 2채도)
+function kaiFire(h){if(!kaiOK()||!kaiCool('cHurl',900))return false;const big=BOSS.big>0,S=BOSS.S,T=[{x:h.x,z:h.z,b:h.b&&h.b.alive?h.b:null}];kaiFace(h.x,h.z);BOSS.flinch=0.5;
+  if(big){const c=[];forBuildingsNear(h.x,h.z,170,b=>{if(b.alive&&!b.lifted&&b!==T[0].b&&!eSmall(b))c.push([Math.hypot(b.cx-h.x,b.cz-h.z),b])});c.sort((a,b)=>a[0]-b[0]);for(const q of c.slice(0,2))T.push({x:q[1].cx,z:q[1].cz,b:q[1]})}
+  T.forEach((q,i)=>{const g=groundAt(q.x,q.z);KOBJ.push({k:'fire',tx:q.x,tz:q.z,ty:q.b?q.b.base+Math.min(q.b.h,Math.max(6,q.b.h*0.5)):g+2,b:q.b,t:-i*0.16,hit:false,big})});
+  sfx(4,0.3);const w=pickL(['넌 해고야!','내일부터 나오지 마!','짐 싸!','자네, 책상 빼!']);floatText(BOSS.x,BOSS.y+2.8*S,BOSS.z,w,'boom',1.3);bossSay(w,3);return true}
+function kaiFireHit(o){const big=o.big,R=big?46:26,x=o.tx,z=o.tz,g=groundAt(x,z);
+  forBuildingsNear(x,z,R+24,b=>{if(!b.alive||b.lifted)return;const d=distToBuilding(b,x,z);if(d>R)return;
+    if(b===o.b||d<R*0.35){if(eSmall(b)){killBuilding(b);return}if(b.h0<(big?120:50)){kaiLow(b,b.cx,b.cz,Math.sqrt(b.area)*0.8+8,30,99);if(b.alive)killBuilding(b);return}kaiLow(b,b.cx,b.cz,Math.sqrt(b.area)*0.8+8,big?19:13.5,big?9:6)}else kaiLow(b,x,z,R,big?9:5.5,3)});
+  forTreesNear(x,z,R,t=>{if(t.alive&&Math.hypot(t.x-x,t.z-z)<R)killTree(t)});if(CLIENT)clientHitAt(x,g+2,z,R,6);
+  boom3(x,o.ty,z,big?40:22);ring(x,g+1,z,R*1.5,[1,0.2,0.15]);later(0.12,()=>ring(x,groundAt(x,z)+1,z,R,[1,0.55,0.4]));kaiPapers(x,o.ty,z,big?18:10,big?22:14);kaiDust(x,z,big?24:12,big?36:22);
+  for(let k=0;k<fxN(big?24:12,5);k++){const a=Math.random()*6.283,v=eRnd(8,big?46:28);spawn(x,o.ty,z,Math.cos(a)*v,eRnd(6,big?44:28),Math.sin(a)*v,eRnd(0.6,1.6),[1,0.3,0.15],eRnd(0.4,0.9),1)}
+  flashScreen(big?0.3:0.18,'#ffb0a0');cam.shake=Math.max(cam.shake,big?10:6);hitStop(big?0.08:0.05);sfxBoom(big?1:0.7);sfx(big?24:12,0.7);floatText(x,o.ty+(big?34:18),z,'해 고 !','boom',1.4)}
+function kaiSkillsUpdate(K,dt,big,S,g,now){kaiObjUpdate(dt,now);
+  if(K.state==='spin'){K.spin-=dt;K.yaw+=dt*24;K.y=g;const dx=K.tx-K.x,dz=K.tz-K.z,d=Math.hypot(dx,dz);if(d>2){const mv=Math.min((big?74:56)*dt,d);K.x+=dx/d*mv;K.z+=dz/d*mv}
+    K.acc+=dt;if(K.acc>0.1){K.acc=0;const R=S*(big?2.3:3.1);
+      forBuildingsNear(K.x,K.z,R+14,b=>{if(!b.alive||b.lifted||distToBuilding(b,K.x,K.z)>R)return;if(now-(K.hits.get(b)||0)<260)return;K.hits.set(b,now);kaiSmashB(b,K.x,K.z,true);sfxBoom(0.25)});
+      forTreesNear(K.x,K.z,R,t=>{if(t.alive&&Math.hypot(t.x-K.x,t.z-K.z)<R)killTree(t)});if(CLIENT)clientHitAt(K.x,g+S,K.z,R,3);kaiDust(K.x,K.z,big?8:4,big?30:16);cam.shake=Math.max(cam.shake,big?4:2)}
+    K.flinch=0.2;if(K.spin<=0){K.state='idle';bossSay(pickL(['어지럽다…','세상이 돈다…']),0);const R=S*(big?3.2:4.6);
+      forBuildingsNear(K.x,K.z,R+20,b=>{if(!b.alive||b.lifted)return;const d=distToBuilding(b,K.x,K.z);if(d<=R)kaiSmashB(b,K.x,K.z,d<R*0.6)});
+      forTreesNear(K.x,K.z,R,t=>{if(t.alive&&Math.hypot(t.x-K.x,t.z-K.z)<R)killTree(t)});ring(K.x,g+1,K.z,R*1.3,[0.95,0.9,0.75]);later(0.12,()=>{if(BOSS&&BOSS.kai)ring(BOSS.x,groundAt(BOSS.x,BOSS.z)+1,BOSS.z,R*0.8,[1,0.7,0.4])});
+      kaiDust(K.x,K.z,big?40:20,big?44:26);boom3(K.x,g+S,K.z,big?34:16);cam.shake=Math.max(cam.shake,big?10:5.5);hitStop(0.05);sfxBoom(big?0.9:0.6);floatText(K.x,g+S*3,K.z,'끼이익— 쾅!','boom',1.1)}}
+  for(let i=KBALLS.length-1;i>=0;i--){const q=KBALLS[i],sp=q.v*dt;q.x+=q.dx*sp;q.z+=q.dz*sp;q.left-=sp;q.t+=dt;const gy=groundAt(q.x,q.z);q.y=gy+q.r+Math.abs(Math.sin(q.t*5.5))*q.r*2.2;   // 골프공
+    q.acc+=dt;if(q.acc>0.045){q.acc=0;
+      forBuildingsNear(q.x,q.z,q.r+14,b=>{if(!b.alive||b.lifted||q.hits.has(b)||distToBuilding(b,q.x,q.z)>q.r*1.7)return;q.hits.add(b);
+        if(eSmall(b)||b.area<220&&b.h0<15){killBuilding(b)}else{const d=b.det||ensureDet(b),nf=Math.min(d.F,Math.ceil(q.r*4/d.fh)+1);for(let f=0;f<nf;f++){if(!b.alive||!b.det)break;structDamage(b,q.x,b.base+d.fy[f]+d.fh*0.5,q.z,q.r*2.8,q.r>8?10:7.5,{floors:[f]})}}
+        boom3(q.x,gy+q.r,q.z,q.r*2);sfxBoom(0.3);q.v*=0.93});
+      forTreesNear(q.x,q.z,q.r*1.2,t=>{if(t.alive&&Math.hypot(t.x-q.x,t.z-q.z)<q.r*1.2)killTree(t)});
+      if(Math.abs(Math.sin(q.t*5.5))<0.25)kaiDust(q.x,q.z,3,12)}
+    if(q.left<=0){KBALLS.splice(i,1);kaiDust(q.x,q.z,8,16)}}}
+function cof(c){const l=(c[0]+c[1]+c[2])/3;return l>0.85?[0.94,0.87,0.72]:[0.2+l*0.62,0.11+l*0.42,0.04+l*0.24]}   // 파도 색 → 믹스커피 색
+function drawKaiSkills(m,mg,S){const now=performance.now()/1000;drawKaiObj(m,mg);
+  if(BOSS.state==='spin'&&fxOK(20)){const x=BOSS.x,z=BOSS.z,y=BOSS.y,w=BOSS.yaw,fx=-Math.sin(w),fz=Math.cos(w),rx=Math.cos(w),rz=Math.sin(w),LE=[0.1,0.09,0.1],CH=[0.76,0.78,0.82];   // 대표 의자 (검은 가죽 + 크롬 다리)
+    for(let i=0;i<5;i++){const a=w+i*1.2566;pushShape(m,CUBE,x+Math.cos(a)*S*0.55,y+S*0.1,z+Math.sin(a)*S*0.55,S*1.1,S*0.12,S*0.16,a,CH,0);pushShape(m,SPHERE,x+Math.cos(a)*S*1.1,y+S*0.12,z+Math.sin(a)*S*1.1,S*0.15,S*0.15,S*0.15,0,[0.08,0.08,0.09],0)}
+    pushShape(m,CUBE,x,y+S*0.4,z,S*0.2,S*0.6,S*0.2,w,CH,0);pushShape(m,CUBE,x,y+S*0.74,z,S*1.7,S*0.26,S*1.6,w,LE,0);
+    pushShape(m,CUBE,x-fx*S*0.8,y+S*1.85,z-fz*S*0.8,S*1.7,S*2.2,S*0.28,w,LE,0);pushShape(m,CUBE,x-fx*S*0.83,y+S*3.1,z-fz*S*0.83,S*1.1,S*0.5,S*0.3,w,LE,0);
+    for(let q=0;q<3;q++)pushShape(m,CUBE,x-fx*S*0.64,y+S*(1.25+q*0.55),z-fz*S*0.64,S*1.5,S*0.05,S*0.04,w,[0.3,0.28,0.3],0);                                          // 등받이 누빔 줄
+    for(const q of [-1,1]){pushShape(m,CUBE,x+rx*q*S*0.92-fx*S*0.1,y+S*1.3,z+rz*q*S*0.92-fz*S*0.1,S*0.2,S*0.16,S*1.2,w,LE,0);pushShape(m,CUBE,x+rx*q*S*0.92+fx*S*0.3,y+S*1.05,z+rz*q*S*0.92+fz*S*0.3,S*0.12,S*0.5,S*0.12,w,CH,0)}}
+  for(const q of KBALLS){if(!fxOK(8))break;pushShape(m,SPHERE,q.x,q.y,q.z,q.r,q.r,q.r,q.t*6,[0.96,0.96,0.94],0);                                // 골프공 + 움푹한 무늬
+    for(let i=0;i<6;i++){const a=i*1.047+q.t*7,b2=i%2?0.5:-0.5;pushShape(m,CUBE,q.x+Math.cos(a)*q.r*0.82*Math.cos(b2),q.y+Math.sin(b2)*q.r*0.82,q.z+Math.sin(a)*q.r*0.82*Math.cos(b2),q.r*0.24,q.r*0.24,q.r*0.24,a,[0.78,0.78,0.76],0)}}
+  if(BOSS.state==='spin'&&fxOK(14))for(let i=0;i<12;i++){const a=i*0.5236-now*9,rr=S*(1.7+0.25*Math.sin(now*7+i));pushShape(m,CUBE,BOSS.x+Math.cos(a)*rr,BOSS.y+S*(0.5+0.12*i),BOSS.z+Math.sin(a)*rr,S*0.22,S*0.1,S*0.5,a+1.5708,i%2?[0.72,0.66,0.56]:[0.9,0.88,0.84],0)}}   // 도는 바람 줄
+// ---- 부수기 ----
+// 건물 하나를 사장님 키만큼 부숨. strong=주먹·내리찍기 한가운데
+function kaiSmashB(b,x,z,strong){if(!b.alive||b.lifted)return;const big=BOSS.big>0;
+  if(eSmall(b)||(!big&&strong&&b.area<1000&&b.h0<40)||(!big&&b.area<300&&b.h0<16)||(big&&(b.h0<55||strong))){killBuilding(b);return}
+  const d=b.det||ensureDet(b),nf=Math.min(d.F,Math.max(2,Math.ceil(BOSS.S*(big?2.2:3.2)/d.fh)));
+  if(big){let R=0;for(const p of b.pts)R=Math.max(R,Math.hypot(p[0]-b.cx,p[1]-b.cz));R=R/0.6+3;
+    for(let f=0;f<nf;f++){if(!b.alive||!b.det)break;structDamage(b,b.cx,b.base+d.fy[f]+d.fh*0.5,b.cz,R,13,{floors:[f]})}}
+  else for(let f=0;f<nf;f++){if(!b.alive||!b.det)break;structDamage(b,x,b.base+d.fy[f]+d.fh*0.5,z,strong?28:17,strong?11:5,{floors:[f]})}}
+function kaiDust(x,z,n,sp){const g=groundAt(x,z);for(let k=0;k<fxN(n,3);k++){const a=Math.random()*6.283,v=eRnd(sp*0.4,sp);spawn(x+Math.cos(a)*2,g+1,z+Math.sin(a)*2,Math.cos(a)*v,eRnd(2,sp*0.5),Math.sin(a)*v,eRnd(1.2,3),[0.7,0.64,0.54],eRnd(0.8,1.4),3)}}
+// 내리찍기: 둘레 건물을 한꺼번에
+function kaiSlam(x,z){const big=BOSS.big>0,R=big?80:48,g=groundAt(x,z);
+  carve(x,z,R*0.38,big?9:3);
+  forBuildingsNear(x,z,R+20,b=>{if(!b.alive||b.lifted)return;const d=distToBuilding(b,x,z);if(d>R)return;kaiSmashB(b,x,z,d<R*0.45)});
+  forTreesNear(x,z,R,t=>{if(t.alive&&Math.hypot(t.x-x,t.z-z)<R)killTree(t)});if(CLIENT)clientHitAt(x,g+2,z,R,6);
+  if(big)shock={x,z,r:10,max:R*2,id:Math.random()};
+  ring(x,g+1,z,R*1.4,[0.9,0.8,0.6]);kaiDust(x,z,big?46:18,big?44:22);boom3(x,g+3,z,big?40:14);
+  cam.shake=Math.max(cam.shake,big?11:5);hitStop(big?0.1:0.04);sfxBoom(big?1:0.6);sfx(big?24:10,big?1.2:0.5);floatText(x,g+(big?40:14),z,big?'쿠쿵!!':'쿵!','boom',1.1);bossSay(pickL(KL.hit),0)}
+// 결재판이 맞은 곳
+function kaiBlast(x,y,z,size){const big=size>6,rad=size*2.8,g=groundAt(x,z);
+  forBuildingsNear(x,z,rad+14,b=>{if(!b.alive||b.lifted||distToBuilding(b,x,z)>rad)return;if(eSmall(b)){killBuilding(b);return}
+    structDamage(b,x,clamp(y,b.base+1,b.base+Math.max(1,b.h)),z,rad+4,big?10:7.5);if(!big)eHitLow(b,x,z,rad,5,2);if(big)eHitLow(b,x,z,rad,5,3)});
+  forTreesNear(x,z,rad,t=>{if(t.alive&&Math.hypot(t.x-x,t.z-z)<rad)killTree(t)});if(CLIENT)clientHitAt(x,y,z,rad,4);
+  boom3(x,y,z,size*4);ring(x,g+1,z,rad*1.5,[0.95,0.9,0.75]);for(let k=0;k<fxN(10,4);k++)spawn(x,y,z,eRnd(-14,14),eRnd(4,20),eRnd(-14,14),eRnd(0.5,1.2),[0.97,0.96,0.9],0.9,3);   // 흩날리는 서류
+  sfxBoom(big?0.8:0.4);cam.shake=Math.max(cam.shake,big?6:2.5);hitStop(0.02)}
+// ---- 매 프레임 ----
+function kaiUpdate(dt){const K=BOSS;if(MODE!=='city')return;const big=K.big>0,now=performance.now();
+  K.S+=((big?KAI_BIG:KAI_S)-K.S)*Math.min(1,dt*4);const S=K.S,g=groundAt(K.x,K.z);
+  if(!camFly&&K.zoom>0){K.zoom-=dt;if(cam.dist>380&&!big)cam.dist+=(380-cam.dist)*Math.min(1,dt*3)}   // 등장 직후: 사장님이 잘 보이게 화면을 조금 당김
+  if(big){K.big-=dt;if(K.big<=0){K.big=0;ULT=0;sfx(12,0.8);bossSay(pickL(KL.end),3);toast(`${BT()}이 원래 크기로 돌아왔어요 — 다시 부숴서 분노를 채우세요`,2600)}}
+  else if(ULT>=1&&!K.told){K.told=true;bossSay(pickL(KL.ready),3);toast('💢 분노 게이지가 가득 찼어요 — 오른쪽 아래 [변신]을 누르세요!',3200);sfx(8,0.4)}
+  if(K.state==='run'){const dx=K.tx-K.x,dz=K.tz-K.z,d=Math.hypot(dx,dz),tb=K.tb,stopD=tb&&tb.alive?Math.sqrt(tb.area)*0.5+S*0.5:1.5;
+    if(d<=stopD){K.state='punch';K.pn=tb&&tb.alive?3:1;K.pt=0}
+    else{const mv=Math.min((big?90:72)*dt,d-stopD+0.01);K.x+=dx/d*mv;K.z+=dz/d*mv;K.yaw=Math.atan2(-dx,dz);K.y=groundAt(K.x,K.z);
+      K.step+=dt;if(K.step>(big?0.3:0.2)){K.step=0;kaiDust(K.x,K.z,big?10:3,big?26:9);if(big){cam.shake=Math.max(cam.shake,4);sfx(9,0.18);carve(K.x,K.z,7,0.8)}}
+      K.acc+=dt;if(K.acc>0.09){K.acc=0;const R=S*1.3;   // 길에 걸리는 건물: 변신 중엔 밟고 지나가고, 보통 땐 어깨로 치고 지나감
+        forBuildingsNear(K.x,K.z,R+14,b=>{if(!b.alive||b.lifted||b===tb&&!big)return;if(distToBuilding(b,K.x,K.z)>(big?R:R*0.35))return;
+          if(now-(K.hits.get(b)||0)<400)return;K.hits.set(b,now);kaiSmashB(b,K.x,K.z,false);if(big)hitStop(0.02)});
+        forTreesNear(K.x,K.z,R,t=>{if(t.alive&&Math.hypot(t.x-K.x,t.z-K.z)<R)killTree(t)});if(K.hits.size>300)K.hits.clear()}}}
+  else if(K.state==='punch'){K.y=g;K.pt-=dt;
+    if(K.pt<=0){if(K.pn<=0)K.state='idle';
+      else{K.pn--;K.pt=0.27;K.flinch=0.2;const fx=-Math.sin(K.yaw),fz=Math.cos(K.yaw),px=K.x+fx*S*1.1,pz=K.z+fz*S*1.1,tb=K.tb;   // 주먹 한 방
+        if(tb&&tb.alive)kaiSmashB(tb,px,pz,true);else carve(px,pz,S*1.1,S*0.2);
+        forBuildingsNear(px,pz,S*1.6+12,b=>{if(b.alive&&!b.lifted&&b!==tb&&distToBuilding(b,px,pz)<S*1.2)kaiSmashB(b,px,pz,false)});
+        if(CLIENT)clientHitAt(px,g+S,pz,S*1.5,4);
+        boom3(px,g+S*1.2,pz,big?28:9);kaiDust(px,pz,big?14:5,big?26:12);sfxBoom(big?0.8:0.35);cam.shake=Math.max(cam.shake,big?7:2.5);hitStop(0.03);
+        floatText(px,g+S*2.2,pz,pickL(['퍽!','쾅!','빡!']),'boom',0.7);bossSay(pickL(KL.hit),0);if(tb&&!tb.alive)K.pn=0}}}
+  else if(K.state==='jump'){const j=K.jump;j.t+=dt;const u=Math.min(1,j.t/j.T);K.x=j.x0+(j.x1-j.x0)*u;K.z=j.z0+(j.z1-j.z0)*u;
+    const y1=groundAt(j.x1,j.z1);K.y=j.y0+(y1-j.y0)*u+Math.sin(Math.PI*u)*j.h;if(u>=1){K.y=y1;K.state='idle';kaiSlam(K.x,K.z)}}
+  else if(K.state!=='spin'){K.y=K.y>g?Math.max(g,K.y-90*dt):g;   // 가만히 있을 때 (처음 등장: 하늘에서 떨어짐)
+    if(K.y===g&&!K.landed){K.landed=true;kaiDust(K.x,K.z,14,18);cam.shake=Math.max(cam.shake,4);sfxBoom(0.5);ring(K.x,g+1,K.z,30,[0.9,0.8,0.6])}
+    K.sayT-=dt;if(K.sayT<=0){K.sayT=7+Math.random()*5;bossSay(pickL(big?KL.big:KL.idle),0)}}
+  kaiSkillsUpdate(K,dt,big,S,g,now);
+  if(big&&Math.random()<0.5)spawn(K.x+eRnd(-0.3,0.3)*S,K.y+2.2*S,K.z+eRnd(-0.3,0.3)*S,eRnd(-3,3),eRnd(6,14),eRnd(-3,3),eRnd(2,4),[0.95,0.93,0.9],eRnd(0.6,1),2);   // 머리에서 나는 김
+  for(let i=KPROJ.length-1;i>=0;i--){const p=KPROJ[i];p.t+=dt;if(p.t<0)continue;const u=Math.min(1,p.t/p.T);   // 날아가는 결재판·법카·건물
+    p.x=p.x0+(p.tx-p.x0)*u;p.z=p.z0+(p.tz-p.z0)*u;p.y=p.y0+(p.ty-p.y0)*u+Math.sin(Math.PI*u)*Math.min(40,Math.hypot(p.tx-p.x0,p.tz-p.z0)*0.18);
+    if(u>=1){KPROJ.splice(i,1);kaiBlast(p.tx,p.ty,p.tz,p.size)}}
+  if(K.state!=='idle'&&!drag&&!CAMGO){const k=Math.min(1,dt*1.5);cam.tx+=(K.x-cam.tx)*k;cam.tz+=(K.z-cam.tz)*k}   // 움직일 땐 화면이 따라감 (화면을 끄는 중엔 멈춤)
+  if(CAMGO){CAMGO.t+=dt;const k=Math.min(1,dt*2.2);cam.tx+=(K.x-cam.tx)*k;cam.tz+=(K.z-cam.tz)*k;if(CAMGO.t>CAMGO.dur)CAMGO=null}}
+// ---- 그리기 (몸은 drawBoss 가 그림) ----
+function drawKaiFx(m,mg,p,S){const now=performance.now()/1000,big=BOSS.big>0,g=groundAt(p.x,p.z);
+  if(big&&fxOK(26)){const N=22,R=S*1.5;for(let i=0;i<N;i++){const a=i/N*6.283+now*1.6,x=p.x+Math.cos(a)*R,z=p.z+Math.sin(a)*R;pushShape(mg,CUBE,x,groundAt(x,z)+0.8,z,R*6.283/N*0.6,0.6,1.6,a+1.5708,[1,0.25+0.2*Math.sin(now*8+i),0.1],1)}   // 발밑 붉은 고리
+    for(let q=0;q<4;q++){const a=q*1.571+now*0.9;flame(mg,p.x+Math.cos(a)*S*1.1,g,p.z+Math.sin(a)*S*1.1,S*0.42,S*1.3,q*1.7,FLAME_FIRE)}}                                                    // 둘레 분노 불꽃
+  else if(!big&&ULT>=1&&fxOK(20))for(let q=0;q<4;q++){const a=q*1.571+now*1.4;flame(mg,p.x+Math.cos(a)*S*0.9,g,p.z+Math.sin(a)*S*0.9,S*0.3,S*0.9,q*1.7,FLAME_FIRE)}                          // 변신 준비: 작은 불꽃
+  drawKaiSkills(m,mg,S);
+  for(const k of KPROJ){if(k.t<0)continue;if(!fxOK(4))break;const s=k.size,r=k.t*14;
+    if(k.kind==='card'){pushShape(mg,CUBE,k.x,k.y,k.z,s*2.2,s*0.18,s*1.4,r,[1,0.82,0.3],1);pushShape(m,CUBE,k.x,k.y+s*0.12,k.z,s*2.2,s*0.1,s*0.3,r,[0.2,0.18,0.12],0);pushShape(mg,CUBE,k.x,k.y+s*2.5,k.z,s*0.3,s*4,s*0.3,0,[1,0.9,0.5],1);continue}   // 법인카드 + 떨어지는 빛줄기
+    if(k.kind==='bld'){const c=k.col,r2=k.t*5;pushShape(m,CUBE,k.x,k.y,k.z,s*1.7,s*2.6,s*1.7,r2,c,0);for(let q=-1;q<=1;q++)pushShape(m,CUBE,k.x,k.y+q*s*0.75,k.z,s*1.76,s*0.28,s*1.76,r2,[c[0]*0.45,c[1]*0.5,c[2]*0.6],0);continue}   // 뽑힌 건물 (창문 띠)
+    pushShape(m,CUBE,k.x,k.y,k.z,s*1.5,s*0.22,s*2.1,r,[0.45,0.3,0.18],0);pushShape(m,CUBE,k.x,k.y+s*0.14,k.z,s*1.3,s*0.1,s*1.8,r,[0.97,0.96,0.9],0);   // 결재판 + 서류
+    pushShape(m,CUBE,k.x+Math.cos(r)*0,k.y+s*0.2,k.z,s*0.6,s*0.14,s*0.2,r,[0.6,0.62,0.66],0)}}
 const WEAPONS_E=[
   {id:'termite',bid:'crew',name:'흰개미 떼',fire(h){return spawnTermites(h)}},
   {id:'herd',bid:'dozer',name:'동물 대군',hold:'line'},
@@ -1823,7 +2141,7 @@ const WEAPONS_E=[
   {id:'volcano',bid:'extrude',name:'화산',fire(h){return spawnVolcano(h)}},
   {id:'sat',bid:'crane',name:'인공위성',fire(h){return spawnSatellite(h)}},
 ];
-function WL(){return EARTH()?WEAPONS_E:WEAPONS}
+function WL(){return EARTH()?WEAPONS_E:KAI()?WEAPONS_K:WEAPONS}
 
 // ---- 성능: 화질 단계·프레임 지연에 따라 입자·도형 수를 자동으로 줄임 ----
 function fxScale(){const q=[1,0.72,0.5,0.32][Math.min(3,PERF.q||0)],lag=PERF.ema>34?Math.max(0.5,1-(PERF.ema-34)/50):1;return q*lag*(TOUCH?0.8:1)}
@@ -2135,13 +2453,13 @@ function updateWaves(dt){for(let i=WAVES.length-1;i>=0;i--){const w=WAVES[i];w.t
 // 파도(높이 34m)에 잠기는 아래층들의 기둥을 건물 폭 전체에서 한꺼번에 부러뜨림 → 낮은 건물은 완전 붕괴, 높은 건물은 아래가 쓸려 나가 주저앉음
 const TS_FLOORS=10,TS_SCORE=0.4;
 function waveWash(b,w,x,z){const d=b.det||ensureDet(b);let R=0;for(const p of b.pts)R=Math.max(R,Math.hypot(p[0]-b.cx,p[1]-b.cz));R=R/0.6+3;
-  const s0=score,nf=Math.min(d.F,TS_FLOORS);for(let f=0;f<nf;f++){if(!b.alive||!b.det)break;structDamage(b,b.cx,b.base+d.fy[f]+d.fh*0.5,b.cz,R,13,{floors:[f]})}
+  const s0=score,nf=Math.min(d.F,w.fl||TS_FLOORS);for(let f=0;f<nf;f++){if(!b.alive||!b.det)break;structDamage(b,b.cx,b.base+d.fy[f]+d.fh*0.5,b.cz,R,13,{floors:[f]})}
   score=s0+(score-s0)*TS_SCORE;   // 한 번에 통째로 무너뜨리는 만큼 점수는 낮춰서 다른 재난과 균형
   for(let k=0;k<fxN(8,3);k++)spawn(x+eRnd(-8,8),b.base+eRnd(2,20),z+eRnd(-8,8),w.dx*eRnd(14,30)+eRnd(-6,6),eRnd(6,18),w.dz*eRnd(14,30)+eRnd(-6,6),eRnd(1,2.4),Math.random()<0.7?[0.86,0.94,1]:b.col,0)}
 function drawWaves(m,mg){for(const w of WAVES){const px=-w.dz,pz=w.dx,rot=Math.atan2(w.dz,w.dx),now=performance.now()/1000,step=fxScale()<0.6?11:7,half=w.W/2,ww=step+0.8;
-  const P=(x,z,f,y,sx,sy,c,g)=>pushShape(g?mg:m,CUBE,x+w.dx*f,y,z+w.dz*f,sx,sy,ww,rot,c,g?1:0);   // f: 진행 방향 앞(+)·뒤(-) 거리
+  const P=(x,z,f,y,sx,sy,c,g)=>pushShape(g?mg:m,CUBE,x+w.dx*f,y,z+w.dz*f,sx,sy,ww,rot,w.coffee?cof(c):c,g?1:0);   // f: 진행 방향 앞(+)·뒤(-) 거리
   for(let o=-half;o<=half;o+=step){if(!fxOK(11))return;const e=o/half,x=w.x+px*o,z=w.z+pz*o,g=groundAt(x,z);
-    const H=34*w.h*(1-0.3*e*e)*(0.9+0.1*Math.sin(now*2.2+o*0.11))+Math.sin(now*3.4+o*0.23)*1.6;if(H<1)continue;   // 가운데가 높고 가장자리가 낮은 물결
+    const H=34*(w.Hk||1)*w.h*(1-0.3*e*e)*(0.9+0.1*Math.sin(now*2.2+o*0.11))+Math.sin(now*3.4+o*0.23)*1.6;if(H<1)continue;   // 가운데가 높고 가장자리가 낮은 물결
     P(x,z,-5,g+H*0.28,12,H*0.56,[0.05,0.24,0.5]);            // 아래 몸통 (짙은 남색)
     P(x,z,-2.5,g+H*0.69,8.5,H*0.28,[0.1,0.4,0.7]);           // 가운데
     P(x,z,1,g+H*0.9,6,H*0.2,[0.2,0.58,0.84]);                // 위 (앞으로 기울어짐)
@@ -2666,7 +2984,7 @@ async function loadFirm(f){
   else if(!fake&&f.tenant&&!approx)toast(f.name+'은(는) 이 건물 일부 층에 입주한 사무소예요.',3500);
   if(!fake&&approx&&!lsGet('smasharch_hq_'+f.id)&&!(HQFIX&&f.dkey==='d'+HQFIX.kid))setTimeout(()=>geoNote(true,'⚠ 이 사옥은 좌표가 근사값이라 위치가 정확하지 않을 수 있어요. 개발자가 확인 후 고칠 예정이에요.'),1800);
   else if(!fake&&f.dkey&&!B.some(b=>b.hq))setTimeout(()=>geoNote(true,'⚠ 이 주소에서 사옥 건물을 못 찾았어요. 직접 골라주시면 개발자가 확인 후 반영해요.'),1800);
-  try{const u=new URL(location.href);u.search='';if(EARTH())u.searchParams.set('mode','earth');if(f.key)u.searchParams.set('firm',f.key);else{u.searchParams.set('lat',lat.toFixed(5));u.searchParams.set('lng',lng.toFixed(5));u.searchParams.set('name',f.name)}history.replaceState(null,'',u)}catch(e){}
+  try{const u=new URL(location.href);u.search='';if(EARTH())u.searchParams.set('mode','earth');else if(KAI())u.searchParams.set('mode','boss');if(f.key)u.searchParams.set('firm',f.key);else{u.searchParams.set('lat',lat.toFixed(5));u.searchParams.set('lng',lng.toFixed(5));u.searchParams.set('name',f.name)}history.replaceState(null,'',u)}catch(e){}
 }
 
 // ---------- 회사 검색 / 모달 ----------
@@ -2708,11 +3026,11 @@ const bosSel=$('#optBossSuit');if(bosSel){bosSel.value=String(lsGet('smasharch_b
 function applyMini(){document.body.classList.toggle('mini',!!opts.mini);const el=$('#optMini');if(el)el.checked=!!opts.mini;setTimeout(layoutHUD,0)}
 function toggleMini(){opts.mini=!opts.mini;lsSet('smasharch_opts',opts);applyMini();toast(opts.mini?'간단 화면 — 필요한 버튼만 남겼어요 (랭킹·정복·공유는 설정 안에)':'기본 화면으로 돌아왔어요',2200)}
 if($('#btnMini'))$('#btnMini').onclick=toggleMini;
-if($('#btnDonate'))$('#btnDonate').onclick=()=>{closeModals();$('#mDonate').classList.add('open')};
+if($('#btnDonate'))$('#btnDonate').onclick=()=>{closeModals();$('#mDonate').classList.add('open')};if($('#brDonate'))$('#brDonate').onclick=()=>$('#btnDonate').click();
 document.querySelectorAll('#setLinks [data-go]').forEach(b=>b.onclick=()=>{closeModals();const t=$('#'+b.dataset.go);if(t)t.click()});
 document.querySelectorAll('#toolbar .tool').forEach(b=>{if(!b.title)b.title=b.textContent.trim()});
 applyMini();
-applyGM(true);document.querySelectorAll('[data-gm]').forEach(b=>b.onclick=()=>setGM(b.dataset.gm));if($('#btnGM'))$('#btnGM').onclick=()=>setGM(EARTH()?'build':'earth');
+applyGM(true);document.querySelectorAll('[data-gm]').forEach(b=>b.onclick=()=>setGM(b.dataset.gm));if($('#btnGM'))$('#btnGM').onclick=()=>setGM(EARTH()?'boss':KAI()?'build':'earth');
 
 
 // =====================================================================
@@ -2832,7 +3150,7 @@ function buildSectionModel(b,firm,others){
 function y0Bottom(st){return st[0].y0}
 
 // ---------- 진입 / 종료 ----------
-function enterSection(bArg,firmArg){if(EARTH()){toast('단면은 건축 모드에서만 할 수 있어요');return}
+function enterSection(bArg,firmArg){if(EARTH()||KAI()){toast('단면은 건축 모드에서만 할 수 있어요');return}
   if(MODE==='section'){exitSection();if(!bArg)return}
   let b=bArg||B.find(x=>x.hq);const firm=firmArg||CUR;
   if(!b){toast('사옥 건물이 지정되지 않았어요. 설정 → "사옥 건물 직접 지정"을 먼저 해주세요.',3500);return}
@@ -3463,23 +3781,23 @@ function newBossLook(first){
   else if(o===2){L.suit=[0.95,0.55,0.1];L.suitD=[0.25,0.28,0.36];L.tie=[0.95,0.55,0.1]}
   else{const c=pick([[0.55,0.82,0.95],[0.95,0.6,0.7],[0.7,0.9,0.5],[0.98,0.92,0.5]]);L.suit=c;L.suitD=[0.93,0.93,0.9];L.tie=c}
   return L}
-function bossSpawn(){const b=B.find(x=>x.hq&&x.alive);if(!b){BOSS=null;return}
+function bossSpawn(){if(KAI()){kaiSpawn();return}const b=B.find(x=>x.hq&&x.alive);if(!b){BOSS=null;return}
   const sp0=bossSpotOf(b);BOSS={b,home:b,flees:0,state:'idle',t:0,sayT:2.5,lastSay:0,lastTool:0,text:'',textT:0,stun:0,flinch:0,x:sp0.x,z:sp0.z,y:bTop(b),visited:new Set([b]),firm:CUR?CUR.name:'',yaw:0}}
 function bossFill(s){return s.replace(/\{firm\}/g,BOSS?BOSS.firm:'')}
 function bossSay(text,prio){if(!BOSS||!text)return;const now=performance.now();if((prio||0)<1&&now-BOSS.lastSay<2600)return;if((prio||0)<2&&BOSS.state==='caught')return;
   BOSS.text=bossFill(text);BOSS.textT=3.4;BOSS.lastSay=now}
 function bossHere(){if(!BOSS)return false;if(MODE==='section')return !!SEC&&SEC.b===BOSS.b;return true}
-function bossHit(kind){if(!bossHere()||BOSS.state!=='idle')return;BOSS.flinch=0.5;
+function bossHit(kind){if(!bossHere()||BOSS.kai||BOSS.state!=='idle')return;BOSS.flinch=0.5;
   const b=BOSS.b;let heavy=false;if(b.det){let a=0;for(let f=0;f<b.det.F;f++)a+=b.det.fl[f];heavy=a/b.det.F<0.6}
   if(kind==='floor')bossSay(pickL(heavy?BL().heavy:BL().floor),1);
   else bossSay(pickL(kind==='col'?BL().hitColumn:BL().hitFacade),0)}
-function bossTool(id,x,z){if(!BOSS||BOSS.state!=='idle')return;const L=BL().tools[id];if(!L)return;
+function bossTool(id,x,z){if(!BOSS||BOSS.kai||BOSS.state!=='idle')return;const L=BL().tools[id];if(!L)return;
   if(MODE==='section'){if(!bossHere())return}else if(x!=null&&Math.hypot(x-BOSS.x,z-BOSS.z)>160)return;
   const now=performance.now();if(now-BOSS.lastTool<4000)return;BOSS.lastTool=now;BOSS.flinch=0.4;bossSay(pickL(L),1)}
 // 사장님 위치(단면 모드에서는 단면 좌표)
 function bossPos(){if(MODE==='section'&&SEC&&SEC.b===BOSS.b){if(BOSS.sec==null)BOSS.sec={x:SEC.W*0.22,y:secTop(),z:SEC.D/2-2,vx:0,vy:0,out:false};return BOSS.sec}return BOSS}
-function bossScale(){return MODE==='section'?1.8:clamp(cam.dist*0.026,4,18)}   // 멀리서도 보이게 거리에 따라 키움
-function bossClick(mx,my){if(!bossHere()||BOSS.state==='jump'||BOSS.state==='caught')return false;const p=bossPos(),S=bossScale();
+function bossScale(){if(BOSS&&BOSS.kai)return BOSS.S;return MODE==='section'?1.8:clamp(cam.dist*0.026,4,18)}   // 멀리서도 보이게 거리에 따라 키움
+function bossClick(mx,my){if(!bossHere()||BOSS.kai||BOSS.state==='jump'||BOSS.state==='caught')return false;const p=bossPos(),S=bossScale();
   const a=project(p.x,p.y+0.2,p.z),c=project(p.x,p.y+2.1*S,p.z);if(!a||!c)return false;const h=Math.abs(a[1]-c[1]),w=Math.max(18,h*0.5);
   if(mx<a[0]-w||mx>a[0]+w||my<c[1]-6||my>a[1]+4)return false;
   BOSS.stun=1.4;if(MS)MS.boss++;bossSay(pickL(BL().stun),2);addScore(800);sfx(8,0.25);cam.shake=Math.max(cam.shake,2);
@@ -3506,13 +3824,15 @@ function bossLand(){const b=BOSS.jump.b;BOSS.b=b;BOSS.state='idle';BOSS.sayT=6;
   floatText(BOSS.x,top+14,BOSS.z,`${BOSS.firm} 대표 취임`,'cad',2.2);toast(`${BT()}이 ${BOSS.firm}에 새로 자리 잡았어요 · 도주 ${n}회 · +${fmt(bonus)}`,2600)}
 function bossCaught(){BOSS.state='caught';BOSS.t=0;const bonus=50000+20000*BOSS.flees;addScore(bonus);
   bossSay(pickL(BL().caught),3);floatText(BOSS.x,BOSS.y+12,BOSS.z,'사장님 검거!','count',2.6);
-  toast(`더 도망칠 곳이 없어요 — ${BT()} 검거! 도주 ${BOSS.flees}회 · +${fmt(bonus)}`,4000);sfx(20,1);flashScreen(0.3,'#fff3c4');boomArm()}
+  toast(`더 도망칠 곳이 없어요 — ${BT()} 검거! 도주 ${BOSS.flees}회 · +${fmt(bonus)}`,4000);sfx(20,1);flashScreen(0.3,'#fff3c4');boomArm();
+  later(5.5,()=>{if(!KAI())toast('👔 이번엔 내가 사장님이 되어볼까요? 모드를 [사장님]으로 바꾸면 직접 부수고 변신할 수 있어요',5200)})}
 // 발주처가 새로 지은 건물로 사장님 재고용 (검거 상태에서도 풀려나 점프)
 function bossRehire(b){if(!BOSS)return;const y0=BOSS.y,d=Math.hypot(b.cx-BOSS.x,b.cz-BOSS.z);
   BOSS.rehire=true;BOSS.flees=0;BOSS.visited=new Set([b]);BOSS.stun=0;BOSS.lastSay=0;
   BOSS.state='jump';BOSS.jump={t:0,T:1.0+d/240,x0:BOSS.x,y0,z0:BOSS.z,b,h:Math.max(25,d*0.4)};CAMGO={t:0,dur:BOSS.jump.T+0.6,follow:true}}
 function bossUpdate(dt){if(!BOSS)return;const S=bossScale();
   BOSS.t+=dt;if(BOSS.textT>0)BOSS.textT-=dt;if(BOSS.stun>0)BOSS.stun-=dt;if(BOSS.flinch>0)BOSS.flinch-=dt;
+  if(BOSS.kai){kaiUpdate(dt);return}
   if(MODE==='section'){bossSecUpdate(dt);return}
   if(MODE!=='city')return;
   const b=BOSS.b;
@@ -3541,14 +3861,14 @@ function bossSecUpdate(dt){if(!SEC||SEC.b!==BOSS.b)return;const p=bossPos();
 function drawBoss(m,mg){if(!bossHere())return;const p=bossPos();if(MODE==='section'&&p.out&&Math.abs(p.x)>SEC.W/2+40)return;
   const S=bossScale(),now=performance.now()/1000,st=BOSS.state;
   const L=BOSS.look||(BOSS.look=newBossLook(true)),SUIT=L.suit,SUIT_D=L.suitD,TIE=L.tie,HAIR=L.hc;
-  const dx=eye[0]-p.x,dz=eye[2]-p.z;let r=Math.atan2(-dx,dz);if(BOSS.stun>0)r+=now*12;
+  const dx=eye[0]-p.x,dz=eye[2]-p.z;let r=Math.atan2(-dx,dz);if(BOSS.stun>0)r+=now*12;if(BOSS.kai)r=BOSS.yaw;
   const cr=Math.cos(r),sr=Math.sin(r),sh=BOSS.flinch>0?(Math.random()-.5)*0.08*S:0;
   const P=(lx,ly,lz,sx,sy,sz,c,shape)=>pushShape(m,shape||CUBE,p.x+(lx*cr-lz*sr)*S+sh,p.y+ly*S,p.z+(lx*sr+lz*cr)*S,sx*S,sy*S,sz*S,r,c,0);
   const sit=st==='caught',jump=st==='jump',talk=BOSS.textT>0;
   const bob=sit?0:Math.sin(now*3)*0.02;
   if(sit){P(0.13,0.15,0.3,0.15,0.15,0.6,SUIT_D);P(-0.13,0.15,0.3,0.15,0.15,0.6,SUIT_D)}
-  else{const lg=jump?0.35:0;P(0.13+lg*0.3,0.42,0,0.17,0.8,0.18,SUIT_D);P(-0.13-lg*0.3,0.42,0,0.17,0.8,0.18,SUIT_D);
-    P(0.13+lg*0.3,0.04,0.05,0.19,0.08,0.3,[0.08,0.08,0.08]);P(-0.13-lg*0.3,0.04,0.05,0.19,0.08,0.3,[0.08,0.08,0.08])}
+  else{const lg=jump?0.35:0,rs=BOSS.kai&&st==='run'?Math.sin(now*(BOSS.big>0?10:16))*0.32:0;P(0.13+lg*0.3,0.42,rs,0.17,0.8,0.18,SUIT_D);P(-0.13-lg*0.3,0.42,-rs,0.17,0.8,0.18,SUIT_D);
+    P(0.13+lg*0.3,0.04+Math.max(0,rs)*0.3,0.05+rs,0.19,0.08,0.3,[0.08,0.08,0.08]);P(-0.13-lg*0.3,0.04+Math.max(0,-rs)*0.3,0.05-rs,0.19,0.08,0.3,[0.08,0.08,0.08])}
   const by=(sit?-0.5:0)+bob;
   P(0,1.18+by,0,0.66,0.78,0.42,SUIT);P(0,1.1+by,0.12,0.36,0.34,0.3,SUIT,SPHERE);   // 몸통 · 배
   if(L.o===0){P(0,1.4+by,0.215,0.18,0.3,0.02,[0.97,0.97,0.96]);P(0,1.35+by,0.23,0.07,0.3,0.02,TIE)}else if(L.o===2){P(0,1.3+by,0.23,0.5,0.06,0.02,[0.95,0.95,0.7])}else if(L.o===3){P(0,1.5+by,0.215,0.2,0.1,0.02,[1,1,1])}else if(L.o===4){P(0.09,1.2+by,0.275,0.15,0.15,0.02,[0.80,0.66,0.34]);P(-0.1,1.03+by,0.262,0.13,0.12,0.02,[0.30,0.40,0.58]);P(0.2,1.44+by,0.215,0.15,0.14,0.02,[0.70,0.30,0.26]);P(-0.2,1.4+by,0.215,0.12,0.12,0.02,[0.36,0.50,0.34]);P(0,0.83+by,0,0.7,0.06,0.46,[0.82,0.72,0.44]);P(0.22,0.72+by,0.2,0.05,0.2,0.05,[0.82,0.72,0.44])}   // 셔츠 · 넥타이 (정장만) / 작업복 반사띠 / 골프 칼라
@@ -3572,6 +3892,7 @@ function drawBoss(m,mg){if(!bossHere())return;const p=bossPos();if(MODE==='secti
    else if(L.o===3){P(0,2.07+by,0.04,0.46,0.08,0.46,[1,1,1]);P(0,2.04+by,0.3,0.4,0.02,0.2,[1,1,1])}   // 골프 모자
   }
   P(0.1,1.86+by,0.21,0.14,0.08,0.02,[0.12,0.1,0.08]);P(-0.1,1.86+by,0.21,0.14,0.08,0.02,[0.12,0.1,0.08]);P(0,1.87+by,0.21,0.06,0.02,0.02,[0.12,0.1,0.08]);
+  if(BOSS.kai){if(BOSS.big>0)for(const q of[-1,1])pushShape(mg,CUBE,p.x+(0.1*q*cr-0.225*sr)*S,p.y+(1.86+by)*S,p.z+(0.1*q*sr+0.225*cr)*S,0.1*S,0.05*S,0.02*S,r,[1,0.16,0.05],1);drawKaiFx(m,mg,p,S)}
   P(0,1.71+by,0.21,talk?0.12:0.14,talk?0.05+Math.abs(Math.sin(now*14))*0.04:0.02,0.02,[0.45,0.12,0.1]);
   if(BOSS.stun>0)for(let k=0;k<4;k++){const a=now*5+k*Math.PI/2;pushShape(mg,CUBE,p.x+Math.cos(a)*0.35*S,p.y+(2.2+by)*S,p.z+Math.sin(a)*0.35*S,0.09*S,0.09*S,0.09*S,a,[1,0.9,0.25],1)}
 }
@@ -3581,7 +3902,7 @@ function drawBossUI(){const ui=$('#bossUI'),ar=$('#bossArrow'),bx=$('#bossBox');
   const p=bossPos(),S=bossScale(),q=project(p.x,p.y+2.35*S,p.z);
   bx.style.display=MODE==='city'?'':'none';
   {const tg=ui.querySelector('.tag'),nm=bossName()||bossTitle();if(tg.textContent!==nm)tg.textContent=nm;const an=ar.lastChild;if(an&&an.nodeType===3&&an.textContent!==nm)an.textContent=nm}
-  const t=`${BOOM.round?BOOM.round+'차 호황 · ':''}${BT()} · ${BOSS.state==='caught'?(BOOM.ship?'비행선 도착 중!':BOOM.need?`검거됨 · 호황까지 ${fmt(boomLeft())}점`:'검거됨'):BOSS.firm}${BOSS.flees&&BOSS.state!=='caught'?` · 도주 ${BOSS.flees}회`:''}`;if(bx.textContent!==t)bx.textContent=t;
+  const t=BOSS.kai?kaiBoxText():`${BOOM.round?BOOM.round+'차 호황 · ':''}${BT()} · ${BOSS.state==='caught'?(BOOM.ship?'비행선 도착 중!':BOOM.need?`검거됨 · 호황까지 ${fmt(boomLeft())}점`:'검거됨'):BOSS.firm}${BOSS.flees&&BOSS.state!=='caught'?` · 도주 ${BOSS.flees}회`:''}`;if(bx.textContent!==t)bx.textContent=t;
   const W=innerWidth,H=innerHeight,f=project(p.x,p.y+0.5*S,p.z);const on=q&&f&&f[0]>10&&f[0]<W-10&&f[1]>10&&f[1]<H-60;
   if(on){ui.style.display='';ui.style.left=q[0]+'px';ui.style.top=Math.max(q[1],100)+'px';const bb=ui.querySelector('.bubble');
     const txt=BOSS.textT>0?BOSS.text:'';if(bb.textContent!==txt)bb.textContent=txt;bb.style.display=txt?'':'none';ar.style.display='none'}
@@ -3599,7 +3920,7 @@ function bossGo(){if(!BOSS||MODE!=='city')return;if(BOOM.ship){BOOM.ship.follow=
 const STOP_N=10,STOP_WIN=3,STOP_SEC=3,STOP_IMMUNE=15;
 let STOP={log:[],until:0,immune:0,grace:0,x:0,z:0,nag:0};
 function stopOn(){return MODE==='city'&&(performance.now()<STOP.until||!!(CH&&CH.over))}
-function stopNote(b){if(MODE!=='city'||!b||CH)return;   // 오늘의 사옥(CH)에서는 구청 공사중지 없음
+function stopNote(b){if(MODE!=='city'||!b||CH||KAI())return;   // 오늘의 사옥(CH)에서는 구청 공사중지 없음
   const now=performance.now();if(now<STOP.grace||now<STOP.until)return;
   STOP.log.push({t:now,x:b.cx,z:b.cz});while(STOP.log.length&&now-STOP.log[0].t>STOP_WIN*1000)STOP.log.shift();
   if(STOP.log.length>=(EARTH()?STOP_N*2:STOP_N)&&now>STOP.immune){let x=0,z=0;for(const k of STOP.log){x+=k.x;z+=k.z}STOP.x=x/STOP.log.length;STOP.z=z/STOP.log.length;STOP.log=[];
@@ -4037,14 +4358,14 @@ function renderRank(d){RANK_LAST=d;
 let RANK_TAB='firms';
 function rankTab(t){RANK_TAB=t;document.querySelectorAll('#rankTabs button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));document.querySelectorAll('#rankBody [data-t]').forEach(e=>e.hidden=e.dataset.t!==t)}
 document.querySelectorAll('#rankTabs button').forEach(b=>b.onclick=()=>rankTab(b.dataset.t));
-async function openRank(){
+async function openRank(){if(KAI()){toast('👔 사장님 모드는 랭킹이 없어요 — 건축·재난 모드에서 도전해 보세요',3000);return}
   $('#mRank').classList.add('open');
   rankLockUI();
   $('#rankMine').textContent=CUR?`${CUR.name} · 현재 ${fmt(score)}점`:'';
   const u=rankUrl();
   if(!u){$('#rankBody').innerHTML='<p class="small">게임 서버가 아직 연결되지 않았어요. config.js 의 API_URL(또는 설정 → "게임 서버 주소")에 Apps Script 웹앱 주소를 넣어주세요.</p>';return}
   $('#rankBody').innerHTML='<p class="small">불러오는 중…</p>';
-  try{const r=await fetchT(u+(u.includes('?')?'&':'?')+'action=top&mode='+GM,{},15000);renderRank(r)}
+  try{const r=await fetchT(u+(u.includes('?')?'&':'?')+'action=top&mode='+rankMode(),{},15000);renderRank(r)}
   catch(e){$('#rankBody').innerHTML='<p class="small">랭킹을 불러오지 못했어요. 서버 주소와 배포 설정(액세스: 모든 사용자)을 확인해주세요.</p>'}
 }
 function rankLockUI(){const inp=$('#rankNick'),btn=$('#rankSubmit');const lock=RANK_LOCK&&RANK_LOCK.gid===GAME_ID;
@@ -4052,7 +4373,7 @@ function rankLockUI(){const inp=$('#rankNick'),btn=$('#rankSubmit');const lock=R
   inp.title=lock?'이번 판은 이 닉네임으로 등록됐어요. 다른 회사를 고르거나 [전부 복구]하면 새 판이에요':'';
   btn.textContent=lock?'점수 갱신':'내 점수 등록';
   const m=$('#rankLockMsg');if(m)m.textContent=lock?`이번 판은 “${RANK_LOCK.nick}”(으)로 ${fmt(RANK_LOCK.score)}점 등록됨 · 닉네임은 바꿀 수 없고, 점수가 오르면 [점수 갱신]으로 올라가요`:''}
-async function submitRank(){
+async function submitRank(){if(KAI()){toast('👔 사장님 모드 점수는 랭킹에 올라가지 않아요',2600);return}
   const u=rankUrl();if(!u){toast('랭킹 서버 주소를 먼저 설정해주세요');return}
   if(!CUR||score<1){toast('먼저 뭔가를 부숴주세요');return}
   if(!GAME_ID)newGame();const gid=GAME_ID,sc0=Math.floor(score);
@@ -4198,7 +4519,7 @@ function dailyCard(){const el=$('#dailyCard');if(!el)return;const d=DAILY;
   $('#dcGo').onclick=()=>dailyStart()}
 function dailyFirm(){const d=DAILY;if(!d)return null;const i=FKI.get(+d.kid);if(i!=null)return firmFromData(i);
   return{key:'d'+d.kid,dkey:'d'+d.kid,name:d.name,addr:d.addr||'',lat:d.lat,lng:d.lng,kind:d.kind||'',q:addrQueries(d.addr||d.name)}}
-async function dailyStart(){if(CH&&CH.on)return;if(EARTH()){setGM('build',true);toast('🏗 오늘의 사옥은 건축 모드에서만 도전할 수 있어요 — 건축 모드로 바꿔 시작해요',3200)}
+async function dailyStart(){if(CH&&CH.on)return;if(EARTH()||KAI()){setGM('build',true);toast('🏗 오늘의 사옥은 건축 모드에서만 도전할 수 있어요 — 건축 모드로 바꿔 시작해요',3200)}
   if(!DAILY)await loadDaily(true);const f=dailyFirm();if(!f){toast('오늘의 사옥을 불러오지 못했어요'+(DAILY_ERR?' — '+DAILY_ERR:' — 잠시 뒤 다시'),4500);return}
   if(MODE==='section')exitSection();CH={pending:true,date:DAILY.date,kid:+DAILY.kid};await loadFirm(f);
   if(!CH||!CH.pending)return;const hq=B.find(b=>b.hq&&b.alive);if(!hq){toast('오늘의 사옥 건물을 찾지 못했어요',3000);CH=null;return}
@@ -4454,7 +4775,7 @@ let RANK_LAST=null,SHARE_MODE='result',SHARE_IMG=null,SHARE_SHOT=null,KAKAO_OK=f
 const SITE_URL=(window.SMASH_CONFIG&&window.SMASH_CONFIG.SITE_URL)||'https://ccct12.github.io/smash-arch/';
 function shareBase(){try{const u=new URL(location.href);if(/^https?:$/.test(u.protocol)){u.search='';u.hash='';return u}}catch(e){}return new URL(SITE_URL)}
 function shareUrl(withVs){const u=shareBase();
-  if(EARTH())u.searchParams.set('mode','earth');
+  if(EARTH())u.searchParams.set('mode','earth');else if(KAI())u.searchParams.set('mode','boss');
   if(SHARE_MODE==='result'&&CUR){if(CUR.key)u.searchParams.set('firm',CUR.key);else if(CUR.lat){u.searchParams.set('lat',(+CUR.lat).toFixed(5));u.searchParams.set('lng',(+CUR.lng).toFixed(5));u.searchParams.set('name',CUR.name)}
     if(withVs&&score>=1)u.searchParams.set('vs',Math.floor(score))}
   return u.toString()}
@@ -4530,7 +4851,7 @@ function shareRefresh(){const tall=SHARE_FMT==='tall',cv=tall?makeCardTall(SHARE
   document.querySelectorAll('#shTabs button').forEach(b=>b.classList.toggle('on',b.dataset.m===SHARE_MODE));
   $('#shNative').style.display=navigator.share?'':'none';$('#shCopyImg').style.display=window.ClipboardItem&&navigator.clipboard&&navigator.clipboard.write?'':'none'}
 async function openShare(mode){SHARE_MODE=mode||'result';closeModals();
-  if(SHARE_MODE==='rank'&&!RANK_LAST){const u=rankUrl();if(u){try{RANK_LAST=await fetchT(u+(u.includes('?')?'&':'?')+'action=top&mode='+GM,{},15000)}catch(e){}}}
+  if(SHARE_MODE==='rank'&&!RANK_LAST){const u=rankUrl();if(u){try{RANK_LAST=await fetchT(u+(u.includes('?')?'&':'?')+'action=top&mode='+rankMode(),{},15000)}catch(e){}}}
   SHARE_SHOT=null;SHOT_CB=c=>{SHARE_SHOT=c;shareRefresh();$('#mShare').classList.add('open')};
   setTimeout(()=>{if(SHOT_CB){SHOT_CB=null;shareRefresh();$('#mShare').classList.add('open')}},600)}
 function shareBlob(){return new Promise(r=>{if(!SHARE_IMG)return r(null);SHARE_IMG.toBlob(b=>r(b),'image/png')})}
@@ -4626,7 +4947,12 @@ function layoutHUD(){const tb=$('#toolbar');if(!tb)return;const r=tb.getBounding
   $('#hint').style.bottom=(gap+(C?5:8))+'px';$('#cmdbar').style.bottom=(gap+(C?30:40))+'px';
   const u=$('#ult');const overlap=!C&&r.right>innerWidth-96;u.style.bottom=overlap?(gap+10)+'px':'';
   $('#btnDet').style.bottom=C?(gap+8)+'px':'';
-  const c=$('#credit');c.style.bottom=C?'':Math.max(2,(innerHeight-r.bottom)-16)+'px'}
+  const c=$('#credit');c.style.bottom=C?'':Math.max(2,(innerHeight-r.bottom)-16)+'px';
+  {const br=$('#brand'),ht=$('#hudTop');if(br&&ht){document.body.classList.remove('br-tight');ht.style.left='';ht.style.transform='';
+    if(document.body.classList.contains('ui-pc')&&innerWidth>900){const put=()=>{const b=br.getBoundingClientRect().right+8,w=ht.offsetWidth,c=(innerWidth-w)/2;if(b<=c)return true;ht.style.left=b+'px';ht.style.transform='none';return b+w<=innerWidth-225};
+      if(!put()){document.body.classList.add('br-tight');ht.style.left='';ht.style.transform='';put()}}
+    if(!layoutHUD.ro&&window.ResizeObserver){layoutHUD.ro=new ResizeObserver(()=>layoutHUD());layoutHUD.ro.observe(br);layoutHUD.ro.observe(ht)}}}
+  const mt=$('#modeTabs');if(mt){if(document.body.classList.contains('ui-mob')){mt.style.left='';mt.style.bottom=''}else{mt.style.left=(r.left+10)+'px';mt.style.bottom=(gap-1)+'px'}}}
 function isCompact(){return matchMedia('(pointer:coarse) and (max-height:500px)').matches}
 addEventListener('resize',()=>{resize();layoutHUD()});resize();setTimeout(layoutHUD,0);
 addEventListener('orientationchange',()=>setTimeout(()=>{resize();layoutHUD()},300));
@@ -4733,11 +5059,12 @@ $('#btnSection').onclick=()=>enterSection();if($('#mobSec'))$('#mobSec').onclick
 function applyLayout(){let mob=TOUCH;try{const q=new URL(location.href).searchParams.get('ui');if(q==='mob')mob=true;else if(q==='pc')mob=false}catch(e){}
   if(document.documentElement.classList.contains('rec'))mob=false;   // 촬영용 세로 화면: 아래 도구막대(PC 배치)를 손가락으로
   document.body.classList.toggle('ui-mob',mob);document.body.classList.toggle('ui-pc',!mob);
-  if(!mob)return;const menu=$('#sysMenu');if(!menu||menu.children.length)return;
-  ['btnUndo','btnReset','btnRank','btnConq','btnShare','btnSet','btnDonate','btnHub','btnInsta'].forEach(id=>{const b=$('#'+id);if(b)menu.appendChild(b)});
+  const menu=$('#sysMenu');if(!menu||menu.children.length)return;
+  (mob?['btnUndo','btnReset','btnRank','btnConq','btnShare','btnSet','btnDonate','btnHub','btnInsta','mnMini','mnFS']:[]).forEach(id=>{const b=$('#'+id);if(b)menu.appendChild(b)});
+  {const mm=$('#mnMini'),mf=$('#mnFS');if(mm){mm.classList.toggle('on',!!opts.mini);mm.onclick=()=>{$('#btnMini').click();mm.classList.toggle('on',!!opts.mini)}}if(mf)mf.onclick=()=>$('#btnFS').click()}
   const bm=$('#btnMenu');if(bm)bm.onclick=e=>{e.stopPropagation();menu.classList.toggle('open')};
   menu.addEventListener('click',()=>setTimeout(()=>menu.classList.remove('open'),50));
-  document.addEventListener('pointerdown',e=>{if(menu.classList.contains('open')&&!menu.contains(e.target)&&e.target!==bm)menu.classList.remove('open')},true)}
+  document.addEventListener('pointerdown',e=>{if(menu.classList.contains('open')&&!menu.contains(e.target)&&!(bm&&bm.contains(e.target)))menu.classList.remove('open')},true)}
 applyLayout();
 
 $('#btnRank').onclick=openRank;{const bd=$('#btnDaily');if(bd)bd.onclick=()=>{closeModals();dailyStart()}}$('#rankSubmit').onclick=submitRank;
@@ -4750,6 +5077,7 @@ function openReport(){
   let k=0;for(let i=0;i<RANKS.length;i++)if(score>=RANKS[i][0])k=i;
   const sec=STATS.t0?Math.round((performance.now()-STATS.t0)/1000):0;
   const names=EARTH()?Object.fromEntries([...WEAPONS_E.map((w,i)=>[w.id,E_TOOLS[i][1]]),['nuke','태양 조각']]):Object.fromEntries([...WEAPONS,ULTIMATE].map(w=>[w.id,w.name]));
+  for(const w of WEAPONS_K)names[w.id]=w.name;names.kbig='변신';
   const tools=Object.entries(STATS.tools).sort((a,b)=>b[1]-a[1]).map(([id,c])=>`${names[id]||id} ${c}회`).join(' · ')||'-';
   const d=new Date();const date=`${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`;
   const pct=tot?Math.round(dead/tot*100):0;
@@ -4815,6 +5143,7 @@ const E_GUIDE=[
   {w:9,emo:'🛰️',name:'인공위성',team:'자연의 분노',one:'붉은 경고 고리가 뜬 뒤 불타는 인공위성이 떨어져, 일대(반경 약 130m)에 거대한 구덩이와 충격파를 만들어요.',
     steps:[`<b>0 인공위성</b>을 골라요`,`떨어뜨릴 곳을 <b>${K}</b>`,'붉은 고리가 커지다가 잠시 뒤 쾅! — 파편이 주변에 또 떨어져요'],tip:'가운데는 전부 사라지고, 가장자리는 충격파로 무너져요.'}
 ];
+K_GUIDE.forEach(t=>{const w=WEAPONS_K[t.w];if(w&&!TOOL_NOIMG.has('k-'+w.id))t.ico='tool-k-'+w.id});   // 사장님 기술 가이드: 도구 그림
 E_GUIDE.forEach(t=>{if(t.emo&&!t.img&&WEAPONS_E[t.w])t.img='e-'+WEAPONS_E[t.w].id});   // 재난 도구 가이드 그림 (img/guide/e-*.jpg)
 const GUIDE_TABS=[['start','처음 시작'],['tools','도구 사용법'],['section','단면 모드'],['events','이벤트'],['score','점수·공유'],['patch','업데이트']];
 function gStart(){const pc=!TOUCH;
@@ -4829,12 +5158,12 @@ function gStart(){const pc=!TOUCH;
   <div class="g-step"><i>5</i><div><b>🏆 오늘의 사옥</b><p>매일 하나, 모두 같은 사옥에서 3분 대결 (건축 모드만). 위쪽 <b>🏆</b> 버튼으로 도전! 도구를 골고루 쓰면 보너스, 하루 1위는 다음 날 하늘 광고 타워에 👑로 걸려요.</p></div></div>
   </div>
   <div class="g-cta"><button class="btn-p" id="gMission">🎯 따라하기로 하나씩 배우기</button><button class="btn-s" data-gtab="tools">도구 사용법 보기 →</button></div>`}
-function gTools(){const e=EARTH();return `<div class="g-mode"><span>${e?'🌍 지금은 <b>재난 모드</b> 도구예요':'🏗 지금은 <b>건축 모드</b> 도구예요'}</span><button class="btn-s" id="gSwapMode">${e?'🏗 건축 모드로 바꾸기':'🌍 재난 모드로 바꾸기'}</button></div><div class="g-tools">`+(e?E_GUIDE:GUIDE_TOOLS).map(t=>`<div class="g-tool">
-  <div class="g-img">${t.emo&&!t.img?`<div class="g-emo">${t.emo}</div>`:`<img loading="lazy" src="img/guide/${t.img}.jpg" alt="${t.name} 예시">${t.img2?`<img loading="lazy" src="img/guide/${t.img2}.jpg" alt="${t.name} 결과">`:''}`}</div>
+function gTools(){const e=EARTH(),k=KAI();return `<div class="g-mode"><span>${e?'🌍 지금은 <b>재난 모드</b> 도구예요':k?'👔 지금은 <b>사장님 모드</b> 기술이에요':'🏗 지금은 <b>건축 모드</b> 도구예요'}</span><button class="btn-s" id="gSwapMode">${e?'🏗 건축 모드로 바꾸기':'🌍 재난 모드로 바꾸기'}</button></div><div class="g-tools">`+(e?E_GUIDE:k?K_GUIDE:GUIDE_TOOLS).map(t=>`<div class="g-tool">
+  <div class="g-img">${t.emo&&!t.img?`<div class="g-emo">${t.ico?`<img class="g-ico" src="img/tools/${t.ico}.png" alt="">`:t.emo}</div>`:`<img loading="lazy" src="img/guide/${t.img}.jpg" alt="${t.name} 예시">${t.img2?`<img loading="lazy" src="img/guide/${t.img2}.jpg" alt="${t.name} 결과">`:''}`}</div>
   <div class="g-txt"><div class="g-name"><kbd>${t.w===9?0:t.w+1}</kbd> ${t.name} <small>${t.emo?t.team:t.team+'팀'}</small></div><p class="g-one">${t.one}</p>
   <ol>${t.steps.map(s=>`<li>${s}</li>`).join('')}</ol><p class="g-tip">💡 ${t.tip}</p>
   <button class="btn-s g-try" data-w="${t.w}">이 도구로 해보기</button></div></div>`).join('')+`
-  ${e?`<div class="g-tool g-ult"><div class="g-txt"><div class="g-name"><kbd>Q</kbd> ☀ 태양 조각</div><p class="g-one">게이지 없이 <b>30초마다</b> 쓸 수 있어요(범위 3배). ${TOUCH?'오른쪽 아래 원을 누르고':'Q 키를 누르고'} 아무 곳이나 ${K}하면 태양 조각이 떨어져요. 세상이 캄캄해지고(불 켜진 건물 점수 ×2), 밤이 끝나면 인류가 인공 태양을 띄워 다시 낮이 돼요.</p>`:`<div class="g-tool g-ult"><div class="g-txt"><div class="g-name"><kbd>Q</kbd> 필살기</div><p class="g-one">부술수록 오른쪽 아래 원형 게이지가 차요. 가득 차면 ${TOUCH?'원을 누르고':'Q 키를 누르고'} 아무 곳이나 ${K}하면 일대가 한 번에 날아가요.</p>`}</div></div></div>`}
+  ${k?K_GUIDE_ULT:e?`<div class="g-tool g-ult"><div class="g-txt"><div class="g-name"><kbd>Q</kbd> ☀ 태양 조각</div><p class="g-one">게이지 없이 <b>30초마다</b> 쓸 수 있어요(범위 3배). ${TOUCH?'오른쪽 아래 원을 누르고':'Q 키를 누르고'} 아무 곳이나 ${K}하면 태양 조각이 떨어져요. 세상이 캄캄해지고(불 켜진 건물 점수 ×2), 밤이 끝나면 인류가 인공 태양을 띄워 다시 낮이 돼요.</p>`:`<div class="g-tool g-ult"><div class="g-txt"><div class="g-name"><kbd>Q</kbd> 필살기</div><p class="g-one">부술수록 오른쪽 아래 원형 게이지가 차요. 가득 차면 ${TOUCH?'원을 누르고':'Q 키를 누르고'} 아무 곳이나 ${K}하면 일대가 한 번에 날아가요.</p>`}</div></div></div>`}
 function gSection(){return `<div class="g-tool"><div class="g-img"><img loading="lazy" src="img/guide/section.jpg" alt="단면 모드"></div><div class="g-txt">
   <div class="g-name">🔪 단면 모드 — 우리 층만 정밀 철거</div><p class="g-one">사옥을 잘라서 층별 단면으로 보여줘요. 기둥·코어·슬래브를 하나하나 부술 수 있어요.</p>
   <ol><li>${TOUCH?'위쪽 <kbd>☰ 메뉴</kbd>의':'아래'} <kbd>단면</kbd> 버튼${TOUCH?'':' (또는 C 키)'}을 눌러요. 동네 지도의 파란 사무소 이름표를 ${TOUCH?'두 번 탭':'클릭'}해도 그 건물 단면으로 들어가요</li>
@@ -4845,6 +5174,7 @@ function gEvents(){return `<div class="g-ev">
   <div><img class="ev-img" loading="lazy" src="img/events/event-daily.jpg" alt=""><b>🏆 오늘의 사옥</b><p>매일 하나, 모두 같은 사옥에서 3분 대결 (건축 모드에서만 참여). 위쪽 <b>🏆</b> 버튼이나 회사 고르기 창 맨 위 [도전하기]. 사옥은 크게 키워지고 무너지면 다시 솟아요. 같은 도구를 3번 넘게 연달아 쓰면 점수가 줄고, 5종 이상 쓰면 ×1.1 · 8종 이상 ×1.2. 필살기는 한 번만. 하루 1위는 다음 날 하늘 광고 타워에 👑 명예의 전당으로 걸려요.</p></div>
   <div><b>🌨 날씨</b><p>계절 따라 눈·비·벚꽃·단풍이 내려요. 설정에서 끌 수 있어요.</p></div>
   <div><img class="ev-img" loading="lazy" src="og-earth.jpg" alt=""><b>🌍 재난 모드</b><p>회사 고르기 창 맨 위나 ${TOUCH?'☰ 메뉴':'도구막대'}의 [🌍 재난 모드]로 바꿔요. 같은 동네에서 도구가 동물의 분노·자연의 분노로 바뀌어요. 랭킹은 모드별로 따로예요.</p></div>
+  <div><img class="ev-img" loading="lazy" src="img/events/event-boss.jpg" style="object-position:center 18%" alt=""><b>👔 사장님 모드</b><p>${TOUCH?'도구 레일 옆 모드 탭':'도구막대 왼쪽 위 모드 탭'}에서 [👔 사장님]을 누르면 내가 사장님이 돼요. 기술 10가지로 동네를 부수고, 분노 게이지가 가득 차면 ${TOUCH?'오른쪽 아래 원':'Q'}으로 ${KAI_BIG_SEC}초 동안 변신 — 기술이 3배로 세져요. 랭킹은 없어요.</p></div>
   <div><img class="ev-ch" loading="lazy" src="img/chars/${CUR&&CUR.kind==='u'?'char-president':'char-boss'}.jpg" alt=""><b>👔 사장님</b><p>옥상에서 잔소리해요. 사장님을 ${K}하면 기절 + 보너스. 사옥이 무너지면 근처 건축사무소로 도망가요 — 화면 가장자리 화살표를 누르면 따라가요. 더 도망칠 곳이 없으면 검거! (대학교는 총장님)</p></div>
   <div><img class="ev-img" loading="lazy" src="img/events/event-client.jpg" alt=""><b>😤 발주처 난입</b><p>사옥이 꽤 부서지면 검은 차를 타고 와서 빨간 임시 철골·빨간펜 테이프·매스·타워를 갖다 놓아요. 전부 부수면 점수! 건물이 무너지면 한 번은 새로 지어요.</p></div>
   <div><img class="ev-img" loading="lazy" src="img/events/event-boom.jpg" alt=""><b>📢 부동산 호황</b><p>사장님을 검거한 뒤 점수를 더 모으면 사장님이 비행선을 타고 돌아와 사옥을 새로 지어요. 비행선 현수막엔 최근 7일 가장 많이 무너진 사옥 1위! (재난 모드는 필요한 점수가 10배예요)</p></div>
@@ -4898,7 +5228,7 @@ const MISSIONS_E=[
   {t:`<b>9 화산</b>을 ${K}해서 땅을 솟구치게 하기`,w:8,ok:()=>(STATS.tools.volcano||0)>0},
 ];
 let MS=null;
-function missionStart(){const list=EARTH()?MISSIONS_E:MISSIONS_B;MS={list,i:0,rot:0,zoom:0,boss:0,th:cam.theta,ds:cam.dist,done:new Array(list.length).fill(false)};missionUI();toast('🎯 왼쪽 목록을 하나씩 해보세요. 해내면 자동으로 체크돼요',3500)}
+function missionStart(){if(KAI()){MS=null;missionUI();toast('🎯 따라하기는 건축·재난 모드에서 할 수 있어요',2600);return}const list=EARTH()?MISSIONS_E:MISSIONS_B;MS={list,i:0,rot:0,zoom:0,boss:0,th:cam.theta,ds:cam.dist,done:new Array(list.length).fill(false)};missionUI();toast('🎯 왼쪽 목록을 하나씩 해보세요. 해내면 자동으로 체크돼요',3500)}
 function missionTick(){if(!MS)return;MS.rot+=Math.abs(cam.theta-MS.th);MS.th=cam.theta;if(MS.ds>0)MS.zoom+=Math.abs(cam.dist-MS.ds)/MS.ds;MS.ds=cam.dist;
   let ch=false;MS.list.forEach((m,i)=>{if(!MS.done[i]&&m.ok()){MS.done[i]=true;ch=true;sfx(4,0.15)}});if(ch)missionUI()}
 function missionUI(){let el=$('#mission');if(!MS){if(el)el.remove();return}
@@ -4975,7 +5305,7 @@ function conqKeysOf(b){const ks=[];if(b&&b.firms)for(const f of b.firms)if(f.i!=
   if(b&&b.hq&&CUR&&CUR.dkey)ks.push(CUR.dkey);return [...new Set(ks)]}
 function myDone(reg){let n=0;const C=CQ();for(const i of reg.idx)if(C.has('d'+FIRMDATA[i][5]))n++;return n}
 function allDone(reg){return CONQ_ALL&&CONQ_ALL.done?(CONQ_ALL.done[reg.key]||0):0}
-function conqRecord(b){
+function conqRecord(b){if(KAI())return;
   const ks=conqKeysOf(b);if(!ks.length)return;let fresh=[];
   if(b&&b.hq&&CUR&&CUR.dkey)HOT_Q.add(CUR.dkey);   // '가장 많이 무너진 사옥'은 고른 사옥만 (같은 건물에 든 다른 회사는 정복에만 반영)
   const C=CQ();for(const k of ks){CONQ_Q.add(k);if(!C.has(k)){C.add(k);fresh.push(k)}}
@@ -5066,7 +5396,7 @@ function conqPick(reg){if(!reg)return;const left=reg.idx.filter(i=>!CQ().has('d'
   const go=$('#cqGo');if(go)go.onclick=()=>{const i=left[Math.floor(Math.random()*left.length)];closeModals();loadFirm(firmFromData(i))};
 }
 async function loadConqAll(){const u=rankUrl();if(!u)return;
-  try{const r=await fetchT(u+(u.includes('?')?'&':'?')+'action=progress&mode='+GM,{},15000);if(r&&r.ok){CONQ_ALL=r;if($('#mConq').classList.contains('open'))renderConq()}}catch(e){}}
+  try{const r=await fetchT(u+(u.includes('?')?'&':'?')+'action=progress&mode='+rankMode(),{},15000);if(r&&r.ok){CONQ_ALL=r;if($('#mConq').classList.contains('open'))renderConq()}}catch(e){}}
 function openConq(){$('#mConq').classList.add('open');renderConq();if(CONQ_Q.size)flushConq().then(loadConqAll);else loadConqAll()}
 $('#btnConq').onclick=openConq;
 document.querySelectorAll('#mConq [data-who]').forEach(b=>b.onclick=()=>{conqView.who=b.dataset.who;renderConq()});
