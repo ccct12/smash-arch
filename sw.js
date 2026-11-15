@@ -1,11 +1,11 @@
 /* SMASH ARCH 서비스 워커 (Service Worker)
  * - 게임 파일(index.html · game.js · config.js): 항상 인터넷에서 먼저 받고, 안 될 때만 저장본 사용
- *   → 새로 올린 파일이 옛 저장본에 가려지는 일이 없음
+ *   → 새로 올린 파일이 옛 저장본에 가려지는 일이 없음 (브라우저 임시 저장본도 건너뛰고 서버에 매번 확인)
  * - 지도 타일(tiles/…): 저장본을 바로 쓰고 뒤에서 새로 받아 갱신 → 두 번째 방문부터 지도가 빨리 뜸
  * - 다른 사이트(Apps Script 서버 · 글꼴 · 허브)는 건드리지 않음
  * 저장본을 전부 비우고 싶으면 아래 CACHE 이름의 숫자만 바꿔서 올리면 됩니다.
  */
-const CACHE = 'smasharch-v1';
+const CACHE = 'smasharch-v2';
 
 self.addEventListener('install', () => self.skipWaiting());
 
@@ -44,8 +44,10 @@ self.addEventListener('fetch', e => {
   }
 
   // 그 밖의 게임 파일: 인터넷 먼저, 실패하면 저장본
+  // cache:'no-cache' = 브라우저 임시 저장본을 그냥 쓰지 않고 서버에 "바뀌었나요?" 하고 매번 확인 (안 바뀌었으면 내려받지 않아 빠름)
+  // → GitHub 에 새로 배포하면 다음 접속 때 바로 새 파일이 적용돼요
   e.respondWith(
-    fetch(req).then(res => put(req, res)).catch(() =>
+    fetch(req.url, { cache: 'no-cache', credentials: 'same-origin' }).then(res => put(req, res)).catch(() =>
       caches.match(req).then(hit => hit || (req.mode === 'navigate' ? caches.match('./') : undefined))
         .then(hit => hit || Response.error())
     )

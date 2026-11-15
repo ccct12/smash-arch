@@ -1293,6 +1293,27 @@ body.kai #toolbar .tool[data-w].on{background:#3a1512;border-color:#d8261b;box-s
   <label class="opt" style="margin-top:8px;border:0">다음 업데이트부터 자동으로 띄우지 않기 <input type="checkbox" id="patchNo"></label>
   <div class="row" style="margin-top:6px;gap:6px"><button class="btn-p" id="patchDaily" style="flex:1;background:#b8860b">🏆 오늘의 사옥 도전</button><button class="btn-s" id="patchOk" style="flex:1">확인하고 시작</button></div>
 </div></div>
+<script>
+/* 새 버전 자동 적용: 서버의 index.html 을 저장본 없이 다시 받아 게임 파일 버전 번호를 비교해요.
+   번호가 다르면 → 접속 직후엔 바로 새로고침, 게임 도중(탭으로 돌아왔을 때)엔 위쪽에 [새로고침] 알림만 띄워요.
+   배포할 때는 지금처럼 게임 파일 버전 번호만 올리면 됩니다. */
+(function(){
+  try{var u=new URL(location.href);if(u.searchParams.has('_v')){u.searchParams.delete('_v');history.replaceState(null,'',u.pathname+u.search+u.hash)}}catch(e){}
+  var RE=/game\.js\?v=([0-9a-z]+)/,MINE,last=0,t0=Date.now();
+  function go(v){try{if(sessionStorage.getItem('sa_upd')===v)return;sessionStorage.setItem('sa_upd',v)}catch(e){}
+    var u=new URL(location.href);u.searchParams.set('_v',v);location.replace(u.pathname+u.search+u.hash)}
+  function bar(v){if(document.getElementById('updBar'))return;var b=document.createElement('button');b.id='updBar';b.textContent='🔄 새 버전이 나왔어요 — 눌러서 새로고침';
+    b.style.cssText='position:fixed;left:50%;top:8px;transform:translateX(-50%);z-index:99999;background:#ff5a1f;color:#fff;border:0;border-radius:8px;padding:9px 14px;font:700 13px sans-serif;box-shadow:0 3px 10px rgba(0,0,0,.5);cursor:pointer';
+    b.onclick=function(){try{sessionStorage.removeItem('sa_upd')}catch(e){}go(v)};document.body.appendChild(b)}
+  function check(first){if(!MINE)MINE=(RE.exec(document.documentElement.innerHTML)||[])[1];if(!MINE||Date.now()-last<60000)return;last=Date.now();
+    fetch(location.pathname+'?_c='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():''}).then(function(t){
+      var v=(RE.exec(t)||[])[1];if(!v||v===MINE)return;
+      if(first&&Date.now()-t0<15000)go(v);else bar(v)}).catch(function(){})}
+  if(location.protocol.indexOf('http')===0){document.addEventListener('DOMContentLoaded',function(){check(true)});
+    document.addEventListener('visibilitychange',function(){if(!document.hidden)check(false)});
+    window.addEventListener('pageshow',function(e){if(e.persisted)check(false)})}
+})();
+</script>
 <script src="config.js"></script>
 <script>
 /* 부트스트랩: 구글 시트(Apps Script 웹앱)에서 사무소 목록을 받아 FIRMDATA_BOOT 로 넘긴 뒤 game.js 실행
@@ -1304,7 +1325,7 @@ body.kai #toolbar .tool[data-w].on{background:#3a1512;border-color:#d8261b;box-s
   function getT(url,ms){var c=new AbortController(),t=setTimeout(function(){c.abort()},ms);return fetch(url,{signal:c.signal}).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}).finally(function(){clearTimeout(t)})}
   function ok(d){return d&&Array.isArray(d.rows)&&d.rows.length>0}
   function save(d){try{localStorage.setItem(CK,JSON.stringify({t:Date.now(),d:d}))}catch(e){}}
-  function start(d,src){window.FIRMDATA_BOOT=ok(d)?d.rows:[];window.FIRMDATA_SRC=src;var s=document.createElement('script');s.src='game.js?v=20261116b';s.onload=function(){var b=document.getElementById('boot');if(b)b.remove()};
+  function start(d,src){window.FIRMDATA_BOOT=ok(d)?d.rows:[];window.FIRMDATA_SRC=src;var s=document.createElement('script');s.src='game.js?v=20261116c';s.onload=function(){var b=document.getElementById('boot');if(b)b.remove()};
     s.onerror=function(){document.getElementById('bootMsg').textContent='game.js 를 불러오지 못했어요'};document.body.appendChild(s)}
   var u=api(),cached=null;try{cached=JSON.parse(localStorage.getItem(CK)||'null')}catch(e){}
   var fromSheet=u?getT(u+(u.indexOf('?')>=0?'&':'?')+'action=firms',30000).then(function(d){if(!ok(d))throw new Error('empty');save(d);return d}):Promise.reject(new Error('no api'));
